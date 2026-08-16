@@ -469,8 +469,8 @@
           <span class="switch-note">开启后，新建演练默认使用此服务器</span>
         </el-form-item>
 
-        <!-- 测试邮件发送：仅已保存的 SMTP 通道可用 -->
-        <template v-if="editingChannel && channelForm.type === 'smtp'">
+        <!-- 测试邮件发送：SMTP 通道新增/编辑均可直接测试 -->
+        <template v-if="channelForm.type === 'smtp'">
           <el-divider content-position="left">测试邮件发送</el-divider>
           <el-form-item label="收件邮箱">
             <div class="test-email-row">
@@ -498,7 +498,7 @@
               <template #title>{{ testEmailResult.message }}</template>
             </el-alert>
             <div class="form-hint">
-              通过当前通道真实发送一封测试邮件；仅已保存的 SMTP 通道支持
+              按弹窗当前配置真实发送一封测试邮件；新增通道可先测后存，已保存通道会同步刷新「最近测试」记录
             </div>
           </el-form-item>
         </template>
@@ -973,9 +973,9 @@ const domainRows = ref<DomainRow[]>([
 async function loadChannels() {
   try {
     const list = (await channelApi.list()) as ChannelItem[]
-    if (Array.isArray(list) && list.length) channels.value = list
+    if (Array.isArray(list)) channels.value = list
   } catch {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    // 失败提示由 http 拦截器统一弹出；保留已有数据不覆盖
   }
 }
 
@@ -1025,7 +1025,6 @@ const testEmailLoading = ref(false)
 const testEmailResult = ref<{ ok: boolean; message: string } | null>(null)
 
 async function sendTestEmail() {
-  if (!editingChannel.value) return
   const to = testEmailTo.value.trim()
   if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
     ElMessage.warning('请填写正确的收件邮箱地址')
@@ -1034,7 +1033,20 @@ async function sendTestEmail() {
   testEmailLoading.value = true
   testEmailResult.value = null
   try {
-    const result = await channelApi.sendTestEmail(editingChannel.value.id, to)
+    let result
+    if (editingChannel.value) {
+      // 已保存通道：按通道 ID 发信并回写最近测试
+      result = await channelApi.sendTestEmail(editingChannel.value.id, to)
+      if (result.ok) await loadChannels()
+    } else {
+      // 新增通道：用弹窗当前配置发信（不落库）
+      result = await channelApi.sendTestEmailDraft({
+        to,
+        name: channelForm.name || '未保存的通道',
+        type: channelForm.type,
+        config: buildChannelPayload().config,
+      })
+    }
     testEmailResult.value = { ok: result.ok, message: result.message }
     if (result.ok) ElMessage.success('测试邮件已发送')
   } catch {
@@ -1047,18 +1059,18 @@ async function sendTestEmail() {
 async function loadSenderProfiles() {
   try {
     const list = (await channelApi.senderProfiles()) as SenderRow[]
-    if (Array.isArray(list) && list.length) senderRows.value = list
+    if (Array.isArray(list)) senderRows.value = list
   } catch {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    // 失败提示由 http 拦截器统一弹出；保留已有数据不覆盖
   }
 }
 
 async function loadDomains() {
   try {
     const list = (await channelApi.domains()) as DomainRow[]
-    if (Array.isArray(list) && list.length) domainRows.value = list
+    if (Array.isArray(list)) domainRows.value = list
   } catch {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    // 失败提示由 http 拦截器统一弹出；保留已有数据不覆盖
   }
 }
 

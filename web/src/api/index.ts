@@ -94,6 +94,11 @@ export const channelApi = {
     post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
       `/api/v1/channels/${id}/send-test`, { to },
     ),
+  /** 用尚未保存的通道配置发测试邮件（不落库） */
+  sendTestEmailDraft: (payload: Record<string, unknown>) =>
+    post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
+      '/api/v1/channels/send-test', payload,
+    ),
   senderProfiles: () => get('/api/v1/sender-profiles'),
   createSenderProfile: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/sender-profiles', payload),

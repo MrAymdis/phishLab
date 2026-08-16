@@ -68,6 +68,19 @@ class SendTestRequest(BaseModel):
     to: str
 
 
+class DraftSendTestRequest(BaseModel):
+    """弹窗中尚未保存的通道配置直接发测试邮件（不落库）。"""
+    to: str
+    name: str | None = None
+    type: str = "smtp"
+    config: dict = {}
+
+
+@channels.post("/send-test", summary="用未保存的通道配置发送测试邮件（不落库）")
+def send_test_email_draft(req: DraftSendTestRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.send_test_email_draft(db, account, req.model_dump()))
+
+
 @channels.post("/{cid}/send-test", summary="发送测试邮件（真实 SMTP 发信）")
 def send_test_email(cid: int, req: SendTestRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.send_test_email(db, account, cid, req.to))
