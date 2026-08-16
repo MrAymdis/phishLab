@@ -249,6 +249,15 @@ def _smtp_send(name: str, cfg: dict, to: str) -> dict:
         latency = int((time.perf_counter() - t0) * 1000)
         return {"ok": True, "score": 100, "latency_ms": latency,
                 "message": f"测试邮件已发送至 {to}（{latency}ms）"}
+    except smtplib.SMTPAuthenticationError:
+        return {"ok": False, "score": 40, "latency_ms": None,
+                "message": "认证失败：请使用 SMTP 授权码（QQ/163 邮箱需在设置中生成授权码，不能用登录密码）"}
+    except (TimeoutError, socket.timeout):
+        return {"ok": False, "score": 40, "latency_ms": None,
+                "message": f"连接超时：端口与加密方式可能不匹配（465 端口需 SSL/TLS，587 端口需 STARTTLS），当前为 {host}:{port} + {encrypt or '无加密'}"}
+    except smtplib.SMTPServerDisconnected as err:
+        return {"ok": False, "score": 40, "latency_ms": None,
+                "message": f"服务器断开连接：{err}（可能是端口/加密方式不匹配）"}
     except (smtplib.SMTPException, OSError) as err:
         return {"ok": False, "score": 40, "latency_ms": None,
                 "message": f"发送失败：{err}"}
