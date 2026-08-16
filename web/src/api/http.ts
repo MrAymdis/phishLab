@@ -42,8 +42,7 @@ http.interceptors.response.use(
         goLogin()
         return Promise.reject(new Error(body.message))
       }
-      // 10002 尚未实现：静默交由调用方处理，不弹窗
-      if (body.code !== 10002) ElMessage.error(body.message || '请求失败')
+      ElMessage.error(body.message || '请求失败')
       return Promise.reject(new Error(body.message))
     }
     return response.data

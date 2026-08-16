@@ -303,10 +303,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import type { EChartsOption } from 'echarts'
 import { Plus, Download } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { openapiApi } from '@/api'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 import BaseChart from '@/components/base/BaseChart.vue'
@@ -353,7 +354,7 @@ const trendChart: EChartsOption = {
 }
 
 const appKw = ref('')
-const apps = ref(([
+const mockApps = [
   { id: 1, name: '内部OA系统', app_id: 'app_0a1b2c3d', secret: 'sk_live_8f3e2a9d7b1c5e8f', calls: 428600, status: 'enabled', created_at: '2026-04-12 10:21',
     scopes: ['campaign:read', 'campaign:write', 'user:read', 'report:read'], color: '#378ADD', _show: false },
   { id: 2, name: 'HR招聘平台', app_id: 'app_9z8y7x6w', secret: 'sk_live_2d6c8f4a0e1b9c3d', calls: 152400, status: 'enabled', created_at: '2026-05-03 14:56',
@@ -364,7 +365,36 @@ const apps = ref(([
     scopes: ['user:read', 'campaign:read'], color: '#d85a30', _show: false },
   { id: 5, name: 'SOC安全运营', app_id: 'app_q0w9e8r7', secret: 'sk_live_9f2b6d8a1c4e7a3f', calls: 198700, status: 'enabled', created_at: '2026-02-28 11:05',
     scopes: ['campaign:read', 'campaign:write', 'report:read', 'report:write', 'user:read', 'incident:write'], color: '#a32d2d', _show: false },
-]).map(a => reactive(a)))
+]
+const appColors = ['#378ADD', '#7f77dd', '#1d9e75', '#d85a30', '#a32d2d', '#0d9488']
+const apps = ref(mockApps.map(a => reactive(a)))
+
+/** 后端应用 → 视图行（app_secret 为掩码，calls ← call_count） */
+function mapApp(a: any, i: number) {
+  return reactive({
+    id: a.id,
+    name: a.name,
+    app_id: a.app_id,
+    secret: a.app_secret || '',
+    calls: a.call_count ?? 0,
+    status: a.status,
+    created_at: a.created_at ?? '',
+    scopes: Array.isArray(a.scopes) ? a.scopes : [],
+    color: appColors[i % appColors.length],
+    _show: false,
+  })
+}
+
+async function loadApps() {
+  try {
+    const data = (await openapiApi.apps()) as any[]
+    if (Array.isArray(data)) apps.value = data.map(mapApp)
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+onMounted(() => { loadApps() })
 
 function regenSecret(row: any) {
   ElMessage.success('AppSecret 已重新生成')
@@ -383,16 +413,36 @@ const scopeGroups = [
   { name: '模板管理', items: ['template:read', 'template:write'] },
   { name: '数据报表', items: ['report:read', 'report:write'] },
 ]
-function submitApp() {
+async function submitApp() {
   if (!newApp.name) return ElMessage.warning('请填写应用名称')
-  ElMessage.success('应用已创建，AppID/Secret 请妥善保管')
-  createAppVisible.value = false
+  try {
+    const res = await openapiApi.createApp({
+      name: newApp.name,
+      description: newApp.desc,
+      scopes: newApp.scopes,
+      ip_whitelist: newApp.ip_whitelist,
+      callback_url: newApp.callback_url,
+      rate_limit: newApp.rate_limit,
+    })
+    createAppVisible.value = false
+    ElMessage.success('应用已创建，AppID/Secret 请妥善保管')
+    await loadApps()
+    // 完整 Secret 仅本次返回，重新拉取（掩码）后回填以便立即展示
+    const row = apps.value.find(x => x.id === res.id)
+    if (row) {
+      row.secret = res.app_secret
+      row._show = true
+    }
+  } catch {
+    // 失败提示由 http 拦截器处理，保持弹窗打开可重试
+  }
 }
 
 interface ApiNode {
   id: string; name: string; method?: Method; path?: string; desc?: string;
   children?: ApiNode[]; params?: any[]; req_example?: any; res_example?: any; errors?: any[];
 }
+// TODO: 接入 /openapi/v1 接口文档端点（后端暂无 docs 接口，保持静态演示数据）
 const apiTree: ApiNode[] = [
   { id: 'campaign', name: '演练管理', children: [
     { id: 'c1', name: '获取演练列表', method: 'GET', path: '/api/v1/campaigns', desc: '分页获取演练活动列表，支持按状态、类型、关键字筛选',
@@ -477,6 +527,7 @@ const logMiniCards = [
   { title: '平均延迟', value: '82 ms', accent: 'orange' as Accent },
 ]
 const logFilter = reactive({ app: '', method: '', status: '', range: [] as any[], kw: '' })
+// TODO: 接入 /openapi/v1 调用日志端点（后端暂无 logs 接口，保持静态演示数据）
 const logs = [
   { time: '2026-08-16 14:38:02', app_name: 'SOC安全运营', method: 'GET', path: '/api/v1/campaigns?page=1&status=running', status_code: 200, response_ms: 62, ip: '10.12.34.56',
     req_id: 'req-abc123', req_headers: { 'Authorization': 'Bearer sk_***', 'User-Agent': 'SOC-Bot/1.0', 'X-Forwarded-For': '10.12.34.56' },

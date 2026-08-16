@@ -29,9 +29,64 @@ def list_audit(
     paging: tuple[int, int] = Depends(page_params),
     db: Session = Depends(get_db),
 ):
-    raise BizError(ErrorCode.NOT_IMPLEMENTED)
+    from sqlalchemy import func, or_, select
+
+    from .models import AuditLog
+
+    page, page_size = paging
+    stmt = select(AuditLog)
+    if module:
+        stmt = stmt.where(AuditLog.module == module)
+    if kw:
+        like = f"%{kw}%"
+        stmt = stmt.where(or_(
+            AuditLog.account_name.like(like),
+            AuditLog.action.like(like),
+            AuditLog.target_id.like(like),
+        ))
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(AuditLog.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return resp.page(
+        [
+            {
+                "id": r.id,
+                "time": r.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "user": r.account_name,
+                "action": f"{r.module}:{r.action}",
+                "target": r.target_id or "",
+                "ip": r.ip or "",
+            }
+            for r in rows
+        ],
+        total, page, page_size,
+    )
 
 
 @login_logs.get("", summary="登录日志")
 def list_login_logs(paging: tuple[int, int] = Depends(page_params), db: Session = Depends(get_db)):
-    raise BizError(ErrorCode.NOT_IMPLEMENTED)
+    from sqlalchemy import func, select
+
+    from app.modules.account.models import LoginLog
+
+    page, page_size = paging
+    stmt = select(LoginLog)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(
+        stmt.order_by(LoginLog.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    return resp.page(
+        [
+            {
+                "id": r.id,
+                "time": r.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                "user": r.username or "-",
+                "ip": r.ip or "",
+                "browser": r.ua or "",
+                "status": "ok" if r.success == 1 else "fail",
+            }
+            for r in rows
+        ],
+        total, page, page_size,
+    )

@@ -69,7 +69,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Bell, ChatDotRound } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
@@ -82,6 +82,10 @@ const router = useRouter()
 const user = useUserStore()
 const permission = usePermissionStore()
 const copilot = useCopilotStore()
+
+onMounted(() => {
+  if (user.isLoggedIn) permission.loadMenus()
+})
 
 /** 顶栏通知（mock，后续接 websocket/轮询） */
 const notifications = ref([

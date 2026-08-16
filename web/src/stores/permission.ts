@@ -1,8 +1,7 @@
-/** 菜单与路由权限。
- * TODO(一期)：登录后 GET /api/v1/auth/menus 拉取（RBAC ∩ License 模块开关），替换静态表。
- */
+/** 菜单与路由权限：登录后 GET /api/v1/auth/menus 拉取（后端按 License 模块开关过滤）。 */
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
+import { authApi } from '@/api'
 
 export interface MenuItem {
   path: string
@@ -10,7 +9,7 @@ export interface MenuItem {
   icon: string
 }
 
-// 与需求文档一致的 11 项统一导航
+// 与需求文档一致的 11 项统一导航（接口失败时的兜底）
 const DEFAULT_MENUS: MenuItem[] = [
   { path: '/dashboard', title: '数据概览', icon: 'Odometer' },
   { path: '/campaign', title: '演练管理', icon: 'Aim' },
@@ -29,7 +28,14 @@ export const usePermissionStore = defineStore('permission', () => {
   const menus = ref<MenuItem[]>(DEFAULT_MENUS)
 
   async function loadMenus() {
-    // TODO: authApi.menus() 返回后与 License 功能开关求交
+    try {
+      const data = await authApi.menus()
+      if (Array.isArray(data) && data.length) {
+        menus.value = data
+      }
+    } catch {
+      // 接口失败保留默认菜单
+    }
   }
 
   return { menus, loadMenus }

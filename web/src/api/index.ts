@@ -1,28 +1,5 @@
-/** API 模块索引：按后端模块一一对应（见《架构设计方案》§3.4）。 */
+/** API 模块索引：与后端 router 一一对应（后端路由为契约源）。 */
 import { get, post, put, del } from './http'
-import type {
-  Campaign,
-  OverviewMetrics,
-  PageData,
-  EmailTemplate,
-  LandingPage,
-  Payload,
-  Channel,
-  SenderIdentity,
-  Domain,
-  Dept,
-  Employee,
-  Group,
-  Tag,
-  Role,
-  AuditLog,
-  TrainingCourse,
-  TrainingTask,
-  ReportRow,
-  AiDraft,
-  OpenApiApp,
-  ApiLog,
-} from '@/types'
 
 // ---- 认证 ----
 export const authApi = {
@@ -31,13 +8,13 @@ export const authApi = {
       '/api/v1/auth/login', { username, password },
     ),
   me: () => get<{ id: number; username: string; real_name: string }>('/api/v1/auth/me'),
-  menus: () => get<unknown[]>('/api/v1/auth/menus'),
+  menus: () => get<{ path: string; title: string; icon: string }[]>('/api/v1/auth/menus'),
 }
 
 // ---- 数据概览 / 报表 ----
 export const analyticsApi = {
   overview: (range: '7d' | 'month' | 'quarter') =>
-    get<OverviewMetrics>('/api/v1/overview/metrics', { range }),
+    get('/api/v1/overview/metrics', { range }),
   campaignReport: (id: number) => get(`/api/v1/reports/campaign/${id}`),
   department: (range: string) => get('/api/v1/reports/department', { range }),
   trend: (range: string) => get('/api/v1/reports/trend', { range }),
@@ -53,8 +30,8 @@ export interface CampaignQuery {
   pageSize?: number
 }
 export const campaignApi = {
-  list: (q: CampaignQuery) => get<PageData<Campaign>>('/api/v1/campaigns', q as never),
-  detail: (id: number) => get<Campaign>(`/api/v1/campaigns/${id}`),
+  list: (q: CampaignQuery) => get('/api/v1/campaigns', q as never),
+  detail: (id: number) => get(`/api/v1/campaigns/${id}`),
   create: (payload: Record<string, unknown>) => post<{ id: number }>('/api/v1/campaigns', payload),
   saveDraft: (id: number, payload: Record<string, unknown>) =>
     put(`/api/v1/campaigns/${id}/draft`, payload),
@@ -70,135 +47,88 @@ export const campaignApi = {
 
 // ---- 用户和组 ----
 export const orgApi = {
-  deptTree: () => get<Dept[]>('/api/v1/depts'),
-  users: (q: Record<string, unknown>) => get<PageData<Employee>>('/api/v1/emp-users', q),
-  user: (id: number) => get<Employee>(`/api/v1/emp-users/${id}`),
+  deptTree: () => get('/api/v1/depts'),
+  createDept: (payload: Record<string, unknown>) =>
+    post<{ id: number }>('/api/v1/depts', payload),
+  syncSource: (system: string) => post(`/api/v1/depts/sync?source=${system}`),
+  users: (q: Record<string, unknown>) => get('/api/v1/emp-users', q),
+  user: (id: number) => get(`/api/v1/emp-users/${id}`),
   createUser: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/emp-users', payload),
   updateUser: (id: number, payload: Record<string, unknown>) =>
     put(`/api/v1/emp-users/${id}`, payload),
   deleteUser: (id: number) => del(`/api/v1/emp-users/${id}`),
-  importUsersCsv: (file: File) => {
-    const fd = new FormData()
-    fd.append('file', file)
-    return post<{ imported: number; failed: number }>('/api/v1/emp-users/import', fd)
-  },
-  exportUsersCsv: () => get<Blob>('/api/v1/emp-users/export'),
   riskProfile: (uid: number) => get(`/api/v1/emp-users/${uid}/risk-profile`),
-  groups: () => get<Group[]>('/api/v1/groups'),
-  createGroup: (payload: Record<string, unknown>) =>
-    post<{ id: number }>('/api/v1/groups', payload),
-  deleteGroup: (id: number) => del(`/api/v1/groups/${id}`),
-  tags: () => get<Tag[]>('/api/v1/tags'),
-  createTag: (payload: Record<string, unknown>) => post<{ id: number }>('/api/v1/tags', payload),
-  deleteTag: (id: number) => del(`/api/v1/tags/${id}`),
-  syncSource: (system: string) => post(`/api/v1/sync/${system}`),
+  groups: () => get('/api/v1/groups'),
+  tags: () => get('/api/v1/tags'),
 }
 
 // ---- 素材模板 ----
 export const templateApi = {
-  emailTemplates: (scene?: string) =>
-    get<PageData<EmailTemplate>>('/api/v1/email-templates', { scene } as never),
-  emailTemplate: (id: number) => get<EmailTemplate>(`/api/v1/email-templates/${id}`),
+  emailTemplates: (scene?: string) => get('/api/v1/email-templates', { scene } as never),
   createEmailTemplate: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/email-templates', payload),
-  updateEmailTemplate: (id: number, payload: Record<string, unknown>) =>
-    put(`/api/v1/email-templates/${id}`, payload),
-  deleteEmailTemplate: (id: number) => del(`/api/v1/email-templates/${id}`),
-  testSendEmailTemplate: (id: number, to: string) =>
-    post(`/api/v1/email-templates/${id}/test-send`, { to }),
-  landingPages: () => get<PageData<LandingPage>>('/api/v1/landing-pages'),
-  landingPage: (id: number) => get<LandingPage>(`/api/v1/landing-pages/${id}`),
+  testSendEmailTemplate: (id: number, to: string[]) =>
+    post(`/api/v1/email-templates/${id}/test-send`, to),
+  landingPages: () => get('/api/v1/landing-pages'),
   createLandingPage: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/landing-pages', payload),
-  updateLandingPage: (id: number, payload: Record<string, unknown>) =>
-    put(`/api/v1/landing-pages/${id}`, payload),
-  deleteLandingPage: (id: number) => del(`/api/v1/landing-pages/${id}`),
   cloneLandingPage: (url: string) => post<{ id: number }>('/api/v1/landing-pages/clone', { url }),
-  payloads: () => get<Payload[]>('/api/v1/payloads'),
-  createPayload: (payload: Record<string, unknown>) =>
-    post<{ id: number }>('/api/v1/payloads', payload),
-  deletePayload: (id: number) => del(`/api/v1/payloads/${id}`),
-  generateQR: (content: string) => get<{ qr_url: string }>('/api/v1/tools/qrcode', { content }),
+  payloads: () => get('/api/v1/attachments'),
+  qrAssets: () => get('/api/v1/qr-assets'),
 }
 
 // ---- 发送配置 ----
 export const channelApi = {
-  list: () => get<Channel[]>('/api/v1/channels'),
+  list: () => get('/api/v1/channels'),
   createChannel: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/channels', payload),
-  updateChannel: (id: number, payload: Record<string, unknown>) =>
-    put(`/api/v1/channels/${id}`, payload),
-  deleteChannel: (id: number) => del(`/api/v1/channels/${id}`),
-  test: (id: number, to?: string) => post(`/api/v1/channels/${id}/test`, { to }),
-  senderIdentities: () => get<SenderIdentity[]>('/api/v1/sender-identities'),
-  createSenderIdentity: (payload: Record<string, unknown>) =>
-    post<{ id: number }>('/api/v1/sender-identities', payload),
-  deleteSenderIdentity: (id: number) => del(`/api/v1/sender-identities/${id}`),
-  domains: () => get<Domain[]>('/api/v1/domains'),
-  checkDomain: (id: number) => get(`/api/v1/domains/${id}/check`),
+  test: (id: number, to?: string) => post(`/api/v1/channels/${id}/test?to=${to ?? ''}`),
+  senderProfiles: () => get('/api/v1/sender-profiles'),
+  createSenderProfile: (payload: Record<string, unknown>) =>
+    post<{ id: number }>('/api/v1/sender-profiles', payload),
+  domains: () => get('/api/v1/domains'),
+  createDomain: (payload: Record<string, unknown>) =>
+    post<{ id: number }>('/api/v1/domains', payload),
   dnsCheck: (id: number) => get(`/api/v1/domains/${id}/dns-check`),
 }
 
 // ---- 培训 / 举报 ----
 export const trainingApi = {
-  courses: () => get<TrainingCourse[]>('/api/v1/courses'),
-  course: (id: number) => get<TrainingCourse>(`/api/v1/courses/${id}`),
+  courses: () => get('/api/v1/courses'),
   createCourse: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/courses', payload),
-  questionBank: (course_id: number) => get(`/api/v1/courses/${course_id}/questions`),
-  createQuestion: (payload: Record<string, unknown>) =>
-    post<{ id: number }>('/api/v1/questions', payload),
-  tasks: () => get<PageData<TrainingTask>>('/api/v1/training-tasks'),
+  tasks: () => get('/api/v1/training-tasks'),
   createTask: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/training-tasks', payload),
+  questionBank: () => get('/api/v1/exam/questions'),
+  papers: () => get('/api/v1/exam/papers'),
 }
 export const reportApi = {
-  list: (q: Record<string, unknown>) => get<PageData<ReportRow>>('/api/v1/mail-reports', q),
+  list: (q: Record<string, unknown>) => get('/api/v1/mail-reports', q),
   classify: (id: number, classification: string, remark?: string) =>
     post(`/api/v1/mail-reports/${id}/classify`, { classification, remark }),
-  plugins: () => get('/api/v1/report/plugins'),
-  rewardRanking: () => get('/api/v1/report/ranking'),
-  handleReal: (id: number, remark: string) =>
-    post(`/api/v1/mail-reports/${id}/handle-real`, { remark }),
 }
 
 // ---- AI ----
 export const aiApi = {
   sessions: () => get('/api/v1/ai/sessions'),
-  drafts: (status?: string) => get<PageData<AiDraft>>('/api/v1/ai/drafts', { status } as never),
+  drafts: (status?: string) => get('/api/v1/ai/drafts', { status } as never),
   approveDraft: (id: number) => post(`/api/v1/ai/drafts/${id}/approve`),
   discardDraft: (id: number) => post(`/api/v1/ai/drafts/${id}/discard`),
   chatStream: (body: Record<string, unknown>) =>
     post<ReadableStream>('/api/v1/ai/chat/stream', body),
   generateTemplate: (params: Record<string, unknown>) =>
-    post<{ id: number; name: string; subject: string; body: string }>(
-      '/api/v1/ai/generate/template', params,
-    ),
-  analyzeReport: (type: string, id: number) =>
-    get<{ summary: string; risk: string; suggestions: string[] }>(
-      '/api/v1/ai/analyze/report', { type, id },
-    ),
-  models: () => get<{ id: string; name: string; provider: string }[]>('/api/v1/ai/models'),
-  updateAiConfig: (payload: Record<string, unknown>) => put('/api/v1/ai/config', payload),
-  usageStats: (range?: string) => get('/api/v1/ai/usage', { range }),
+    post<{ draft_id: number }>('/api/v1/ai/templates/generate', params),
+  analyzeReport: (kind: string, target: Record<string, unknown>) =>
+    post<{ draft_id: number }>('/api/v1/ai/analysis/generate', { kind, target }),
 }
 
 // ---- OpenAPI ----
 export const openapiApi = {
-  overview: () => get<{ app_count: number; call_count: number; error_count: number }>(
-    '/api/v1/openapi/overview',
-  ),
-  apps: () => get<OpenApiApp[]>('/api/v1/openapi/apps'),
+  apps: () => get('/api/v1/open-apps'),
   createApp: (payload: Record<string, unknown>) =>
-    post<{ id: number; app_id: string; app_secret: string }>('/api/v1/openapi/apps', payload),
-  updateApp: (id: number, payload: Record<string, unknown>) =>
-    put(`/api/v1/openapi/apps/${id}`, payload),
-  deleteApp: (id: number) => del(`/api/v1/openapi/apps/${id}`),
-  regenerateSecret: (id: number) =>
-    post<{ app_secret: string }>(`/api/v1/openapi/apps/${id}/regenerate-secret`),
-  apiDocs: (category?: string) => get('/api/v1/openapi/docs', { category }),
-  callLogs: (q: Record<string, unknown>) => get<PageData<ApiLog>>('/api/v1/openapi/logs', q),
+    post<{ id: number; app_id: string; app_secret: string }>('/api/v1/open-apps', payload),
 }
 
 // ---- 系统设置 / 授权 ----
@@ -206,23 +136,15 @@ export const systemApi = {
   settings: () => get('/api/v1/settings'),
   updateSettings: (payload: Record<string, unknown>) => put('/api/v1/settings', payload),
   license: () => get('/api/v1/license'),
-  activateLicense: (code: string) => post('/api/v1/license/activate', { code }),
+  activateLicense: (code: string) => post('/api/v1/license/activate', { license_key: code }),
   importLicense: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)
-    return post('/api/v1/license/import', fd)
+    return post('/api/v1/license/offline-import', fd)
   },
-  roles: () => get<Role[]>('/api/v1/roles'),
-  role: (id: number) => get<Role>(`/api/v1/roles/${id}`),
-  createRole: (payload: Record<string, unknown>) =>
-    post<{ id: number }>('/api/v1/roles', payload),
-  updateRole: (id: number, payload: Record<string, unknown>) =>
-    put(`/api/v1/roles/${id}`, payload),
-  deleteRole: (id: number) => del(`/api/v1/roles/${id}`),
-  auditLogs: (q: Record<string, unknown>) => get<PageData<AuditLog>>('/api/v1/audit-logs', q),
-  loginLogs: (q: Record<string, unknown>) => get<PageData<AuditLog>>('/api/v1/login-logs', q),
-  ssoConfig: () => get('/api/v1/sso/config'),
-  updateSso: (payload: Record<string, unknown>) => put('/api/v1/sso/config', payload),
+  roles: () => get('/api/v1/roles'),
+  auditLogs: (q: Record<string, unknown>) => get('/api/v1/audit-logs', q),
+  loginLogs: (q: Record<string, unknown>) => get('/api/v1/login-logs', q),
   webhooks: () => get('/api/v1/webhooks'),
-  updateWebhook: (payload: Record<string, unknown>) => put('/api/v1/webhooks', payload),
+  siem: () => get('/api/v1/siem'),
 }

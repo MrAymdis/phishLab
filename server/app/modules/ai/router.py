@@ -41,12 +41,8 @@ def sessions(account=Depends(get_current_account), db: Session = Depends(get_db)
 
 @ai.post("/chat/stream", summary="Copilot 对话（SSE 流式）")
 async def chat_stream(req: ChatRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    async def gen():
-        # 脚手架占位：一期接入 LLM 适配层（见 service.chat_stream）
-        yield {"data": json.dumps({"type": "token", "content": "AI 服务尚未接入：请先在「智能助手 → AI 配置」中配置模型 Provider。"}, ensure_ascii=False)}
-        yield {"data": json.dumps({"type": "done"})}
-
-    return EventSourceResponse(gen())
+    # 注意：service.chat_stream 在生成器开始前完成 DB 持久化，不跨 SSE 持有请求 session
+    return EventSourceResponse(service.chat_stream(db, account, req.model_dump()))
 
 
 @ai.post("/templates/generate", summary="AI 模板生成（进草稿审核）")

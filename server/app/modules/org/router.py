@@ -73,6 +73,16 @@ def user_detail(uid: int, account=Depends(get_current_account), db: Session = De
     return resp.ok(service.get_user(db, account, uid))
 
 
+@emp_users.put("/{uid}", summary="编辑员工")
+def update_user(uid: int, payload: EmpUserCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.update_user(db, account, uid, payload.model_dump()))
+
+
+@emp_users.delete("/{uid}", summary="删除员工（离职软删）")
+def delete_user(uid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.delete_user(db, account, uid))
+
+
 @emp_users.get("/{uid}/risk-profile", summary="员工风险画像（五维）")
 def risk_profile(uid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.get_risk_profile(db, account, uid))

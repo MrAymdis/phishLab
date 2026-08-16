@@ -116,7 +116,7 @@
         v-model:page-size="pageSize"
         style="margin-top: 12px; justify-content: flex-end"
         layout="total, sizes, prev, pager, next"
-        :total="filteredRows.length"
+        :total="total"
         :page-sizes="[10, 20, 50, 100]"
       />
     </div>
@@ -124,7 +124,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Plus } from '@element-plus/icons-vue'
@@ -132,7 +132,6 @@ import PageHeader from '@/components/base/PageHeader.vue'
 import StatusBadge from '@/components/base/StatusBadge.vue'
 import { campaignApi } from '@/api'
 
-// TODO(一期)：以 campaignApi.list({status, type, kw, page}) 服务端查询替换本地 mock 过滤。
 interface CampaignRow {
   id: number
   name: string
@@ -156,20 +155,22 @@ const kw = ref('')
 const dateRange = ref<[Date, Date] | null>(null)
 const page = ref(1)
 const pageSize = ref(10)
+// 服务端返回的总条数（服务端分页）
+const total = ref(0)
 const selectedRows = ref<CampaignRow[]>([])
 
 const TYPE_LABEL: Record<string, string> = {
   mail: '邮件钓鱼', sms: '短信钓鱼', social: '社交媒体', usb: 'USB实物',
 }
 
-const statCards = [
+const statCards = ref<{ key: string; label: string; value: string | number; sub: string; accent: string }[]>([
   { key: '', label: '演练总数', value: 128, sub: '↑ 12 本月', accent: 'blue' },
   { key: '', label: '演练总人次', value: '48,260', sub: '累计覆盖员工', accent: 'orange' },
   { key: 'running', label: '进行中', value: 3, sub: '覆盖 4,200 人', accent: 'green' },
   { key: 'scheduled', label: '待开始', value: 5, sub: '计划本周 3 场', accent: 'purple' },
   { key: 'completed', label: '已完成', value: 115, sub: '平均中招率 17.8%', accent: 'teal' },
   { key: 'terminated', label: '已终止', value: 5, sub: '异常终止 2 场', accent: 'red' },
-]
+])
 
 const allRows = ref<CampaignRow[]>([
   { id: 1, name: 'Q3全员防钓鱼演练', type: 'mail', time_range: '08-15 ~ 08-22', start_date: '2026-08-15', end_date: '2026-08-22', started_at: '2026-08-15', target_count: 3580, deliver_rate: 100, open_rate: 71, click_rate: 27, victim_rate: 16, status: 'running' },
@@ -180,16 +181,20 @@ const allRows = ref<CampaignRow[]>([
   { id: 6, name: '新员工安全意识测试', type: 'mail', time_range: '08-10 ~ 08-20', start_date: '2026-08-10', end_date: '2026-08-20', started_at: '2026-08-10', target_count: 30, deliver_rate: 100, open_rate: 63, click_rate: 23, victim_rate: 10, status: 'paused' },
 ])
 
-// 状态筛选计数徽标（基于全量 mock 数据统计）
+// 状态筛选计数徽标（基于服务端返回的 stats 汇总，而非当前页数据）
 const statusCounts = computed(() => {
-  const counts: Record<'all' | 'running' | 'scheduled' | 'completed' | 'terminated' | 'paused', number> = {
-    all: allRows.value.length, running: 0, scheduled: 0, completed: 0, terminated: 0, paused: 0,
+  const valueOf = (key: string): string | number =>
+    statCards.value.find((c) => c.key === key)?.value ?? 0
+  return {
+    all: valueOf(''),
+    running: valueOf('running'),
+    scheduled: valueOf('scheduled'),
+    completed: valueOf('completed'),
+    terminated: valueOf('terminated'),
   }
-  for (const r of allRows.value) counts[r.status as keyof typeof counts]++
-  return counts
 })
 
-// 状态 / 类型 / 关键词 / 日期范围 四项客户端过滤
+// 日期范围仍为客户端过滤（status/type/kw 已由服务端过滤，此处重复校验无副作用）
 const filteredRows = computed(() => allRows.value.filter((r) => {
   if (statusFilter.value && r.status !== statusFilter.value) return false
   if (typeFilter.value && r.type !== typeFilter.value) return false
@@ -204,12 +209,45 @@ const filteredRows = computed(() => allRows.value.filter((r) => {
   return true
 }))
 
-const pagedRows = computed(() => {
-  const start = (page.value - 1) * pageSize.value
-  return filteredRows.value.slice(start, start + pageSize.value)
-})
+// 服务端已按 status/type/kw + page/pageSize 分页返回当页数据，不再本地切片
+const pagedRows = computed(() => filteredRows.value)
 
-watch([statusFilter, typeFilter, kw, dateRange], () => { page.value = 1 })
+// 筛选条件变化：重置页码并重新加载（日期范围仅客户端过滤，不作为请求参数）
+watch([statusFilter, typeFilter, kw, dateRange], () => {
+  page.value = 1
+  load()
+})
+// 翻页 / 改页大小：服务端分页，重新请求
+watch([page, pageSize], () => load())
+
+interface CampaignListData {
+  stats: { key: string; label: string; value: string | number; sub: string; accent: string }[]
+  list: CampaignRow[]
+  total: number
+  page: number
+  pageSize: number
+}
+
+async function load() {
+  try {
+    const d = (await campaignApi.list({
+      status: statusFilter.value,
+      type: typeFilter.value,
+      kw: kw.value,
+      page: page.value,
+      pageSize: pageSize.value,
+    })) as CampaignListData | null
+    if (d) {
+      if (d.stats?.length) statCards.value = d.stats
+      if (d.list) allRows.value = d.list
+      total.value = d.total ?? 0
+    }
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+onMounted(load)
 
 // 名称列状态副文（进行中按 started_at 计算天数）
 function runningDays(row: CampaignRow): number {
@@ -241,34 +279,33 @@ function batchExport() {
   ElMessage.success(`正在导出已选 ${selectedRows.value.length} 条演练数据，请稍候...`)
 }
 
-// 行操作：后端当前返回 code=10002（尚未实现），catch 后 info 提示即可，不视为失败
+// 行操作：失败提示由 http 拦截器统一弹出，成功则重新拉取列表
 async function doStart(row: CampaignRow) {
   try {
     await campaignApi.start(row.id)
     ElMessage.success('演练已启动')
+    await load()
   } catch {
-    ElMessage.info('后端接口尚未实现，已在前端模拟状态变更')
+    /* 拦截器已提示错误 */
   }
-  row.status = 'running'
-  row.started_at = new Date().toISOString().slice(0, 10)
 }
 async function doPause(row: CampaignRow) {
   try {
     await campaignApi.pause(row.id)
     ElMessage.success('演练已暂停')
+    await load()
   } catch {
-    ElMessage.info('后端接口尚未实现，已在前端模拟状态变更')
+    /* 拦截器已提示错误 */
   }
-  row.status = 'paused'
 }
 async function doResume(row: CampaignRow) {
   try {
     await campaignApi.resume(row.id)
     ElMessage.success('演练已恢复')
+    await load()
   } catch {
-    ElMessage.info('后端接口尚未实现，已在前端模拟状态变更')
+    /* 拦截器已提示错误 */
   }
-  row.status = 'running'
 }
 async function doTerminate(row: CampaignRow) {
   try {
@@ -283,10 +320,10 @@ async function doTerminate(row: CampaignRow) {
   try {
     await campaignApi.terminate(row.id)
     ElMessage.success('演练已终止')
+    await load()
   } catch {
-    ElMessage.info('后端接口尚未实现，已在前端模拟状态变更')
+    /* 拦截器已提示错误 */
   }
-  row.status = 'terminated'
 }
 function doEdit(row: CampaignRow) {
   ElMessage.info(`已进入演练向导（编辑「${row.name}」）`)

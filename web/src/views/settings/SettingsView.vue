@@ -149,7 +149,7 @@
             <el-pagination
               style="margin-top: 10px; justify-content: flex-end"
               layout="total, prev, pager, next"
-              :total="1286"
+              :total="opLogTotal"
               :page-size="5"
             />
           </div>
@@ -170,7 +170,7 @@
             <el-pagination
               style="margin-top: 10px; justify-content: flex-end"
               layout="total, prev, pager, next"
-              :total="3542"
+              :total="loginLogTotal"
               :page-size="5"
             />
           </div>
@@ -463,10 +463,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import {
   Plus, Picture, Link, Check, UploadFilled, FolderOpened, Phone,
 } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { systemApi } from '@/api'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 
@@ -512,13 +514,14 @@ const wh = reactive({
   events: ['high_risk', 'campaign_end', 'report'],
 })
 
-const roles = [
+const mockRoles = [
   { id: 1, name: '超级管理员', code: 'super_admin', desc: '拥有所有权限', user_count: 3 },
   { id: 2, name: '演练操作员', code: 'drill_operator', desc: '可发起/管理演练与素材', user_count: 8 },
   { id: 3, name: '只读审计员', code: 'readonly_auditor', desc: '仅可查看报表与日志', user_count: 5 },
   { id: 4, name: '部门安全接口人', code: 'dept_security', desc: '仅查看本部门数据', user_count: 12 },
 ]
-const currentRole = computed(() => roles.find(r => r.id === activeRole.value))
+const roles = ref<{ id: number; name: string; code: string; desc: string; user_count: number; data_scope?: string }[]>(mockRoles)
+const currentRole = computed(() => roles.value.find(r => r.id === activeRole.value))
 const currentRoleName = computed(() => currentRole.value?.name)
 const currentRoleCode = computed(() => currentRole.value?.code)
 const currentRoleDesc = computed(() => currentRole.value?.desc)
@@ -536,28 +539,31 @@ const permMatrix = reactive([
   { menu: '系统设置', view: false, edit: false, del: false },
 ])
 
-const opLogs = [
+const opLogs = ref([
   { time: '2026-08-15 14:33:12', user: 'admin', action: '发起演练', target: 'Q3全员防钓鱼演练 (ID: 2026-Q3-ALL)', ip: '10.0.1.22' },
   { time: '2026-08-15 11:20:05', user: 'operator01', action: '编辑邮件模板', target: '【财务通知】报销截止提醒', ip: '10.0.1.45' },
   { time: '2026-08-15 09:58:41', user: 'auditor02', action: '导出报表', target: '2026 Q2 部门风险汇总.xlsx', ip: '10.0.2.88' },
   { time: '2026-08-14 18:05:22', user: 'admin', action: '更新系统设置', target: '数据留存周期 90天 → 180天', ip: '10.0.1.22' },
   { time: '2026-08-14 15:42:08', user: 'operator01', action: '新增发送通道', target: '备用SMTP (smtp2.company.com)', ip: '10.0.1.45' },
-]
-const loginLogs = [
+])
+const opLogTotal = ref(1286)
+const loginLogs = ref([
   { time: '2026-08-16 09:02:18', user: 'admin', ip: '10.0.1.22', browser: 'Chrome 125 · Windows 10', status: 'ok' },
   { time: '2026-08-16 08:55:44', user: 'operator01', ip: '10.0.1.45', browser: 'Edge 125 · Windows 11', status: 'ok' },
   { time: '2026-08-16 08:50:12', user: 'unknown', ip: '202.108.x.x', browser: 'Chrome 120 · macOS', status: 'fail' },
   { time: '2026-08-15 20:15:33', user: 'auditor02', ip: '10.0.2.88', browser: 'Safari 17 · macOS 14', status: 'ok' },
   { time: '2026-08-15 20:14:01', user: 'auditor02', ip: '10.0.2.88', browser: 'Safari 17 · macOS 14', status: 'fail' },
-]
+])
+const loginLogTotal = ref(3542)
 
 type Accent = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal'
-const licenseStats: { title: string; value: string; accent: Accent; sub?: string; progress?: number; used?: string; total?: string }[] = [
+const mockLicenseStats: { title: string; value: string; accent: Accent; sub?: string; progress?: number; used?: string; total?: string }[] = [
   { title: '授权状态', value: '试用版 Trial', accent: 'orange', sub: '剩余 14 天 · 到期 2026-08-30' },
   { title: '到期时间', value: '2026-08-30', accent: 'red', sub: '请提前 30 天完成续期' },
   { title: '用户配额', value: '活跃 2,180 / 5,000', accent: 'blue', progress: 44, used: '2180', total: '5000' },
   { title: '邮件发送量', value: '本月 18.2万 / 30万', accent: 'green', progress: 61, used: '18.2万', total: '30万' },
 ]
+const licenseStats = ref(mockLicenseStats)
 
 const moduleRows = [
   { name: 'AI 智能生成模块', level: 'flagship', enabled: false, locked: true },
@@ -568,6 +574,116 @@ const moduleRows = [
   { name: '邮件钓鱼演练核心', level: 'all', enabled: true, locked: false },
   { name: '报表与导出', level: 'all', enabled: true, locked: false },
 ]
+
+// ---- 接口数据加载（失败降级为演示数据）----
+const loadWarning = () => ElMessage.warning('接口数据加载失败，已展示演示数据')
+const toFlag = (v: unknown) => v === '1' || v === 1 || v === true
+
+onMounted(async () => {
+  // 角色列表
+  try {
+    const data = (await systemApi.roles()) as { id: number; code: string; name: string; data_scope?: string; remark?: string; user_count?: number }[]
+    if (Array.isArray(data) && data.length) {
+      roles.value = data.map((r, i) => ({
+        id: r.id,
+        name: r.name,
+        code: r.code,
+        desc: r.remark || '角色',
+        user_count: r.user_count ?? mockRoles[i]?.user_count ?? 0,
+        data_scope: r.data_scope,
+      }))
+    }
+  } catch { loadWarning() }
+
+  // 操作日志
+  try {
+    const data = (await systemApi.auditLogs({ page: 1, pageSize: 20 })) as { list: any[]; total?: number }
+    if (Array.isArray(data?.list) && data.list.length) {
+      opLogs.value = data.list.map(l => ({ time: l.time, user: l.user, action: l.action, target: l.target, ip: l.ip }))
+      opLogTotal.value = data.total ?? opLogs.value.length
+    }
+  } catch { loadWarning() }
+
+  // 登录日志
+  try {
+    const data = (await systemApi.loginLogs({ page: 1, pageSize: 20 })) as { list: any[]; total?: number }
+    if (Array.isArray(data?.list) && data.list.length) {
+      loginLogs.value = data.list.map(l => ({ time: l.time, user: l.user, ip: l.ip, browser: l.browser, status: l.status }))
+      loginLogTotal.value = data.total ?? loginLogs.value.length
+    }
+  } catch { loadWarning() }
+
+  // 基础参数（品牌/追踪/隐私合规）
+  try {
+    const s = (await systemApi.settings()) as Record<string, any>
+    if (s && typeof s === 'object') {
+      if (s.name) brand.name = s.name
+      if (s.copyright) brand.copyright = s.copyright
+      if (s.icp) brand.icp = s.icp
+      if (s.track_domain) track.domain = s.track_domain
+      if (s.link_expire) track.link_expire = s.link_expire
+      if (s.redirect_url) track.redirect_url = s.redirect_url
+      if (s.pixel_enabled !== undefined && s.pixel_enabled !== null) privacy.tracking_pixel = toFlag(s.pixel_enabled)
+      if (s.retention_drill) privacy.retention_drill = s.retention_drill
+      if (s.retention_behavior) privacy.retention_behavior = s.retention_behavior
+      if (s.retention_log) privacy.retention_log = s.retention_log
+      if (s.disclaimer) privacy.disclaimer = s.disclaimer
+      if (s.compliance_confirm !== undefined && s.compliance_confirm !== null) privacy.compliance_confirm = toFlag(s.compliance_confirm)
+    }
+  } catch { loadWarning() }
+
+  // 授权信息
+  try {
+    const lic = (await systemApi.license()) as any
+    if (lic && typeof lic === 'object') {
+      const editionLabel: Record<string, string> = { trial: '试用版 Trial', standard: '标准版', flagship: '旗舰版' }
+      const stats = [...mockLicenseStats]
+      if (lic.edition) {
+        stats[0] = {
+          title: '授权状态', value: editionLabel[lic.edition] ?? lic.edition, accent: 'orange',
+          sub: `剩余 ${lic.remaining_days ?? '-'} 天 · 到期 ${lic.expire_at ?? '-'}`,
+        }
+      }
+      if (lic.expire_at) stats[1] = { title: '到期时间', value: lic.expire_at, accent: 'red', sub: '请提前 30 天完成续期' }
+      const userQ = lic.quotas?.user
+      if (userQ?.total) {
+        stats[2] = {
+          title: '用户配额', value: `活跃 ${userQ.used.toLocaleString()} / ${userQ.total.toLocaleString()}`, accent: 'blue',
+          progress: Math.round((userQ.used / userQ.total) * 100), used: String(userQ.used), total: String(userQ.total),
+        }
+      }
+      const mailQ = lic.quotas?.mail
+      if (mailQ?.total) {
+        stats[3] = {
+          title: '邮件发送量', value: `本月 ${mailQ.used.toLocaleString()} / ${mailQ.total.toLocaleString()}`, accent: 'green',
+          progress: Math.round((mailQ.used / mailQ.total) * 100), used: String(mailQ.used), total: String(mailQ.total),
+        }
+      }
+      licenseStats.value = stats
+    }
+  } catch { loadWarning() }
+
+  // Webhook 告警推送
+  try {
+    const list = (await systemApi.webhooks()) as any[]
+    if (Array.isArray(list) && list.length) {
+      const w = list.find(x => x.enabled) || list[0]
+      if (['wecom', 'dingtalk', 'feishu'].includes(w.im_type)) whType.value = w.im_type
+      if (w.url) wh.url = w.url
+      if (Array.isArray(w.event_types) && w.event_types.length) wh.events = w.event_types
+    }
+  } catch { loadWarning() }
+
+  // SIEM Syslog 推送
+  try {
+    const cfg = (await systemApi.siem()) as any
+    if (cfg && cfg.host) {
+      siem.server = cfg.host
+      if (cfg.port) siem.port = Number(cfg.port)
+      if (['udp', 'tcp'].includes(cfg.protocol)) siem.proto = cfg.protocol
+    }
+  } catch { loadWarning() }
+})
 </script>
 
 <style scoped lang="scss">

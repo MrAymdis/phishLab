@@ -1,14 +1,14 @@
 <template>
   <div class="page-container">
-    <PageHeader title="Q3全员防钓鱼演练" :parents="['演练管理']">
+    <PageHeader :title="campaignName" :parents="['演练管理']">
       <template #actions>
-        <StatusBadge status="running" />
+        <StatusBadge :status="campaignStatus" />
         <el-button size="small" type="warning">暂停</el-button>
         <el-button size="small" type="danger">终止</el-button>
       </template>
     </PageHeader>
 
-    <!-- 实时指标（TODO: GET /campaigns/{id}/dashboard + SSE /stream） -->
+    <!-- 实时指标（dashboard 接口已接入；SSE /stream 实时刷新留待后续） -->
     <el-row :gutter="12" style="margin: 16px 16px 0">
       <el-col :span="4" v-for="m in metrics" :key="m.label">
         <StatCard :title="m.label" :value="m.value" :sub="m.sub" :accent="m.accent" />
@@ -50,45 +50,130 @@
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 import StatusBadge from '@/components/base/StatusBadge.vue'
 import FunnelChart from '@/components/business/FunnelChart.vue'
 import BehaviorTimeline from '@/components/business/BehaviorTimeline.vue'
 import type { TimelineEvent } from '@/components/business/BehaviorTimeline.vue'
+import { campaignApi } from '@/api'
 
-// TODO(一期)：campaignApi.dashboard(id) + SSE stream 实时刷新
+// dashboard/timeline 已接入接口；SSE 实时推送留待后续（TODO: SSE /stream）
+const route = useRoute()
+const campaignName = ref('Q3全员防钓鱼演练')
+const campaignStatus = ref('running')
+
 type Accent = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal'
-const metrics: { label: string; value: string; sub: string; accent: Accent }[] = [
+const metrics = ref<{ label: string; value: string | number; sub?: string; accent: Accent }[]>([
   { label: '发送总数', value: '1,200', sub: '成功率 100%', accent: 'blue' },
   { label: '发送成功', value: '1,200', sub: '占比 100%', accent: 'purple' },
   { label: '已阅读', value: '856', sub: '阅读率 71.3%', accent: 'teal' },
   { label: '已点击', value: '324', sub: '点击率 27.0%', accent: 'orange' },
   { label: '中招人数', value: '187', sub: '中招率 15.6%', accent: 'red' },
   { label: '已举报', value: '268', sub: '举报率 22.3%', accent: 'green' },
-]
+])
 
-const funnel = [
+const funnel = ref<{ name: string; value: number; rate?: string }[]>([
   { name: '发送总数', value: 1200, rate: '100%' },
   { name: '发送成功', value: 1200, rate: '100%' },
   { name: '已阅读', value: 856, rate: '71.3%' },
   { name: '已点击', value: 324, rate: '→37.8%' },
   { name: '输入数据', value: 187, rate: '→57.7%' },
   { name: '主动举报', value: 268, rate: '31.3%' },
-]
+])
 
-const alerts = [
+const alerts = ref([
   { msg: '张某某（研发部）连续3次输入密码', time: '2 分钟前', advice: '建议下发专项培训' },
   { msg: '财务部整体中招率达到 32%', time: '15 分钟前', advice: '超阈值5个百分点' },
   { msg: '李某某（高管办）点击后10秒内提交', time: '38 分钟前', advice: '已自动推送培训' },
-]
+])
 
-const timeline: TimelineEvent[] = [
+const timeline = ref<TimelineEvent[]>([
   { time: '2026-08-15 14:33:05', user: '王某某 · 市场部', action: '在登录页输入了密码', icon: '⚠️', ip: '10.12.34.56', browser: 'Chrome 125 · Win10', fingerprint: 'a3f8b2c1...', danger: true },
   { time: '2026-08-15 14:32:42', user: '王某某 · 市场部', action: '点击了邮件中的链接「立即报销」', icon: '🔗', ip: '10.12.34.56', browser: 'Chrome 125 · Win10' },
   { time: '2026-08-15 14:32:18', user: '王某某 · 市场部', action: '打开了邮件「财务报销通知」', icon: '📧', ip: '10.12.34.56', browser: 'Chrome 125 · Win10' },
   { time: '2026-08-15 14:31:55', user: '陈某某 · 法务部', action: '举报了可疑邮件', icon: '🛡️', ip: '10.12.78.90', browser: 'Edge 125 · macOS', good: true },
-]
+])
+
+// ============ 接口数据加载（失败时保留演示数据） ============
+interface CampaignDetailData {
+  id: number
+  name: string
+  type: string
+  status: string
+}
+interface CampaignDashData {
+  metrics: { label: string; value: string | number; suffix?: string; accent: string }[]
+  funnel: { name: string; value: number; rate?: string | number }[]
+  alerts: { msg: string; time: string; advice: string }[]
+}
+interface TimelineDataItem {
+  time: string
+  user: string
+  action: string
+  icon: string
+  ip: string
+  browser: string
+  fingerprint?: string | null
+  danger?: boolean
+  good?: boolean
+}
+
+async function load() {
+  const id = Number(route.params.id)
+  try {
+    const [detail, dash, tl] = await Promise.all([
+      campaignApi.detail(id),
+      campaignApi.dashboard(id),
+      campaignApi.timeline(id, 1),
+    ])
+    const dt = detail as CampaignDetailData | null
+    if (dt?.name) campaignName.value = dt.name
+    if (dt?.status) campaignStatus.value = dt.status
+
+    const d = dash as CampaignDashData | null
+    if (d?.metrics?.length) {
+      metrics.value = d.metrics.map((m) => ({
+        label: m.label,
+        value: m.value,
+        sub: m.suffix ?? '',
+        accent: m.accent as Accent,
+      }))
+    }
+    if (d?.funnel?.length) {
+      funnel.value = d.funnel.map((f) => ({
+        name: f.name,
+        value: f.value,
+        rate: f.rate == null ? undefined : String(f.rate),
+      }))
+    }
+    if (d?.alerts?.length) {
+      alerts.value = d.alerts.map((a) => ({ msg: a.msg, time: a.time, advice: a.advice }))
+    }
+
+    const list = (tl as { list?: TimelineDataItem[] } | null)?.list
+    if (list?.length) {
+      timeline.value = list.map((t) => ({
+        time: t.time,
+        user: t.user,
+        action: t.action,
+        icon: t.icon,
+        ip: t.ip,
+        browser: t.browser,
+        fingerprint: t.fingerprint || undefined,
+        danger: t.danger,
+        good: t.good,
+      }))
+    }
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+onMounted(load)
 </script>
 
 <style scoped lang="scss">

@@ -210,7 +210,7 @@
                   <template #default="{ row }">
                     <el-button link size="small" type="primary" @click="openDetailDialog(row)">详情</el-button>
                     <el-button link size="small" type="danger" @click="openRealDialog(row)" v-if="!row.manual">研判为真实钓鱼</el-button>
-                    <el-button link size="small" v-if="!row.manual">标记误报</el-button>
+                    <el-button link size="small" v-if="!row.manual" @click="classifyReport(row, 'false_positive')">标记误报</el-button>
                     <el-button link size="small" type="success">推送SOC</el-button>
                   </template>
                 </el-table-column>
@@ -348,7 +348,7 @@
       </el-form>
       <template #footer>
         <el-button @click="realDialogVisible = false">取消</el-button>
-        <el-button type="danger" @click="realDialogVisible = false">确认提交处置</el-button>
+        <el-button type="danger" @click="submitRealDisposal">确认提交处置</el-button>
       </template>
     </el-dialog>
 
@@ -425,11 +425,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive } from 'vue'
+import { ref, reactive, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Download, Picture, Setting, Refresh, CopyDocument, RefreshRight, Document } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
+import { reportApi } from '@/api'
 
 const activeTab = ref('plugin')
 const reportDateRange = ref<[Date, Date] | null>(null)
@@ -445,6 +446,12 @@ const openRealDialog = (row: any) => {
   disposalOptions.value = []
   disposalRemark.value = ''
   realDialogVisible.value = true
+}
+
+const submitRealDisposal = async () => {
+  if (!currentReport.value) return
+  const ok = await classifyReport(currentReport.value, 'real_phishing', disposalRemark.value)
+  if (ok) realDialogVisible.value = false
 }
 
 // ============ 举报详情弹窗 ============
@@ -475,10 +482,12 @@ const openDetailDialog = (row: any) => {
   detailDialogVisible.value = true
 }
 
-const submitDetailAction = () => {
-  if (currentReport.value) currentReport.value.manual = detailAction.value
-  detailDialogVisible.value = false
-  ElMessage.success('处理结果已提交，分类已更新')
+const detailActionMap: Record<string, string> = { drill: 'drill', real: 'real_phishing', false: 'false_positive' }
+
+const submitDetailAction = async () => {
+  if (!currentReport.value) return
+  const ok = await classifyReport(currentReport.value, detailActionMap[detailAction.value], detailRemark.value)
+  if (ok) detailDialogVisible.value = false
 }
 
 const apiConfig = reactive({
@@ -491,17 +500,50 @@ const regenerateToken = () => {
   apiConfig.token = 'PL_sk_live_' + Math.random().toString(36).slice(2, 42)
 }
 
-const reportRows = [
-  { time: '2026-08-16 11:42:08', subject: '【紧急】8月工资条更新，请核对银行账户', sender: 'hr-notice@phishing-shop.com', reporter: '王建国', reporterDept: '行政部', auto: 'real', manual: '' },
-  { time: '2026-08-16 10:28:31', subject: 'Q3全员防钓鱼演练 - 财务报销提醒', sender: 'no-reply@drill.phishlab.cn', reporter: '张小明', reporterDept: '财务部', auto: 'drill', manual: 'drill' },
-  { time: '2026-08-16 09:15:02', subject: 'Re: 项目例会纪要（8月15日）', sender: 'project-team@example.com', reporter: '陈志强', reporterDept: '研发部', auto: 'false', manual: 'false' },
-  { time: '2026-08-15 17:50:44', subject: 'Fedex 快递签收通知 - 运单号77889922', sender: 'fedex-express@service-alert.cc', reporter: '赵丽娟', reporterDept: '财务部', auto: 'real', manual: 'real' },
-  { time: '2026-08-15 16:33:21', subject: '【VPN续费】账号即将冻结，请点击完成验证', sender: 'it-support@company-verification.top', reporter: '周文博', reporterDept: '技术部', auto: 'real', manual: 'real' },
-  { time: '2026-08-15 14:19:07', subject: '报销审批通过 - 单据 #BZ20260814-0028', sender: 'workflow@example.com', reporter: '孙美玲', reporterDept: '人力资源部', auto: 'false', manual: 'false' },
-  { time: '2026-08-15 11:05:55', subject: 'Q3演练-会议日程变更，请更新日历', sender: 'meeting@drill.phishlab.cn', reporter: '吴慧敏', reporterDept: '法务部', auto: 'drill', manual: 'drill' },
-  { time: '2026-08-14 18:42:17', subject: '【重要】Google Drive 文件共享 - 员工手册 v3', sender: 'drive-shared@doc-share.xyz', reporter: '李晓华', reporterDept: '市场部', auto: 'real', manual: '' },
+const reportMocks = [
+  { id: 101, time: '2026-08-16 11:42:08', subject: '【紧急】8月工资条更新，请核对银行账户', sender: 'hr-notice@phishing-shop.com', reporter: '王建国', reporterDept: '行政部', auto: 'real', manual: '', remark: '' },
+  { id: 102, time: '2026-08-16 10:28:31', subject: 'Q3全员防钓鱼演练 - 财务报销提醒', sender: 'no-reply@drill.phishlab.cn', reporter: '张小明', reporterDept: '财务部', auto: 'drill', manual: 'drill', remark: '与演练批次匹配，发件域为演练专用域' },
+  { id: 103, time: '2026-08-16 09:15:02', subject: 'Re: 项目例会纪要（8月15日）', sender: 'project-team@example.com', reporter: '陈志强', reporterDept: '研发部', auto: 'false', manual: 'false', remark: '内部正常往来邮件' },
+  { id: 104, time: '2026-08-15 17:50:44', subject: 'Fedex 快递签收通知 - 运单号77889922', sender: 'fedex-express@service-alert.cc', reporter: '赵丽娟', reporterDept: '财务部', auto: 'real', manual: 'real', remark: '发件域近期注册，已推送 SOC' },
+  { id: 105, time: '2026-08-15 16:33:21', subject: '【VPN续费】账号即将冻结，请点击完成验证', sender: 'it-support@company-verification.top', reporter: '周文博', reporterDept: '技术部', auto: 'real', manual: 'real', remark: '仿冒 IT 通知，落地页已关停' },
+  { id: 106, time: '2026-08-15 14:19:07', subject: '报销审批通过 - 单据 #BZ20260814-0028', sender: 'workflow@example.com', reporter: '孙美玲', reporterDept: '人力资源部', auto: 'false', manual: 'false', remark: '确认非钓鱼' },
+  { id: 107, time: '2026-08-15 11:05:55', subject: 'Q3演练-会议日程变更，请更新日历', sender: 'meeting@drill.phishlab.cn', reporter: '吴慧敏', reporterDept: '法务部', auto: 'drill', manual: 'drill', remark: '与演练批次匹配' },
+  { id: 108, time: '2026-08-14 18:42:17', subject: '【重要】Google Drive 文件共享 - 员工手册 v3', sender: 'drive-shared@doc-share.xyz', reporter: '李晓华', reporterDept: '市场部', auto: 'real', manual: '', remark: '' },
 ]
+const reportRows = ref([...reportMocks])
 
+// ============ 接口加载（失败时保留演示数据） ============
+const reportPage = ref(1)
+const reportPageSize = ref(20)
+// 筛选值（视图短值）→ 后端 classification 全称
+const classificationMap: Record<string, string> = { drill: 'drill', real: 'real_phishing', false: 'false_positive' }
+
+async function loadReports() {
+  try {
+    const q: Record<string, unknown> = { page: reportPage.value, pageSize: reportPageSize.value }
+    if (reportCategory.value) q.classification = classificationMap[reportCategory.value] ?? reportCategory.value
+    const res = (await reportApi.list(q)) as { list: any[] }
+    if (Array.isArray(res.list) && res.list.length) reportRows.value = res.list
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function classifyReport(row: any, classification: string, remark?: string): Promise<boolean> {
+  try {
+    await reportApi.classify(row.id, classification, remark)
+    ElMessage.success('研判结果已提交')
+    loadReports()
+    return true
+  } catch {
+    return false
+  }
+}
+
+watch(reportCategory, () => loadReports())
+onMounted(() => loadReports())
+
+// TODO：举报奖励排行榜暂无后端接口（reportApi 无 ranking endpoint），保持演示数据
 const rankRows = [
   { rank: 1, name: '王建国', dept: '行政部', monthPoints: 480, totalPoints: 3620, badges: ['月度冠军', '真实猎手'] },
   { rank: 2, name: '吴慧敏', dept: '法务部', monthPoints: 420, totalPoints: 2980, badges: ['举报达人'] },

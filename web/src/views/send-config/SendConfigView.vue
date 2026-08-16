@@ -536,18 +536,19 @@
       </el-form>
       <template #footer>
         <el-button @click="senderDialog = false">取消</el-button>
-        <el-button type="primary" @click="senderDialog = false">确认添加</el-button>
+        <el-button type="primary" @click="saveSender">确认添加</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, nextTick } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { Plus, ArrowDown, Search } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
+import { channelApi } from '@/api'
 
 type ChannelType = 'smtp' | 'ews' | 'sms'
 
@@ -582,7 +583,7 @@ function dnsTagType(v: string) {
   return 'danger'
 }
 
-const channels: ChannelItem[] = [
+const channels = ref<ChannelItem[]>([
   { id: 1, name: '主SMTP通道', type: 'smtp', type_label: 'SMTP', accent: 'blue', status: 'ok',
     server: 'smtp.company.com', port: 465, ssl: true, score: 96, last_test: '2026-08-15 10:22' },
   { id: 2, name: '备用SMTP通道', type: 'smtp', type_label: 'SMTP', accent: 'teal', status: 'ok',
@@ -595,15 +596,15 @@ const channels: ChannelItem[] = [
     provider: '腾讯云 SMS', signature: '【公司通知】', score: 0, last_test: '2026-08-10 失败' },
   { id: 6, name: '自定义 HTTP 短信网关', type: 'sms', type_label: '短信机', accent: 'red', status: 'ok',
     provider: '自定义 HTTP Webhook', signature: '【系统公告】', score: 82, last_test: '2026-08-12 11:15' },
-]
+])
 
 // ========== 统计卡片（由当前通道 mock 数据计算） ==========
 const statCards = computed(() => {
-  const okCount = channels.filter((c) => c.status === 'ok').length
+  const okCount = channels.value.filter((c) => c.status === 'ok').length
   return [
-    { label: '服务器总数', value: channels.length, sub: 'SMTP / EWS / 短信机 三类通道', accent: 'blue', color: '', live: false },
+    { label: '服务器总数', value: channels.value.length, sub: 'SMTP / EWS / 短信机 三类通道', accent: 'blue', color: '', live: false },
     { label: '正常可用', value: okCount, sub: '运行中，可随时发送', accent: 'green', color: 'var(--color-text-success)', live: true },
-    { label: '异常需关注', value: channels.length - okCount, sub: '请及时检查连接配置', accent: 'orange', color: 'var(--accent-orange)', live: false },
+    { label: '异常需关注', value: channels.value.length - okCount, sub: '请及时检查连接配置', accent: 'orange', color: 'var(--accent-orange)', live: false },
     { label: '本月发送总量', value: '12,860', sub: '日均约 415 封', accent: 'teal', color: '', live: false },
   ]
 })
@@ -613,7 +614,7 @@ const channelKw = ref('')
 const channelTypeFilter = ref('')
 const filteredChannels = computed(() => {
   const kw = channelKw.value.trim().toLowerCase()
-  return channels.filter((c) => {
+  return channels.value.filter((c) => {
     if (channelTypeFilter.value && c.type !== channelTypeFilter.value) return false
     if (!kw) return true
     const haystack = [c.name, c.server ?? '', c.url ?? '', c.provider ?? '', c.signature ?? '']
@@ -761,14 +762,66 @@ function openChannelDialog(type: ChannelType, channel?: ChannelItem) {
   nextTick(() => channelFormRef.value?.clearValidate())
 }
 
+/** 弹窗表单 → ChannelCreate payload（config 键与后端 channel.service.create_channel 对齐） */
+function buildChannelPayload(): Record<string, unknown> {
+  let config: Record<string, unknown>
+  if (channelForm.type === 'smtp') {
+    config = {
+      smtp_host: channelForm.smtp_host,
+      smtp_port: channelForm.smtp_port,
+      smtp_encryption: channelForm.smtp_encryption,
+      smtp_user: channelForm.smtp_user,
+      smtp_pass: channelForm.smtp_pass,
+    }
+  } else if (channelForm.type === 'ews') {
+    config = {
+      ews_url: channelForm.ews_url,
+      ews_user: channelForm.ews_user,
+      ews_pass: channelForm.ews_pass,
+      ews_auth_mode: channelForm.ews_auth_mode,
+      ews_client_id: channelForm.ews_client_id,
+      ews_client_secret: channelForm.ews_client_secret,
+      ews_tenant_id: channelForm.ews_tenant_id,
+    }
+  } else {
+    config = {
+      sms_provider: channelForm.sms_provider,
+      sms_url: channelForm.sms_url,
+      sms_signature: channelForm.sms_signature,
+      sms_api_key: channelForm.sms_api_key,
+      sms_api_secret: channelForm.sms_api_secret,
+      sms_template_id: channelForm.sms_template_id,
+      sms_port_dev: channelForm.sms_port_dev,
+      sms_baudrate: channelForm.sms_baudrate,
+      sms_sim: channelForm.sms_sim,
+    }
+  }
+  return {
+    name: channelForm.name,
+    type: channelForm.type,
+    daily_limit: Number(channelForm.daily_limit) || 5000,
+    is_default: channelForm.is_default,
+    config,
+    // TODO: 弹窗内「伪装发件人配置」需单独走 sender-profiles 接口，暂不同时提交
+  }
+}
+
 async function submitChannelForm() {
   const formEl = channelFormRef.value
   if (!formEl) return
   const valid = await formEl.validate().catch(() => false)
   if (!valid) return
-  // TODO: 后端未实现，待接入 channelApi.createChannel(...) / channelApi.updateChannel(...)
-  ElMessage.success(editingChannel.value ? '通道配置已保存' : '发送通道已创建')
-  channelDialogVisible.value = false
+  try {
+    if (!editingChannel.value) {
+      await channelApi.createChannel(buildChannelPayload())
+      await loadChannels()
+    }
+    // TODO: 后端未提供通道更新接口，编辑暂仅本地提示
+    ElMessage.success(editingChannel.value ? '通道配置已保存' : '发送通道已创建')
+    channelDialogVisible.value = false
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
 // ========== 添加域名弹窗 ==========
@@ -798,9 +851,14 @@ async function submitDomainForm() {
   if (!formEl) return
   const valid = await formEl.validate().catch(() => false)
   if (!valid) return
-  // TODO: 后端未实现，待接入 channelApi 域名相关接口（保存域名并生成DNS记录）
-  ElMessage.success('域名已添加，DNS记录已生成，请前往域名DNS面板配置')
-  domainDialogVisible.value = false
+  try {
+    await channelApi.createDomain({ domain: domainForm.domain, purpose: domainForm.purpose })
+    await loadDomains()
+    ElMessage.success('域名已添加，DNS记录已生成，请前往域名DNS面板配置')
+    domainDialogVisible.value = false
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
 // ========== 伪装发件人（独立 Tab 弹窗，保留原实现） ==========
@@ -809,20 +867,96 @@ const senderForm = reactive({
   display_name: '', address: '', reply_to: '', scene_tags: [] as string[], channel: '',
 })
 
-const senderRows = [
-  { display_name: '财务部通知', address: 'finance-noreply@phish-mail.company.com', reply_to: '', scene_tags: ['财务报销'], channel: '主SMTP' },
-  { display_name: 'IT运维中心', address: 'it-support@phish-mail.company.com', reply_to: 'helpdesk@company.com', scene_tags: ['系统升级', '中奖通知'], channel: '主SMTP' },
-  { display_name: '人力资源部', address: 'hr@phish-mail.company.com', reply_to: '', scene_tags: ['HR通知', '节假日'], channel: 'Exchange EWS' },
-  { display_name: '员工福利委员会', address: 'welfare@phish-mail.company.com', reply_to: '', scene_tags: ['中奖通知', '节假日'], channel: '备用SMTP' },
-  { display_name: '安全中心', address: 'security@phish-mail.company.com', reply_to: '', scene_tags: ['系统升级'], channel: '主SMTP' },
-]
+async function saveSender() {
+  if (!senderForm.display_name || !senderForm.address) {
+    ElMessage.warning('请填写显示名和发件地址')
+    return
+  }
+  try {
+    await channelApi.createSenderProfile({
+      name: senderForm.display_name,
+      channel_type: 'mail',
+      display_name: senderForm.display_name,
+      from_addr: senderForm.address,
+      reply_to: senderForm.reply_to,
+      scene_tags: senderForm.scene_tags,
+      // TODO: 关联通道(channel) 后端 SenderProfileCreate 暂未支持，默认走默认通道
+    })
+    await loadSenderProfiles()
+    senderDialog.value = false
+    ElMessage.success('伪装发件人已添加')
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
+}
 
-const domainRows = [
-  { domain: 'phish-mail.company.com', spf: 'OK', dkim: 'OK', dmarc: 'OK', score: 99, last_check: '2026-08-15 03:00' },
-  { domain: 'company-security.info', spf: 'OK', dkim: 'WARN', dmarc: 'OK', score: 93, last_check: '2026-08-15 03:00' },
-  { domain: 'hr-notice.work', spf: 'OK', dkim: 'FAIL', dmarc: 'WARN', score: 85, last_check: '2026-08-15 03:00' },
-  { domain: 'it-alert.top', spf: 'FAIL', dkim: 'FAIL', dmarc: 'FAIL', score: 62, last_check: '2026-08-14 03:00' },
-]
+interface SenderRow {
+  id: number
+  display_name: string
+  address: string
+  reply_to: string
+  scene_tags: string[]
+  channel: string
+}
+
+interface DomainRow {
+  id: number
+  domain: string
+  spf: string
+  dkim: string
+  dmarc: string
+  score: number
+  last_check: string
+}
+
+const senderRows = ref<SenderRow[]>([
+  { id: 1, display_name: '财务部通知', address: 'finance-noreply@phish-mail.company.com', reply_to: '', scene_tags: ['财务报销'], channel: '主SMTP' },
+  { id: 2, display_name: 'IT运维中心', address: 'it-support@phish-mail.company.com', reply_to: 'helpdesk@company.com', scene_tags: ['系统升级', '中奖通知'], channel: '主SMTP' },
+  { id: 3, display_name: '人力资源部', address: 'hr@phish-mail.company.com', reply_to: '', scene_tags: ['HR通知', '节假日'], channel: 'Exchange EWS' },
+  { id: 4, display_name: '员工福利委员会', address: 'welfare@phish-mail.company.com', reply_to: '', scene_tags: ['中奖通知', '节假日'], channel: '备用SMTP' },
+  { id: 5, display_name: '安全中心', address: 'security@phish-mail.company.com', reply_to: '', scene_tags: ['系统升级'], channel: '主SMTP' },
+])
+
+const domainRows = ref<DomainRow[]>([
+  { id: 1, domain: 'phish-mail.company.com', spf: 'OK', dkim: 'OK', dmarc: 'OK', score: 99, last_check: '2026-08-15 03:00' },
+  { id: 2, domain: 'company-security.info', spf: 'OK', dkim: 'WARN', dmarc: 'OK', score: 93, last_check: '2026-08-15 03:00' },
+  { id: 3, domain: 'hr-notice.work', spf: 'OK', dkim: 'FAIL', dmarc: 'WARN', score: 85, last_check: '2026-08-15 03:00' },
+  { id: 4, domain: 'it-alert.top', spf: 'FAIL', dkim: 'FAIL', dmarc: 'FAIL', score: 62, last_check: '2026-08-14 03:00' },
+])
+
+// ============ 接口加载（失败时保留演示数据） ============
+async function loadChannels() {
+  try {
+    const list = (await channelApi.list()) as ChannelItem[]
+    if (Array.isArray(list) && list.length) channels.value = list
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadSenderProfiles() {
+  try {
+    const list = (await channelApi.senderProfiles()) as SenderRow[]
+    if (Array.isArray(list) && list.length) senderRows.value = list
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadDomains() {
+  try {
+    const list = (await channelApi.domains()) as DomainRow[]
+    if (Array.isArray(list) && list.length) domainRows.value = list
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+onMounted(() => {
+  loadChannels()
+  loadSenderProfiles()
+  loadDomains()
+})
 </script>
 
 <style scoped lang="scss">

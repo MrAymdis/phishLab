@@ -437,8 +437,7 @@ async function submit() {
     ElMessage.success('演练创建成功，已进入调度队列')
     router.push('/campaign')
   } catch {
-    ElMessage.info('后端演练创建尚未实现（脚手架阶段）')
-    router.push('/campaign')
+    // 失败提示由 http 拦截器统一弹出，停留本页便于修改后重试
   }
 }
 </script>

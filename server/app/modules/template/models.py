@@ -1,7 +1,8 @@
 """素材域：邮件模板、落地页、表单字段、附件载荷、二维码。"""
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, func
+from sqlalchemy import JSON, BigInteger, DateTime, Integer, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, MediumText, TimestampMixin, pk
@@ -19,6 +20,11 @@ class EmailTemplate(Base, TimestampMixin):
     source: Mapped[str] = mapped_column(String(12), default="builtin", comment="builtin/custom/ai/cloned")
     status: Mapped[str] = mapped_column(String(12), default="draft", comment="draft/approved")
     created_by: Mapped[int | None] = mapped_column(BigInteger)
+    # 展示列（列表页卡片直接消费）
+    sender: Mapped[str | None] = mapped_column(String(128), comment="建议发件人显示名")
+    stars: Mapped[int] = mapped_column(Integer, default=2, comment="难度星级 1-5")
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    click_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, comment="平均点击率%")
 
 
 class LandingPage(Base, TimestampMixin):
@@ -35,6 +41,7 @@ class LandingPage(Base, TimestampMixin):
     clone_from_url: Mapped[str | None] = mapped_column(String(512))
     status: Mapped[str] = mapped_column(String(12), default="draft")
     created_by: Mapped[int | None] = mapped_column(BigInteger)
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class LandingFormField(Base):
@@ -59,6 +66,12 @@ class AttachmentPayload(Base, TimestampMixin):
     file_hash: Mapped[str | None] = mapped_column(String(64))
     file_size: Mapped[int | None] = mapped_column(BigInteger)
     created_by: Mapped[int | None] = mapped_column(BigInteger)
+    # 展示列（附件列表卡片直接消费）
+    platform: Mapped[str | None] = mapped_column(String(64), comment="目标平台 Windows/macOS/Linux")
+    evade_rate: Mapped[int] = mapped_column(Integer, default=0, comment="检测逃逸率%")
+    used_count: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(12), default="enabled", comment="enabled/disabled")
+    icon: Mapped[str | None] = mapped_column(String(8), comment="列表展示图标")
 
 
 class AttachmentDownloadLog(Base):

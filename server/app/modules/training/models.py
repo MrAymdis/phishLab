@@ -20,6 +20,9 @@ class Course(Base, TimestampMixin):
     source: Mapped[str] = mapped_column(String(12), default="builtin", comment="builtin/custom/ai")
     status: Mapped[str] = mapped_column(String(12), default="draft")
     created_by: Mapped[int | None] = mapped_column(BigInteger)
+    # 展示列（课程卡片直接消费）
+    level: Mapped[str] = mapped_column(String(8), default="easy", comment="easy/mid/hard")
+    material: Mapped[str | None] = mapped_column(String(64), comment="课件形态：视频课件/图文+PDF/场景模拟等")
 
 
 class TrainingTask(Base, TimestampMixin):
@@ -62,6 +65,7 @@ class ExamQuestion(Base, TimestampMixin):
     answer: Mapped[str] = mapped_column(String(32), nullable=False)
     analysis: Mapped[str | None] = mapped_column(Text)
     difficulty: Mapped[int] = mapped_column(Integer, default=2)
+    course_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="关联课程")
     created_by: Mapped[int | None] = mapped_column(BigInteger)
 
 

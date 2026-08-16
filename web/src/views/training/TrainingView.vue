@@ -286,7 +286,7 @@
       </el-form>
       <template #footer>
         <el-button @click="taskDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="taskDialogVisible = false">创建任务</el-button>
+        <el-button type="primary" @click="saveTask">创建任务</el-button>
       </template>
     </el-dialog>
 
@@ -343,11 +343,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { VideoPlay, Calendar, Collection, Plus, Clock, Document, UploadFilled } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
+import { trainingApi } from '@/api'
 
 const activeTab = ref('course')
 const courseKw = ref('')
@@ -383,13 +384,30 @@ function openCourseDialog() {
   courseDialogVisible.value = true
 }
 
-function saveCourse() {
+async function saveCourse() {
   if (!courseForm.name) {
     ElMessage.warning('请填写课程名称')
     return
   }
-  courseDialogVisible.value = false
-  ElMessage.success('课程已创建')
+  try {
+    await trainingApi.createCourse({ ...courseForm })
+    courseDialogVisible.value = false
+    ElMessage.success('课程已创建')
+    loadCourses()
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function saveTask() {
+  if (!taskForm.courseId) {
+    ElMessage.warning('请选择课程')
+    return
+  }
+  try {
+    await trainingApi.createTask({ ...taskForm })
+    taskDialogVisible.value = false
+    ElMessage.success('培训任务已创建')
+    loadTasks()
+  } catch { /* 拦截器已提示 */ }
 }
 
 function levelLabel(level: string) {
@@ -401,7 +419,7 @@ function levelTagType(level: string) {
 }
 
 const accentList = ['blue', 'green', 'orange', 'purple', 'red', 'teal'] as const
-const courses = [
+const courseMocks = [
   { id: 1, title: '《信息安全基础规范》', type: 'video', typeLabel: '视频', tagType: 'primary' as const, level: 'easy', material: '视频课件', duration: 28, learners: 3420, completion: 91, accent: accentList[0], coverBg: 'linear-gradient(135deg, #378ADD, #1E5FA8)', coverIcon: '🛡️' },
   { id: 2, title: '《钓鱼邮件识别入门》', type: 'article', typeLabel: '图文', tagType: 'success' as const, level: 'easy', material: '图文+PDF', duration: 18, learners: 3210, completion: 88, accent: accentList[1], coverBg: 'linear-gradient(135deg, #10B981, #059669)', coverIcon: '📧' },
   { id: 3, title: '《钓鱼邮件识别进阶》', type: 'interactive', typeLabel: '互动式', tagType: 'warning' as const, level: 'hard', material: '场景模拟', duration: 45, learners: 2156, completion: 72, accent: accentList[2], coverBg: 'linear-gradient(135deg, #F59E0B, #D97706)', coverIcon: '🎯' },
@@ -409,11 +427,12 @@ const courses = [
   { id: 5, title: '《财务人员专项安全课》', type: 'video', typeLabel: '视频', tagType: 'primary' as const, level: 'hard', material: '视频+案例', duration: 52, learners: 580, completion: 68, accent: accentList[4], coverBg: 'linear-gradient(135deg, #EF4444, #B91C1C)', coverIcon: '💰' },
   { id: 6, title: '《新员工入职安全培训》', type: 'interactive', typeLabel: '互动式', tagType: 'warning' as const, level: 'mid', material: '完整培训包', duration: 90, learners: 186, completion: 92, accent: accentList[5], coverBg: 'linear-gradient(135deg, #14B8A6, #0D9488)', coverIcon: '👋' },
 ]
+const courses = ref([...courseMocks])
 
 // 类型 + 难度 + 关键词组合过滤（供课程卡片渲染）
 const filteredCourses = computed(() => {
   const kw = courseKw.value.trim().toLowerCase()
-  return courses.filter(c => {
+  return courses.value.filter(c => {
     if (categoryFilter.value && c.type !== categoryFilter.value) return false
     if (levelFilter.value && c.level !== levelFilter.value) return false
     if (kw && !c.title.toLowerCase().includes(kw)) return false
@@ -421,7 +440,7 @@ const filteredCourses = computed(() => {
   })
 })
 
-const taskRows = [
+const taskMocks = [
   { name: 'Q3全员安全意识强化任务', course: '《信息安全基础规范》', target: '全员', count: 3580, start: '2026-08-01', end: '2026-08-31', started: 2860, done: 1920, progress: 54, status: 'running' },
   { name: '财务中招人员强制培训', course: '《财务人员专项安全课》', target: '财务部', count: 56, start: '2026-08-10', end: '2026-08-20', started: 52, done: 38, progress: 68, status: 'running' },
   { name: '高管专项合规培训', course: '《企业数据安全红线》', target: '高管组', count: 12, start: '2026-07-15', end: '2026-07-31', started: 12, done: 12, progress: 100, status: 'completed' },
@@ -429,8 +448,9 @@ const taskRows = [
   { name: '5月钓鱼识别进阶训练', course: '《钓鱼邮件识别进阶》', target: '市场+行政', count: 160, start: '2026-05-01', end: '2026-05-20', started: 142, done: 118, progress: 74, status: 'expired' },
   { name: '研发部安全基础测评', course: '《信息安全基础规范》', target: '研发部', count: 342, start: '2026-04-10', end: '2026-04-30', started: 342, done: 342, progress: 100, status: 'completed' },
 ]
+const taskRows = ref([...taskMocks])
 
-const questionRows = [
+const questionMocks = [
   { type: 'single', content: '收到一封来自"HR@company.com"的邮件，要求点击链接更新工资卡信息，最合理的做法是？', options: 'A.直接点击链接 B.回复邮件确认 C.通过企业微信找HR核实 D.转发给同事', diff: 'easy', course: '《钓鱼邮件识别入门》' },
   { type: 'multi', content: '以下哪些属于常见的钓鱼攻击手法？（多选）', options: '仿冒OA登录页 / 伪造快递签收短信 / 正常会议邀请', diff: 'mid', course: '《钓鱼邮件识别进阶》' },
   { type: 'judge', content: '邮件中只要有公司logo和发件人域名正确，就可以放心点击链接。', options: '', diff: 'easy', course: '《信息安全基础规范》' },
@@ -439,14 +459,78 @@ const questionRows = [
   { type: 'judge', content: '为了方便记忆，可以将多个系统的密码设置为同一个强密码。', options: '', diff: 'mid', course: '《信息安全基础规范》' },
   { type: 'single', content: '收到要求紧急转账的"财务总监"微信消息，应该？', options: 'A.立即转账 B.电话或当面确认 C.回复确认账号 D.先转一半', diff: 'hard', course: '《财务人员专项安全课》' },
 ]
+const questionRows = ref([...questionMocks])
 
-const paperRows = [
+const paperMocks = [
   { name: 'Q3全员信息安全摸底考试', single: 10, multi: 5, judge: 5, total: 100, pass: 80, passPct: 80, publishCount: 3 },
   { name: '财务人员专项测评（高级）', single: 15, multi: 8, judge: 7, total: 100, pass: 75, passPct: 75, publishCount: 2 },
   { name: '新员工入职安全结业考试', single: 12, multi: 4, judge: 4, total: 100, pass: 70, passPct: 70, publishCount: 5 },
   { name: '钓鱼邮件识别月度考核', single: 8, multi: 6, judge: 6, total: 100, pass: 80, passPct: 80, publishCount: 4 },
   { name: '高管合规专项试卷', single: 10, multi: 6, judge: 4, total: 100, pass: 85, passPct: 85, publishCount: 1 },
 ]
+const paperRows = ref([...paperMocks])
+
+// ============ 接口加载（失败时保留演示数据） ============
+const courseTypeLabel: Record<string, string> = { video: '视频', article: '图文', pdf: 'PDF', interactive: '互动式' }
+const courseTagType: Record<string, string> = { video: 'primary', article: 'success', interactive: 'warning', pdf: 'info' }
+
+async function loadCourses() {
+  try {
+    const list = (await trainingApi.courses()) as Array<Record<string, any>>
+    if (Array.isArray(list) && list.length) {
+      courses.value = list.map((c, i) => ({
+        ...c,
+        typeLabel: courseTypeLabel[c.type] ?? c.type,
+        tagType: courseTagType[c.type] ?? 'primary',
+        accent: accentList[i % accentList.length],
+        coverBg: courseMocks[i]?.coverBg ?? courseMocks[0].coverBg,
+        coverIcon: courseMocks[i]?.coverIcon ?? courseMocks[0].coverIcon,
+      })) as typeof courseMocks
+    }
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadTasks() {
+  try {
+    const list = (await trainingApi.tasks()) as Array<Record<string, any>>
+    if (Array.isArray(list) && list.length) taskRows.value = list as typeof taskMocks
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadQuestionBank() {
+  try {
+    const list = (await trainingApi.questionBank()) as Array<Record<string, any>>
+    if (Array.isArray(list) && list.length) {
+      // 后端 options 为数组，转为与演示数据一致的分隔字符串
+      questionRows.value = list.map(q => ({
+        ...q,
+        options: Array.isArray(q.options) ? q.options.join(' / ') : q.options,
+      })) as typeof questionMocks
+    }
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadPapers() {
+  try {
+    const list = (await trainingApi.papers()) as Array<Record<string, any>>
+    if (Array.isArray(list) && list.length) paperRows.value = list as typeof paperMocks
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+onMounted(() => {
+  loadCourses()
+  loadTasks()
+  loadQuestionBank()
+  loadPapers()
+})
 </script>
 
 <style scoped lang="scss">

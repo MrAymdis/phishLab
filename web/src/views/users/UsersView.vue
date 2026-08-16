@@ -388,7 +388,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElTree } from 'element-plus'
 import {
   Upload, Download, Plus, Search, Refresh, OfficeBuilding,
@@ -396,6 +396,7 @@ import {
 } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
+import { orgApi } from '@/api'
 
 // ============ 类型定义 ============
 type RiskLevel = 'high' | 'mid' | 'low'
@@ -470,7 +471,7 @@ function riskSliderBadgeStyle(v: number) {
 // ============ 部门树 ============
 const treeProps = { label: 'label', children: 'children' }
 
-const deptTree: DeptNode[] = [
+const deptTree = ref<DeptNode[]>([
   {
     id: 0, label: '总公司', count: 3580,
     children: [
@@ -494,7 +495,7 @@ const deptTree: DeptNode[] = [
       { id: 5, label: '行政部', count: 48 },
     ],
   },
-]
+])
 
 const deptKw = ref('')
 const deptTreeRef = ref<InstanceType<typeof ElTree>>()
@@ -517,6 +518,7 @@ function collectDeptLabels(node: DeptNode): string[] {
 
 function onDeptClick(data: DeptNode) {
   selectedDept.value = data
+  loadUsers(data.id === 0 ? undefined : data.id)
   if (data.label === '总公司') {
     ElMessage.info('已切换到「全部部门」')
   } else {
@@ -524,14 +526,40 @@ function onDeptClick(data: DeptNode) {
   }
 }
 
+// ============ 接口加载（失败时保留演示数据） ============
+async function loadDepts() {
+  try {
+    const tree = (await orgApi.deptTree()) as DeptNode[]
+    if (Array.isArray(tree) && tree.length) deptTree.value = tree
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadUsers(deptId?: number) {
+  try {
+    const q: Record<string, unknown> = { page: 1, pageSize: 100 }
+    if (deptId) q.dept_id = deptId
+    const res = (await orgApi.users(q)) as { list: Employee[] }
+    if (Array.isArray(res.list) && res.list.length) employeeRows.value = res.list
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+onMounted(() => {
+  loadDepts()
+  loadUsers()
+})
+
 // 选中部门时，允许命中所选节点或其任一子部门（含父部门名称命中员工 dept 字段）
 const allowedDeptLabels = computed<Set<string> | null>(() => {
   if (!selectedDept.value || selectedDept.value.label === '总公司') return null
   return new Set(collectDeptLabels(selectedDept.value).filter(l => l !== '总公司'))
 })
 
-// ============ 员工数据（对齐 demo 14 条 mock） ============
-const employeeRows: Employee[] = [
+// ============ 员工数据（对齐 demo 14 条 mock，接口加载成功后覆盖） ============
+const employeeRows = ref<Employee[]>([
   { id: 1, name: '张伟', no: 'EMP001', dept: '技术部 / 研发组', deptShort: '研发组', pos: '高级研发工程师', email: 'zhangwei@jianfa.com', phone: '138****2856', risk: 'high', riskScore: 82, tags: ['研发'], clicks: 3, training: 'completed', avatarColor: avatarColors[0] },
   { id: 2, name: '李娜', no: 'EMP002', dept: '财务部 / 会计组', deptShort: '会计组', pos: '会计主管', email: 'lina@jianfa.com', phone: '139****1024', risk: 'high', riskScore: 78, tags: ['财务'], clicks: 4, training: 'completed', avatarColor: avatarColors[1] },
   { id: 3, name: '王强', no: 'EMP003', dept: '技术部 / 运维组', deptShort: '运维组', pos: '运维工程师', email: 'wangqiang@jianfa.com', phone: '137****8832', risk: 'mid', riskScore: 55, tags: ['运维'], clicks: 1, training: 'progress', avatarColor: avatarColors[2] },
@@ -546,7 +574,7 @@ const employeeRows: Employee[] = [
   { id: 12, name: '林峰', no: 'EMP012', dept: '市场部', deptShort: '市场部', pos: '品牌专员', email: 'linfeng@jianfa.com', phone: '139****6611', risk: 'mid', riskScore: 58, tags: ['新员工'], clicks: 2, training: 'none', avatarColor: avatarColors[5] },
   { id: 13, name: '徐敏', no: 'EMP013', dept: '财务部', deptShort: '财务部', pos: '财务总监', email: 'xumin@jianfa.com', phone: '137****0099', risk: 'high', riskScore: 72, tags: ['高管'], clicks: 3, training: 'completed', avatarColor: avatarColors[0] },
   { id: 14, name: '杨帆', no: 'EMP014', dept: '技术部', deptShort: '技术部', pos: 'CTO', email: 'yangfan@jianfa.com', phone: '135****0001', risk: 'low', riskScore: 12, tags: ['高管', '研发'], clicks: 0, training: 'completed', avatarColor: avatarColors[1] },
-]
+])
 
 const tagOptions = ref<string[]>(['高管', '研发', '运维', '财务', '新员工'])
 const tagColorMap: Record<string, string> = {
@@ -568,7 +596,7 @@ const empPageSize = ref(20)
 const filteredEmployees = computed(() => {
   const kw = empKw.value.trim().toLowerCase()
   const labels = allowedDeptLabels.value
-  return employeeRows.filter(row => {
+  return employeeRows.value.filter(row => {
     // 部门树筛选：员工 deptShort 或 dept 命中任一选中节点（含子部门）
     if (labels) {
       const hit = labels.has(row.deptShort) || labels.has(row.dept) ||
@@ -605,7 +633,8 @@ watch([tagFilter, riskFilter, empKw, selectedDept], () => {
 })
 
 // ============ 选中员工（右侧风险画像联动） ============
-const selectedEmp = ref<Employee | null>(employeeRows[0])
+// TODO: 可接入 orgApi.riskProfile(row.id) 用后端五维画像替换下方派生计算
+const selectedEmp = ref<Employee | null>(employeeRows.value[0])
 
 function selectEmp(row: Employee) {
   selectedEmp.value = row
@@ -783,26 +812,61 @@ function createInlineTag() {
   inlineTagInputVisible.value = false
 }
 
-function saveEmp() {
+/** 按「技术部 / 研发组」路径逐级匹配部门树；失败回退根部门，仍无则 1 */
+function findDeptId(pathLabel: string): number {
+  let nodes = deptTree.value
+  let matched: DeptNode | null = null
+  for (const seg of pathLabel.split('/').map(s => s.trim()).filter(Boolean)) {
+    const hit = nodes.find(n => n.label === seg) ?? null
+    if (!hit) break
+    matched = hit
+    nodes = hit.children ?? []
+  }
+  if (matched) return matched.id
+  return deptTree.value[0]?.id ?? 1
+}
+
+async function saveEmp() {
   if (!empForm.name || !empForm.no || !empForm.email) {
     ElMessage.warning('请填写姓名、工号和邮箱')
     return
   }
-  empDialogVisible.value = false
-  ElMessage.success(empForm.id ? '员工信息已更新' : '员工信息已保存，风险画像将自动初始化')
+  const payload = {
+    name: empForm.name,
+    emp_no: empForm.no,
+    email: empForm.email,
+    mobile: empForm.phone,
+    dept_id: findDeptId(empForm.dept),
+    position: empForm.pos,
+    tag_ids: [], // TODO: 标签暂未与后端标签体系映射，待接入 orgApi.tags()
+    initial_risk: empForm.riskScore,
+  }
+  try {
+    if (empForm.id) await orgApi.updateUser(empForm.id, payload)
+    else await orgApi.createUser(payload)
+    empDialogVisible.value = false
+    ElMessage.success(empForm.id ? '员工信息已更新' : '员工信息已保存，风险画像将自动初始化')
+    await loadUsers()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
-// ============ 工具栏其他按钮 ============
+// ============ 工具栏其他按钮（后端暂无对应路由，保留演示行为） ============
 function onImportCsv() {
+  // TODO: 后端未提供 CSV 批量导入路由
   ElMessage.info('请选择CSV文件导入员工名单（工号、姓名、邮箱必填）')
 }
 function onExportCsv() {
+  // TODO: 后端未提供批量导出路由
   ElMessage.info(`正在导出 ${filteredEmployees.value.length} 条员工数据，请稍候...`)
 }
 function onSyncAd() {
+  // TODO: 后端 depts/sync 仅登记任务，二期接入真实同步
   ElMessage.info('正在连接AD/LDAP服务器同步组织架构...')
 }
 function onSendDrill(emp: Employee) {
+  // TODO: 后端未提供单员工快速发起演练路由，需走演练管理创建流程
   ElMessage.success(`已将「${emp.name}」加入演练发送队列`)
 }
 </script>

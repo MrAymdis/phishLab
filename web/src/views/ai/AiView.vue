@@ -407,10 +407,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, reactive } from 'vue'
+import { ref, computed, reactive, onMounted } from 'vue'
 import type { EChartsOption } from 'echarts'
 import { Plus, MagicStick, Refresh, Star, Promotion } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
+import { aiApi } from '@/api'
+import { postSSE } from '@/composables/useSSE'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 import BaseChart from '@/components/base/BaseChart.vue'
@@ -420,13 +422,13 @@ type Accent = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal'
 
 const tab = ref<'chat' | 'template' | 'report' | 'config'>('chat')
 
-const chatHistory = [
+const chatHistory = ref([
   { id: 1, title: '分析Q3演练效果', time: '2小时前' },
   { id: 2, title: '生成财务钓鱼模板', time: '昨天' },
   { id: 3, title: '风险评估建议', time: '昨天' },
   { id: 4, title: '培训课程推荐', time: '3天前' },
   { id: 5, title: '查询员工风险画像', time: '上周' },
-]
+])
 
 const quickQuestions = [
   '分析演练效果', '生成钓鱼模板', '风险评估建议', '培训推荐', '查询员工画像',
@@ -439,6 +441,8 @@ const messages = ref<{ role: 'user' | 'assistant'; content: string }[]>([
 ])
 const inputMsg = ref('')
 const streaming = ref(false)
+const sessionId = ref<number | null>(null)
+let abort: (() => void) | null = null
 
 function sendQuick(q: string) {
   inputMsg.value = q
@@ -446,17 +450,36 @@ function sendQuick(q: string) {
 }
 
 function sendMessage() {
-  if (!inputMsg.value.trim()) return
-  messages.value.push({ role: 'user', content: inputMsg.value })
+  const text = inputMsg.value.trim()
+  if (!text || streaming.value) return
+  messages.value.push({ role: 'user', content: text })
   inputMsg.value = ''
+  const answer = { role: 'assistant' as const, content: '' }
+  messages.value.push(answer)
   streaming.value = true
-  setTimeout(() => {
-    messages.value.push({ role: 'assistant', content: '已收到您的问题，正在分析中... 这是模拟回复，实际接入API后会返回真实AI分析结果。' })
-    streaming.value = false
-  }, 1200)
+
+  abort = postSSE({
+    url: '/api/v1/ai/chat/stream',
+    body: { session_id: sessionId.value, message: text, page_context: {} },
+    onFrame: (frame) => {
+      if (frame.type === 'token' && frame.content) {
+        answer.content += frame.content
+      } else if (frame.type === 'error') {
+        answer.content += `\n\n> ${frame.message || '生成失败，请重试'}`
+      }
+    },
+    onError: (err) => {
+      answer.content = `生成失败：${err.message}`
+      streaming.value = false
+    },
+    onClose: () => {
+      streaming.value = false
+    },
+  })
 }
 
 function stopStream() {
+  abort?.()
   streaming.value = false
   ElMessage.info('已停止生成')
 }
@@ -487,17 +510,43 @@ function generateTmpl() {
       <p style="color:#888;font-size:12px;margin-top:20px">—— 财务共享服务中心 · 内部通知</p>`,
   }
   ElMessage.success('模板生成成功')
+  // 本地预览保持现状，同时后台生成草稿并刷新待审核列表
+  aiApi.generateTemplate({ ...tmplCfg }).then(() => loadDrafts()).catch(() => {})
 }
 
-const drafts: AiDraft[] = [
+const mockDrafts: AiDraft[] = [
   { id: 1, biz_type: 'email_template', title: '【紧急】Q3差旅费报销截止通知', content: '各位同事：2026年Q3差旅费报销窗口将于8月22日截止...', status: 'draft' },
   { id: 2, biz_type: 'email_template', title: '企业邮箱存储已满 - 请立即验证账户', content: '尊敬的用户：您的企业邮箱存储空间已使用95%...', status: 'approved', reviewer: '王安全', reviewed_at: '2026-08-14 15:30' },
   { id: 3, biz_type: 'sms_template', title: '【HR通知】8月工资条已发送，请查收', content: '尊敬的员工，您8月工资条已生成...', status: 'draft' },
 ]
+const drafts = ref<AiDraft[]>(mockDrafts)
+
+async function loadDrafts() {
+  try {
+    const data = (await aiApi.drafts()) as AiDraft[]
+    if (Array.isArray(data)) drafts.value = data
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
 
 function previewDraft(d: AiDraft) { previewVisible.value = true }
-function approveDraft(d: AiDraft) { ElMessage.success(`草稿「${d.title}」已确认入库`) }
-function discardDraft(d: AiDraft) { ElMessage.warning(`草稿「${d.title}」已丢弃`) }
+function approveDraft(d: AiDraft) {
+  aiApi.approveDraft(d.id)
+    .then(() => {
+      ElMessage.success(`草稿「${d.title}」已确认入库`)
+      loadDrafts()
+    })
+    .catch(() => {})
+}
+function discardDraft(d: AiDraft) {
+  aiApi.discardDraft(d.id)
+    .then(() => {
+      ElMessage.warning(`草稿「${d.title}」已丢弃`)
+      loadDrafts()
+    })
+    .catch(() => {})
+}
 
 const reportType = ref<'effect' | 'dept' | 'trend' | 'training'>('effect')
 const reportTarget = ref('q3')
@@ -573,6 +622,18 @@ const usageStats: { title: string; value: string | number; suffix: string; accen
   { title: 'Token消耗', value: '8.4M', suffix: '', accent: 'orange' },
   { title: '费用预估', value: '¥2,186', suffix: '', accent: 'purple' },
 ]
+
+onMounted(() => {
+  // 历史会话
+  aiApi.sessions()
+    .then((data) => {
+      const list = data as { id: number; title: string; time: string }[]
+      if (Array.isArray(list) && list.length) chatHistory.value = list
+    })
+    .catch(() => ElMessage.warning('接口数据加载失败，已展示演示数据'))
+  // AI 生成草稿（待审核列表）
+  loadDrafts()
+})
 </script>
 
 <style scoped lang="scss">

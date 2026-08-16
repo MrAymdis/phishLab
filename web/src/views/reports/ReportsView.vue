@@ -310,7 +310,7 @@
           <el-col :span="8">
             <div class="card card-blue">
               <div class="card-title">搜索员工</div>
-              <el-input v-model="personKw" size="default" placeholder="输入姓名 / 工号" style="margin-top: 8px" clearable />
+              <el-input v-model="personKw" size="default" placeholder="输入姓名 / 工号" style="margin-top: 8px" clearable @keyup.enter="loadPersonal" />
             </div>
           </el-col>
           <el-col :span="16">
@@ -338,7 +338,7 @@
               <BaseChart :option="radarChart" height="300px" />
               <div class="risk-score">
                 <span style="margin-right: 12px">个人风险值总分：</span>
-                <el-progress :percentage="68" :stroke-width="14" color="#D85A30" style="flex: 1" />
+                <el-progress :percentage="personRiskTotal" :stroke-width="14" color="#D85A30" style="flex: 1" />
               </div>
             </div>
           </el-col>
@@ -402,13 +402,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, shallowRef, watch, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import type { EChartsOption } from 'echarts'
 import { Refresh, Promotion, Document, DocumentCopy } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 import BaseChart from '@/components/base/BaseChart.vue'
 import FunnelChart from '@/components/business/FunnelChart.vue'
+import { analyticsApi } from '@/api'
 
 const activeTab = ref('drill')
 const chatbiQuery = ref('')
@@ -419,7 +421,7 @@ const trendRange = ref('3m')
 const sceneCheck = ref(['finance', 'hr', 'sys'])
 const personKw = ref('张小明')
 
-const drillFunnel = [
+const drillFunnelMocks = [
   { name: '发送成功', value: 1200, rate: '100%' },
   { name: '已阅读', value: 856, rate: '71.3%' },
   { name: '已点击', value: 324, rate: '→37.8%' },
@@ -427,19 +429,21 @@ const drillFunnel = [
   { name: '已举报', value: 268, rate: '31.3%' },
   { name: '附件运行', value: 62, rate: '→23.1%' },
 ]
+const drillFunnel = ref([...drillFunnelMocks])
 
 // 演练核心行为指标（对齐原型：发送/打开/点击/中招/举报）
 type Accent = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal'
-const drillMetrics: { title: string; value: string | number; suffix: string; sub: string; accent: Accent }[] = [
+const drillMetricsMocks: { title: string; value: string | number; suffix: string; sub: string; accent: Accent }[] = [
   { title: '发送数', value: '2,000', suffix: ' 封', sub: '覆盖 5 个部门', accent: 'blue' },
   { title: '打开数', value: '1,450', suffix: ' 封', sub: '打开率 72.5%', accent: 'teal' },
   { title: '点击数', value: '520', suffix: ' 次', sub: '点击率 26.0%', accent: 'orange' },
   { title: '中招数', value: '320', suffix: ' 人', sub: '中招率 16.0%', accent: 'red' },
   { title: '举报数', value: '186', suffix: ' 封', sub: '举报率 9.3%', accent: 'green' },
 ]
+const drillMetrics = ref([...drillMetricsMocks])
 
 // 演练期间每日趋势（打开/点击/中招）
-const dailyTrendChart: EChartsOption = {
+const dailyTrendChartMock: EChartsOption = {
   tooltip: { trigger: 'axis' },
   legend: { data: ['打开', '点击', '中招'], textStyle: { fontSize: 11 }, top: 0 },
   grid: { left: 40, right: 20, top: 34, bottom: 30 },
@@ -451,6 +455,7 @@ const dailyTrendChart: EChartsOption = {
     { name: '中招', type: 'line', smooth: true, data: [98, 78, 61, 42, 25, 11, 5], itemStyle: { color: '#A32D2D' } },
   ],
 }
+const dailyTrendChart = shallowRef<EChartsOption>(dailyTrendChartMock)
 
 // 部门对比明细
 const deptCompareRows = [
@@ -462,15 +467,16 @@ const deptCompareRows = [
 ]
 
 // 部门维度明细（部门报表）
-const deptDetailRows = [
+const deptDetailMocks = [
   { dept: '财务部', total: 56, coverage: 8, victim: 34, avgRate: 32, report: 12, trainRate: 68 },
   { dept: '市场部', total: 218, coverage: 7, victim: 118, avgRate: 26, report: 24, trainRate: 72 },
   { dept: '行政部', total: 78, coverage: 8, victim: 33, avgRate: 21, report: 11, trainRate: 78 },
   { dept: '人力资源部', total: 45, coverage: 7, victim: 15, avgRate: 17, report: 9, trainRate: 82 },
   { dept: '技术部', total: 892, coverage: 8, victim: 160, avgRate: 9, report: 86, trainRate: 94 },
 ]
+const deptDetailRows = ref([...deptDetailMocks])
 
-const victimRows = [
+const victimMocks = [
   { name: '张小明', dept: '财务部', email: 'zhangxm@example.com', first_open: '2026-08-15 09:32:11', clicks: 5, input_pwd: true, risk: 'high' },
   { name: '李晓华', dept: '市场部', email: 'lixh@example.com', first_open: '2026-08-15 10:05:42', clicks: 3, input_pwd: true, risk: 'high' },
   { name: '王建国', dept: '行政部', email: 'wangjg@example.com', first_open: '2026-08-15 11:20:08', clicks: 2, input_pwd: false, risk: 'mid' },
@@ -480,8 +486,9 @@ const victimRows = [
   { name: '周文博', dept: '技术部', email: 'zhouwb@example.com', first_open: '2026-08-15 16:38:05', clicks: 1, input_pwd: false, risk: 'low' },
   { name: '吴慧敏', dept: '法务部', email: 'wuhm@example.com', first_open: '2026-08-16 08:15:49', clicks: 0, input_pwd: false, risk: 'low' },
 ]
+const victimRows = ref([...victimMocks])
 
-const deptBarChart: EChartsOption = {
+const deptBarChartMock: EChartsOption = {
   tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
   grid: { left: 90, right: 40, top: 20, bottom: 30 },
   xAxis: { type: 'value', name: '中招率%', max: 40 },
@@ -506,6 +513,7 @@ const deptBarChart: EChartsOption = {
     label: { show: true, position: 'right', formatter: '{c}%', fontSize: 11 },
   }],
 }
+const deptBarChart = shallowRef<EChartsOption>(deptBarChartMock)
 
 const deptPersonRows = [
   { name: '张小明', dept: '财务部', role: '会计', drills: 8, rate: 42 },
@@ -520,7 +528,7 @@ const deptPersonRows = [
   { name: '郑一帆', dept: '财务部', role: '财务总监', drills: 5, rate: 10 },
 ]
 
-const trendChart: EChartsOption = {
+const trendChartMock: EChartsOption = {
   tooltip: { trigger: 'axis' },
   legend: { data: ['中招人数', '财务类中招率%', 'HR类中招率%', '系统类中招率%'], textStyle: { fontSize: 11 }, top: 0 },
   grid: { left: 40, right: 50, top: 34, bottom: 30 },
@@ -536,8 +544,9 @@ const trendChart: EChartsOption = {
     { name: '系统类中招率%', type: 'line', yAxisIndex: 1, smooth: true, data: [15, 13, 18, 14, 11, 9], itemStyle: { color: '#8E7CC3' }, symbol: 'circle', symbolSize: 6 },
   ],
 }
+const trendChart = shallowRef<EChartsOption>(trendChartMock)
 
-const sceneRows = [
+const sceneMocks = [
   { name: '财务报销钓鱼（仿 OA 登录页）', count: 6, rate: 36, comment: '中招率最高，建议高频演练' },
   { name: '工资条邮件钓鱼（伪装 HR）', count: 5, rate: 28, comment: '需加强附件安全意识培训' },
   { name: '系统升级通知（伪 IT 运维）', count: 5, rate: 19, comment: '整体意识良好，持续监控' },
@@ -547,6 +556,7 @@ const sceneRows = [
   { name: '招聘面试钓鱼（伪 HR 邀约）', count: 3, rate: 12, comment: '新员工培训效果显著' },
   { name: 'VPN 续费通知（伪 IT）', count: 3, rate: 9, comment: '技术人员意识较强' },
 ]
+const sceneRows = ref([...sceneMocks])
 
 const selectedPerson = {
   name: '张小明',
@@ -556,7 +566,9 @@ const selectedPerson = {
   hireDate: '2023-03-15',
 }
 
-const radarChart: EChartsOption = {
+const personRiskTotal = ref(68)
+
+const radarChartMock: EChartsOption = {
   tooltip: {},
   legend: { data: ['张小明', '部门平均'], bottom: 0, textStyle: { fontSize: 11 } },
   radar: {
@@ -587,9 +599,10 @@ const radarChart: EChartsOption = {
     ],
   }],
 }
+const radarChart = shallowRef<EChartsOption>(radarChartMock)
 
 // 个人风险值变化趋势（近6月）
-const personRiskTrend: EChartsOption = {
+const personRiskTrendMock: EChartsOption = {
   tooltip: { trigger: 'axis' },
   legend: { data: ['个人风险值', '部门平均'], textStyle: { fontSize: 11 }, top: 0 },
   grid: { left: 40, right: 20, top: 34, bottom: 30 },
@@ -600,23 +613,195 @@ const personRiskTrend: EChartsOption = {
     { name: '部门平均', type: 'line', smooth: true, data: [48, 50, 47, 52, 50, 46], itemStyle: { color: '#378ADD' }, symbol: 'circle', symbolSize: 6 },
   ],
 }
+const personRiskTrend = shallowRef<EChartsOption>(personRiskTrendMock)
 
-const timelineEvents = [
-  { time: '2026-08-15', text: 'Q3全员演练：打开邮件 → 点击链接 → 输入密码（中招）', type: 'danger' as const, hollow: false },
-  { time: '2026-07-20', text: '完成《钓鱼邮件识别进阶》培训，考试 72 分', type: 'warning' as const, hollow: true },
-  { time: '2026-07-02', text: '财务专项演练：点击了链接（未输入密码）', type: 'warning' as const, hollow: false },
-  { time: '2026-06-18', text: 'Q2全员演练：仅打开邮件，未点击', type: 'primary' as const, hollow: true },
-  { time: '2026-05-10', text: '完成《信息安全基础》培训，考试 88 分', type: 'success' as const, hollow: true },
-  { time: '2026-04-22', text: '新员工入职演练：首次中招，已推送培训', type: 'danger' as const, hollow: false },
+type TimelineType = 'primary' | 'success' | 'warning' | 'danger' | 'info'
+const timelineMocks: { time: string; text: string; type: TimelineType; hollow: boolean }[] = [
+  { time: '2026-08-15', text: 'Q3全员演练：打开邮件 → 点击链接 → 输入密码（中招）', type: 'danger', hollow: false },
+  { time: '2026-07-20', text: '完成《钓鱼邮件识别进阶》培训，考试 72 分', type: 'warning', hollow: true },
+  { time: '2026-07-02', text: '财务专项演练：点击了链接（未输入密码）', type: 'warning', hollow: false },
+  { time: '2026-06-18', text: 'Q2全员演练：仅打开邮件，未点击', type: 'primary', hollow: true },
+  { time: '2026-05-10', text: '完成《信息安全基础》培训，考试 88 分', type: 'success', hollow: true },
+  { time: '2026-04-22', text: '新员工入职演练：首次中招，已推送培训', type: 'danger', hollow: false },
 ]
+const timelineEvents = ref([...timelineMocks])
 
-const trainRows = [
+const trainMocks = [
   { course: '《信息安全基础规范》', date: '2026-04-08', score: 88 },
   { course: '《钓鱼邮件识别入门》', date: '2026-04-25', score: 82 },
   { course: '《企业数据安全红线》', date: '2026-05-10', score: 95 },
   { course: '《钓鱼邮件识别进阶》', date: '2026-07-20', score: 72 },
   { course: '《财务人员专项安全课》', date: '2026-08-02', score: 58 },
 ]
+const trainRows = ref([...trainMocks])
+
+// ============ 接口加载（失败时保留演示数据） ============
+const drillIdMap: Record<string, number> = { q3_all: 1, q2_all: 3, new_emp: 6, finance: 2, exec: 5 }
+
+async function loadDrillReport() {
+  try {
+    const data = (await analyticsApi.campaignReport(drillIdMap[selectedDrill.value] ?? 1)) as Record<string, any>
+    if (Array.isArray(data?.metrics) && data.metrics.length) {
+      drillMetrics.value = data.metrics.map((m: any) => ({
+        ...m,
+        value: typeof m.value === 'number' ? m.value.toLocaleString() : m.value,
+      }))
+    }
+    if (Array.isArray(data?.funnel) && data.funnel.length) {
+      // 后端 rate 为数值，统一为字符串百分比展示
+      drillFunnel.value = data.funnel.map((f: any) => ({
+        ...f,
+        rate: typeof f.rate === 'number' ? `${f.rate}%` : f.rate,
+      }))
+    }
+    if (Array.isArray(data?.victims) && data.victims.length) {
+      // 后端无 risk 字段，按行为推导：输入密码高危 / 点击 2 次以上中危
+      victimRows.value = data.victims.map((v: any) => ({
+        ...v,
+        risk: v.input_pwd ? 'high' : v.clicks >= 2 ? 'mid' : 'low',
+      }))
+    }
+    if (data?.dailyTrend?.labels) {
+      dailyTrendChart.value = {
+        ...dailyTrendChartMock,
+        xAxis: { ...(dailyTrendChartMock.xAxis as any), data: data.dailyTrend.labels },
+        series: (dailyTrendChartMock.series as any[]).map((s, i) => ({
+          ...s,
+          data: [data.dailyTrend.opens, data.dailyTrend.clicks, data.dailyTrend.submits][i],
+        })),
+      }
+    }
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadDepartment() {
+  try {
+    const data = (await analyticsApi.department(deptRange.value)) as Record<string, any>
+    if (Array.isArray(data?.rows) && data.rows.length) {
+      // 后端仅提供人数与各转化率；覆盖/中招次数/培训率沿用同名部门的演示值
+      deptDetailRows.value = data.rows.map((r: any) => {
+        const m = deptDetailMocks.find(x => x.dept === r.dept)
+        return {
+          dept: r.dept,
+          total: r.targetCount ?? 0,
+          coverage: m?.coverage ?? 0,
+          victim: m?.victim ?? 0,
+          avgRate: r.submitRate ?? 0,
+          report: m?.report ?? 0,
+          trainRate: m?.trainRate ?? 0,
+        }
+      })
+    }
+    if (Array.isArray(data?.labels) && Array.isArray(data?.submitRates)) {
+      deptBarChart.value = {
+        ...deptBarChartMock,
+        yAxis: { ...(deptBarChartMock.yAxis as any), data: data.labels },
+        series: [{ ...(deptBarChartMock.series as any)[0], data: data.submitRates }],
+      }
+    }
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadTrend() {
+  try {
+    const data = (await analyticsApi.trend(trendRange.value)) as Record<string, any>
+    if (Array.isArray(data?.labels) && data.labels.length) {
+      const series = trendChartMock.series as any[]
+      trendChart.value = {
+        ...trendChartMock,
+        legend: { data: ['演练次数', '中招率%', '举报率%'], textStyle: { fontSize: 11 }, top: 0 },
+        xAxis: { ...(trendChartMock.xAxis as any), data: data.labels },
+        series: [
+          { ...series[0], name: '演练次数', data: data.campaignCounts ?? [] },
+          { ...series[1], name: '中招率%', data: data.submitRates ?? [] },
+          { ...series[2], name: '举报率%', data: data.reportRates ?? [] },
+        ],
+      }
+    }
+    if (Array.isArray(data?.scenes) && data.scenes.length) {
+      // 评价语沿用同名场景的演示值
+      sceneRows.value = data.scenes.map((s: any) => ({
+        name: s.scene,
+        count: s.targetCount ?? 0,
+        rate: s.submitRate ?? 0,
+        comment: sceneMocks.find(m => m.name === s.scene)?.comment ?? '',
+      }))
+    }
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+async function loadPersonal() {
+  // 输入框支持姓名/工号，仅工号可解析；解析失败默认演示用户 uid=1
+  const uid = parseInt(personKw.value, 10) || 1
+  try {
+    const data = (await analyticsApi.personal(uid)) as Record<string, any>
+    if (Array.isArray(data?.profile?.dims) && data.profile.dims.length) {
+      const radarSeries = radarChartMock.series as any[]
+      radarChart.value = {
+        ...radarChartMock,
+        radar: { ...(radarChartMock.radar as any), indicator: data.profile.dims.map((d: any) => ({ name: d.label, max: 100 })) },
+        series: [{
+          ...radarSeries[0],
+          data: [{ ...radarSeries[0].data[0], value: data.profile.dims.map((d: any) => d.val) }],
+        }],
+      }
+      personRiskTotal.value = data.profile.total ?? personRiskTotal.value
+    }
+    if (data?.trend?.labels) {
+      personRiskTrend.value = {
+        ...personRiskTrendMock,
+        xAxis: { ...(personRiskTrendMock.xAxis as any), data: data.trend.labels },
+        series: (personRiskTrendMock.series as any[]).map((s, i) =>
+          i === 0 ? { ...s, data: data.trend.scores } : s,
+        ),
+      }
+    }
+    if (Array.isArray(data?.timeline) && data.timeline.length) {
+      // 后端 type 为事件类型（open/click/submit…），映射为时间轴颜色
+      const eventColor: Record<string, TimelineType> = { open: 'primary', click: 'warning', submit: 'danger', attach_run: 'danger', report: 'success', bounce: 'info' }
+      timelineEvents.value = data.timeline.map((t: any, i: number) => ({
+        time: t.time,
+        text: t.desc ? `${t.title}：${t.desc}` : t.title,
+        type: eventColor[t.type] ?? 'primary',
+        hollow: timelineMocks[i]?.hollow ?? false,
+      }))
+    }
+    if (Array.isArray(data?.trainings) && data.trainings.length) {
+      // 后端无完成日期，沿用演示数据按位补充
+      trainRows.value = data.trainings.map((t: any, i: number) => ({
+        course: t.name,
+        date: trainMocks[i]?.date ?? '',
+        score: t.progress ?? 0,
+      }))
+    }
+  } catch {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+// 四个 Tab 首次激活时才加载对应数据，避免无谓请求
+const loadedTabs = ref<Record<string, boolean>>({})
+function ensureTabLoaded(tab: string) {
+  if (loadedTabs.value[tab]) return
+  loadedTabs.value[tab] = true
+  if (tab === 'drill') loadDrillReport()
+  else if (tab === 'dept') loadDepartment()
+  else if (tab === 'trend') loadTrend()
+  else if (tab === 'person') loadPersonal()
+}
+
+watch(activeTab, (tab) => ensureTabLoaded(tab))
+watch(selectedDrill, () => { if (loadedTabs.value.drill) loadDrillReport() })
+watch(deptRange, () => { if (loadedTabs.value.dept) loadDepartment() })
+watch(trendRange, () => { if (loadedTabs.value.trend) loadTrend() })
+
+onMounted(() => ensureTabLoaded(activeTab.value))
 </script>
 
 <style scoped lang="scss">

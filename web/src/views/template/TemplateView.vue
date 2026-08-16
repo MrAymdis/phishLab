@@ -634,11 +634,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { Plus, Search, Upload, Link, UploadFilled, Iphone, Picture } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
+import { templateApi } from '@/api'
 
 // ===== 类型定义 =====
 type TabName = 'email' | 'landing' | 'payload'
@@ -735,7 +736,7 @@ const emailCatColor: Record<string, string> = {
   alert: 'var(--accent-red)',
 }
 
-const emailData: EmailTemplate[] = [
+const emailData = ref<EmailTemplate[]>([
   { id: 1, name: 'OA密码过期提醒', cat: 'upgrade', catText: '系统升级', subject: '【安全提醒】您的OA账号密码即将过期', sender: 'OA系统管理员', stars: 3, used: 28, click: 24.6, preview: 'from OA系统管理员 · 02-20' },
   { id: 2, name: '年终奖金发放通知', cat: 'finance', catText: '财务报销', subject: '关于2025年度年终奖金发放及个税申报', sender: '财务部-薪酬组', stars: 4, used: 19, click: 31.2, preview: 'from 财务部-薪酬组 · 01-15' },
   { id: 3, name: '春节红包抽奖活动', cat: 'lottery', catText: '中奖', subject: '【恭喜】您获得春节红包抽奖资格，点击领取', sender: '员工关怀中心', stars: 2, used: 22, click: 28.9, preview: 'from 员工关怀中心 · 02-08' },
@@ -744,7 +745,7 @@ const emailData: EmailTemplate[] = [
   { id: 6, name: '中秋节福利领取', cat: 'holiday', catText: '节假日', subject: '中秋福利：月饼礼盒领取通知（限员工本人）', sender: '行政部', stars: 2, used: 13, click: 26.7, preview: 'from 行政部 · 09-12' },
   { id: 7, name: 'VPN账号异常登录', cat: 'alert', catText: '安全告警', subject: '检测到您的VPN账号异地登录，请核实', sender: '信息安全部', stars: 4, used: 11, click: 18.3, preview: 'from 信息安全部 · 04-05' },
   { id: 8, name: '差旅报销单审批', cat: 'finance', catText: '财务报销', subject: '您的差旅报销单待审批，请登录系统处理', sender: '财务共享中心', stars: 3, used: 14, click: 20.1, preview: 'from 财务共享中心 · 02-28' },
-]
+])
 
 const emailCat = ref('all')
 const emailKw = ref('')
@@ -755,7 +756,7 @@ const emailCatOptions = computed(() => emailFilters.filter((f) => f.key !== 'all
 
 const filteredEmails = computed(() => {
   const kw = emailKw.value.trim().toLowerCase()
-  return emailData.filter((d) => {
+  return emailData.value.filter((d) => {
     if (emailCat.value !== 'all' && d.cat !== emailCat.value) return false
     if (kw && !d.name.toLowerCase().includes(kw) && !d.subject.toLowerCase().includes(kw)) return false
     return true
@@ -827,13 +828,28 @@ function insertVariable(v: string) {
   emailForm.body += v
 }
 
-function saveEmail(mode: 'draft' | 'test') {
+async function saveEmail(mode: 'draft' | 'test') {
   if (!emailForm.name) {
     ElMessage.warning('请填写模板名称')
     return
   }
-  emailDialogVisible.value = false
-  ElMessage.success(mode === 'draft' ? '模板草稿已保存' : '模板已保存，测试邮件已发送')
+  try {
+    if (!emailForm.id) {
+      await templateApi.createEmailTemplate({
+        name: emailForm.name,
+        scene: emailForm.cat, // 后端 _SCENE_LABELS 同时兼容前端筛选键
+        subject: emailForm.subject,
+        html_body: emailForm.body,
+        // TODO: 难度(stars)/发件人(sender)/追踪开关 后端模板接口暂未支持
+      })
+      await loadTemplates()
+    }
+    // TODO: 后端未提供模板更新接口，编辑暂仅本地提示
+    emailDialogVisible.value = false
+    ElMessage.success(mode === 'draft' ? '模板草稿已保存' : '模板已保存，测试邮件已发送')
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
 // ============ Tab2: 落地页 ============
@@ -861,14 +877,14 @@ const ltypeColor: Record<string, string> = {
   custom: 'var(--accent-green)',
 }
 
-const landingData: LandingPage[] = [
+const landingData = ref<LandingPage[]>([
   { id: 1, name: '企业邮箱登录页', type: 'mail', typeText: '邮箱登录', fields: 3, collect: 5, used: 18 },
   { id: 2, name: 'OA协同办公登录', type: 'oa', typeText: 'OA系统', fields: 4, collect: 6, used: 15 },
   { id: 3, name: '企业网盘认证页', type: 'pan', typeText: '网盘认证', fields: 3, collect: 4, used: 9 },
   { id: 4, name: '薪资查询系统登录', type: 'custom', typeText: '自定义', fields: 2, collect: 3, used: 12 },
   { id: 5, name: '统一支付平台', type: 'pay', typeText: '支付页面', fields: 4, collect: 7, used: 7 },
   { id: 6, name: 'VPN接入认证页', type: 'custom', typeText: '自定义', fields: 3, collect: 4, used: 11 },
-]
+])
 
 const landingType = ref('all')
 const landingKw = ref('')
@@ -877,7 +893,7 @@ const landingPageSize = 6
 
 const filteredLandings = computed(() => {
   const kw = landingKw.value.trim().toLowerCase()
-  return landingData.filter((d) => {
+  return landingData.value.filter((d) => {
     if (landingType.value !== 'all' && d.type !== landingType.value) return false
     if (kw && !d.name.toLowerCase().includes(kw)) return false
     return true
@@ -915,6 +931,7 @@ const cloneForm = reactive({ url: '', name: '', type: 'mail' as string, mobile: 
 function submitClone() {
   if (!cloneForm.url) { ElMessage.warning('请填写源页面URL'); return }
   if (!cloneForm.name) { ElMessage.warning('请填写页面名称'); return }
+  // TODO: 可接入 templateApi.cloneLandingPage(url)，后端会真实抓取目标 URL 并存草稿审核
   cloneDialogVisible.value = false
   ElMessage.success('页面克隆任务已提交，预计 30 秒后完成')
 }
@@ -944,13 +961,35 @@ function openLandingDialog(row?: LandingPage) {
   landingDialogVisible.value = true
 }
 
-function saveLanding() {
+// 前端页面类型 → 后端 type 枚举（pay 无对应枚举，回退 custom）
+const VIEW_TYPE_TO_PAGE: Record<string, string> = {
+  mail: 'mail_login', oa: 'oa_login', pan: 'pan_auth', pay: 'custom',
+}
+
+async function saveLanding() {
   if (!landingForm.name) {
     ElMessage.warning('请填写页面名称')
     return
   }
-  landingDialogVisible.value = false
-  ElMessage.success('落地页已保存')
+  try {
+    if (!landingForm.id) {
+      await templateApi.createLandingPage({
+        name: landingForm.name,
+        type: VIEW_TYPE_TO_PAGE[landingForm.type] ?? 'custom',
+        form_schema: {
+          fields: landingForm.fields.map((label, i) => ({ label, input_type: 'text', sort: i })),
+          edu: landingForm.edu,
+          redirect: landingForm.redirect,
+        },
+      })
+      await loadTemplates()
+    }
+    // TODO: 后端未提供落地页更新接口，编辑暂仅本地提示
+    landingDialogVisible.value = false
+    ElMessage.success('落地页已保存')
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
 // ============ Tab3: 附件与载荷 ============
@@ -975,7 +1014,7 @@ const ptypeColor: Record<string, string> = {
   other: 'var(--accent-warning)',
 }
 
-const payloadData: PayloadItem[] = [
+const payloadData = ref<PayloadItem[]>([
   { id: 1, name: '2025薪酬调整通知.docx', type: 'macro', typeText: '宏文档', size: '84 KB', platform: 'Windows', evade: 82, used: 16, status: 'enabled', icon: '📄' },
   { id: 2, name: 'invoice_q3_2025.xlsm', type: 'macro', typeText: '宏文档', size: '156 KB', platform: 'Windows/macOS', evade: 75, used: 12, status: 'enabled', icon: '📊' },
   { id: 3, name: '员工通讯录更新.exe', type: 'exe', typeText: '可执行文件', size: '1.2 MB', platform: 'Windows', evade: 68, used: 9, status: 'enabled', icon: '⚙' },
@@ -984,7 +1023,7 @@ const payloadData: PayloadItem[] = [
   { id: 6, name: '企业邮箱升级二维码.png', type: 'qr', typeText: '二维码', size: '28 KB', platform: '全平台', evade: 93, used: 18, status: 'enabled', icon: '▦' },
   { id: 7, name: '会议纪要.lnk', type: 'other', typeText: '其他', size: '2 KB', platform: 'Windows', evade: 88, used: 5, status: 'disabled', icon: '🔗' },
   { id: 8, name: '社保查询系统.jar', type: 'exe', typeText: '可执行文件', size: '420 KB', platform: 'Windows/Linux', evade: 64, used: 4, status: 'enabled', icon: '☕' },
-]
+])
 
 const payloadType = ref('all')
 const payloadKw = ref('')
@@ -993,7 +1032,7 @@ const payloadPageSize = 8
 
 const filteredPayloads = computed(() => {
   const kw = payloadKw.value.trim().toLowerCase()
-  return payloadData.filter((d) => {
+  return payloadData.value.filter((d) => {
     if (payloadType.value !== 'all' && d.type !== payloadType.value) return false
     if (kw && !d.name.toLowerCase().includes(kw)) return false
     return true
@@ -1010,6 +1049,45 @@ const pagedPayloads = computed(() => {
 
 watch(payloadType, () => { payloadPage.value = 1 })
 watch(payloadKw, () => { payloadPage.value = 1 })
+
+// ============ 接口加载（失败时保留演示数据） ============
+// 后端枚举值 → 前端筛选键归一化
+const SCENE_TO_CAT: Record<string, string> = { system: 'upgrade', prize: 'lottery', security: 'alert' }
+const PAGE_TYPE_TO_VIEW: Record<string, string> = {
+  mail_login: 'mail', oa_login: 'oa', pan_auth: 'pan', cloned: 'custom',
+}
+const ATTACH_TYPE_TO_VIEW: Record<string, string> = { macro_doc: 'macro' }
+
+async function loadTemplates() {
+  const [emails, landings, payloads] = await Promise.allSettled([
+    templateApi.emailTemplates(),
+    templateApi.landingPages(),
+    templateApi.payloads(),
+  ])
+  if (emails.status === 'fulfilled') {
+    const list = emails.value as EmailTemplate[]
+    if (Array.isArray(list) && list.length) {
+      emailData.value = list.map(t => ({ ...t, cat: SCENE_TO_CAT[t.cat] ?? t.cat }))
+    }
+  }
+  if (landings.status === 'fulfilled') {
+    const list = landings.value as LandingPage[]
+    if (Array.isArray(list) && list.length) {
+      landingData.value = list.map(l => ({ ...l, type: PAGE_TYPE_TO_VIEW[l.type] ?? l.type }))
+    }
+  }
+  if (payloads.status === 'fulfilled') {
+    const list = payloads.value as PayloadItem[]
+    if (Array.isArray(list) && list.length) {
+      payloadData.value = list.map(p => ({ ...p, type: ATTACH_TYPE_TO_VIEW[p.type] ?? p.type }))
+    }
+  }
+  if ([emails, landings, payloads].some(r => r.status === 'rejected')) {
+    ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+onMounted(loadTemplates)
 
 // 检测逃逸率配色：≥85 绿 / ≥70 黄 / 否则橙
 function evadeColor(rate: number): string {
