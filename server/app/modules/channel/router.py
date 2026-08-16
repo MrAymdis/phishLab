@@ -49,6 +49,16 @@ def create_channel(payload: ChannelCreate, account=Depends(get_current_account),
     return resp.ok({"id": service.create_channel(db, account, payload.model_dump())})
 
 
+@channels.put("/{cid}", summary="更新发送配置（敏感字段留空则沿用已有密文）")
+def update_channel(cid: int, payload: ChannelCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.update_channel(db, account, cid, payload.model_dump()))
+
+
+@channels.delete("/{cid}", summary="删除发送配置")
+def delete_channel(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.delete_channel(db, account, cid))
+
+
 @channels.post("/{cid}/test", summary="通道连通测试")
 def test_channel(cid: int, to: str | None = None, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.test_channel(db, account, cid, to))

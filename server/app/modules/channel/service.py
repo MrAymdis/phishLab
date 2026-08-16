@@ -83,8 +83,8 @@ def list_channels(db, account) -> list[dict]:
     return result
 
 
-def create_channel(db, account, payload: dict) -> int:
-    """新建通道：敏感字段 AES-GCM 加密入库；保存前做 TCP 连通探测。"""
+def _channel_kw_from_payload(payload: dict) -> dict:
+    """弹窗 payload → 模型列映射；敏感字段 AES-GCM 加密（空值返回 None 表示不设置）。"""
     ch_type = payload.get("type") or ""
     cfg = payload.get("config") or {}
     if ch_type not in ("smtp", "ews", "sms"):
@@ -129,14 +129,21 @@ def create_channel(db, account, payload: dict) -> int:
             baud_rate=int(cfg["sms_baudrate"]) if cfg.get("sms_baudrate") else None,
             sim_number=cfg.get("sms_sim"),
         )
+    return kw
 
-    # 保存前连通测试；SMS 通道仅登记，发送能力待真机验证
+
+def _probe_result(ch_type: str, cfg: dict) -> tuple[dict, str]:
+    """保存前连通测试；SMS 通道仅登记，发送能力待真机验证。"""
     if ch_type == "sms":
-        result = {"ok": True, "score": 80, "latency_ms": None, "message": "SMS 通道已保存，发送能力待真机验证"}
-        status = "normal"
-    else:
-        result = _tcp_probe(*_resolve_probe_target(ch_type, cfg))
-        status = "normal" if result["ok"] else "abnormal"
+        return {"ok": True, "score": 80, "latency_ms": None, "message": "SMS 通道已保存，发送能力待真机验证"}, "normal"
+    result = _tcp_probe(*_resolve_probe_target(ch_type, cfg))
+    return result, "normal" if result["ok"] else "abnormal"
+
+
+def create_channel(db, account, payload: dict) -> int:
+    """新建通道：敏感字段 AES-GCM 加密入库；保存前做 TCP 连通探测。"""
+    kw = _channel_kw_from_payload(payload)
+    result, status = _probe_result(kw["type"], payload.get("config") or {})
 
     ch = SendChannel(**kw, status=status, last_test_result=result, last_test_at=datetime.now())
     db.add(ch)
@@ -144,9 +151,60 @@ def create_channel(db, account, payload: dict) -> int:
     db.refresh(ch)
     record_audit(
         db, account=account, module="channel", action="create_channel",
-        target_type="send_channel", target_id=ch.id, detail={"type": ch_type},
+        target_type="send_channel", target_id=ch.id, detail={"type": kw["type"]},
     )
     return ch.id
+
+
+def update_channel(db, account, channel_id: int, payload: dict) -> None:
+    """更新通道：敏感字段留空表示沿用已有密文；保存前重做连通探测。"""
+    ch = db.get(SendChannel, channel_id)
+    if ch is None:
+        raise BizError(ErrorCode.NOT_FOUND)
+
+    kw = _channel_kw_from_payload(payload)
+    ch_type = kw.pop("type")
+    # 敏感字段留空 → 沿用已有密文，不覆盖
+    for col in ("smtp_password_enc", "ews_password_enc", "oauth_client_secret_enc", "sms_secret_enc"):
+        if kw.get(col) is None:
+            kw.pop(col, None)
+    for k, v in kw.items():
+        setattr(ch, k, v)
+    # 类型变更时清空其他类型的遗留字段
+    if ch.type != ch_type:
+        for col in ("smtp_host", "smtp_port", "smtp_encrypt", "smtp_username",
+                    "ews_url", "ews_username", "ews_auth_mode", "oauth_client_id", "oauth_tenant_id",
+                    "sms_provider", "sms_api_url", "sms_sign", "sms_key",
+                    "sms_template_id", "serial_port", "baud_rate", "sim_number"):
+            if col not in kw:
+                setattr(ch, col, None)
+        ch.type = ch_type
+
+    result, status = _probe_result(ch.type, payload.get("config") or {})
+    ch.last_test_result = result
+    ch.last_test_at = datetime.now()
+    # 编辑保存不翻转已有状态：探测成功 → normal；失败 → 保留原状态（明确测连通请用「连通测试」按钮）
+    if status == "normal" and ch.status != "disabled":
+        ch.status = "normal"
+    db.commit()
+    record_audit(
+        db, account=account, module="channel", action="update_channel",
+        target_type="send_channel", target_id=ch.id, detail={"type": ch.type},
+    )
+
+
+def delete_channel(db, account, channel_id: int) -> None:
+    """删除通道：历史演练仅存 channel_id 引用（无外键约束），物理删除 + 审计。"""
+    ch = db.get(SendChannel, channel_id)
+    if ch is None:
+        raise BizError(ErrorCode.NOT_FOUND)
+    name, ch_type = ch.name, ch.type
+    db.delete(ch)
+    db.commit()
+    record_audit(
+        db, account=account, module="channel", action="delete_channel",
+        target_type="send_channel", target_id=channel_id, detail={"name": name, "type": ch_type},
+    )
 
 
 def test_channel(db, account, channel_id: int, to: str | None = None) -> dict:

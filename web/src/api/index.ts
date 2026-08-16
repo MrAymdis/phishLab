@@ -83,7 +83,13 @@ export const channelApi = {
   list: () => get('/api/v1/channels'),
   createChannel: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/channels', payload),
-  test: (id: number, to?: string) => post(`/api/v1/channels/${id}/test?to=${to ?? ''}`),
+  updateChannel: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/channels/${id}`, payload),
+  deleteChannel: (id: number) => del(`/api/v1/channels/${id}`),
+  test: (id: number, to?: string) =>
+    post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
+      `/api/v1/channels/${id}/test?to=${to ?? ''}`,
+    ),
   senderProfiles: () => get('/api/v1/sender-profiles'),
   createSenderProfile: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/sender-profiles', payload),

@@ -88,8 +88,14 @@
                   <span class="ch-test-time">最近测试：{{ c.last_test }}</span>
                   <div>
                     <el-button size="small" link @click="openChannelDialog(c.type, c)">编辑</el-button>
-                    <el-button size="small" link type="primary">连通测试</el-button>
-                    <el-button size="small" link type="danger">删除</el-button>
+                    <el-button
+                      size="small"
+                      link
+                      type="primary"
+                      :loading="testingChannelId === c.id"
+                      @click="testChannel(c)"
+                    >连通测试</el-button>
+                    <el-button size="small" link type="danger" @click="deleteChannel(c)">删除</el-button>
                   </div>
                 </div>
               </div>
@@ -545,7 +551,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { Plus, ArrowDown, Search } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
 import { channelApi } from '@/api'
@@ -812,12 +818,14 @@ async function submitChannelForm() {
   const valid = await formEl.validate().catch(() => false)
   if (!valid) return
   try {
-    if (!editingChannel.value) {
+    if (editingChannel.value) {
+      await channelApi.updateChannel(editingChannel.value.id, buildChannelPayload())
+      ElMessage.success('通道配置已更新')
+    } else {
       await channelApi.createChannel(buildChannelPayload())
-      await loadChannels()
+      ElMessage.success('发送通道已创建')
     }
-    // TODO: 后端未提供通道更新接口，编辑暂仅本地提示
-    ElMessage.success(editingChannel.value ? '通道配置已保存' : '发送通道已创建')
+    await loadChannels()
     channelDialogVisible.value = false
   } catch {
     // 失败提示由 http 拦截器统一弹出
@@ -931,6 +939,46 @@ async function loadChannels() {
     if (Array.isArray(list) && list.length) channels.value = list
   } catch {
     ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+/** 连通测试：调用后端 TCP 探测，刷新卡片上的评分/最近测试时间 */
+const testingChannelId = ref<number | null>(null)
+
+async function testChannel(c: ChannelItem) {
+  testingChannelId.value = c.id
+  try {
+    const result = await channelApi.test(c.id)
+    if (result.ok) {
+      ElMessage.success(`「${c.name}」连通性正常 · 送达评分 ${result.score} 分 · 延迟 ${result.latency_ms ?? '-'}ms`)
+    } else {
+      ElMessage.error(`「${c.name}」连通失败：${result.message}`)
+    }
+    await loadChannels()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    testingChannelId.value = null
+  }
+}
+
+/** 删除通道：二次确认后调用后端删除并刷新列表 */
+async function deleteChannel(c: ChannelItem) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除发送通道「${c.name}」？历史演练仅保留通道 ID 引用，不影响既有报表。`,
+      '删除通道',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await channelApi.deleteChannel(c.id)
+    ElMessage.success(`通道「${c.name}」已删除`)
+    await loadChannels()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
   }
 }
 

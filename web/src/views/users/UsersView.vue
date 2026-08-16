@@ -48,7 +48,7 @@
             <el-button size="small" class="dept-btn" :icon="Refresh" @click="onSyncAd">
               同步AD/LDAP
             </el-button>
-            <el-button size="small" class="dept-btn" :icon="Plus">添加部门</el-button>
+            <el-button size="small" class="dept-btn" :icon="Plus" @click="openDeptDialog">添加部门</el-button>
           </div>
         </div>
       </el-col>
@@ -384,6 +384,42 @@
         <el-button type="primary" @click="createTag">创建</el-button>
       </template>
     </el-dialog>
+
+    <!-- 添加部门对话框 -->
+    <el-dialog v-model="deptDialogVisible" title="添加部门" width="480px" :close-on-click-modal="false">
+      <el-form :model="deptForm" label-width="90px">
+        <el-form-item label="部门名称" required>
+          <el-input v-model="deptForm.name" placeholder="请输入部门名称，如：法务部" maxlength="32" show-word-limit />
+        </el-form-item>
+        <el-form-item label="部门编码">
+          <el-input v-model="deptForm.code" placeholder="可选，如：LEGAL" maxlength="32" />
+        </el-form-item>
+        <el-form-item label="上级部门">
+          <el-tree
+            :data="deptTree"
+            :props="deptTreeSelectProps"
+            node-key="id"
+            highlight-current
+            default-expand-all
+            :expand-on-click-node="false"
+            @node-click="(n: DeptNode) => { deptForm.parentId = n.id }"
+            style="max-height: 260px; overflow-y: auto; border: 1px solid #ebeef5; border-radius: 6px; padding: 8px 12px;"
+          >
+            <template #default="{ data }: { data: DeptNode }">
+              <span class="custom-tree-node">
+                <span>{{ data.label }}</span>
+                <span class="tree-count">{{ data.count }}人</span>
+              </span>
+            </template>
+          </el-tree>
+          <div class="form-hint">点击节点选择上级部门；默认选中「{{ findNodeById(deptTree, deptForm.parentId)?.label ?? '根节点（无上级）' }}」</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="deptDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="createDept">确认添加</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -500,6 +536,89 @@ const deptTree = ref<DeptNode[]>([
 const deptKw = ref('')
 const deptTreeRef = ref<InstanceType<typeof ElTree>>()
 const selectedDept = ref<DeptNode | null>(null)
+
+// ============ 添加部门弹窗 ============
+const deptDialogVisible = ref(false)
+const deptForm = reactive({
+  name: '',
+  parentId: 0,
+  code: '',
+})
+const deptTreeSelectProps = { label: 'label', children: 'children' }
+
+function findNodeById(nodes: DeptNode[], id: number): DeptNode | null {
+  for (const n of nodes) {
+    if (n.id === id) return n
+    if (n.children) {
+      const found = findNodeById(n.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function openDeptDialog() {
+  deptForm.name = ''
+  deptForm.parentId = selectedDept.value?.id ?? 0
+  deptForm.code = ''
+  deptDialogVisible.value = true
+}
+
+async function createDept() {
+  if (!deptForm.name.trim()) {
+    ElMessage.warning('请输入部门名称')
+    return
+  }
+  try {
+    const res = await orgApi.createDept({
+      name: deptForm.name.trim(),
+      parent_id: deptForm.parentId,
+      code: deptForm.code.trim() || null,
+    })
+    const newId = res?.id ?? Date.now()
+    const newNode: DeptNode = {
+      id: newId,
+      label: deptForm.name.trim(),
+      count: 0,
+      children: [],
+    }
+    if (deptForm.parentId === 0) {
+      deptTree.value.push(newNode)
+    } else {
+      const parent = findNodeById(deptTree.value, deptForm.parentId)
+      if (parent) {
+        parent.children = parent.children ?? []
+        parent.children.push(newNode)
+        parent.count += 0
+      } else {
+        deptTree.value.push(newNode)
+      }
+    }
+    ElMessage.success(`部门「${newNode.label}」创建成功`)
+    deptDialogVisible.value = false
+  } catch {
+    const newId = Date.now()
+    const newNode: DeptNode = {
+      id: newId,
+      label: deptForm.name.trim(),
+      count: 0,
+      children: [],
+    }
+    if (deptForm.parentId === 0) {
+      deptTree.value.push(newNode)
+    } else {
+      const parent = findNodeById(deptTree.value, deptForm.parentId)
+      if (parent) {
+        parent.children = parent.children ?? []
+        parent.children.push(newNode)
+      } else {
+        deptTree.value.push(newNode)
+      }
+    }
+    ElMessage.success(`部门「${newNode.label}」已添加（本地演示）`)
+    deptDialogVisible.value = false
+  }
+}
 
 watch(deptKw, (val) => {
   deptTreeRef.value?.filter(val)
@@ -1300,5 +1419,18 @@ function onSendDrill(emp: Employee) {
   font-size: 11px;
   color: var(--color-text-tertiary);
   margin-top: 4px;
+}
+.custom-tree-node {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  padding-right: 8px;
+}
+.custom-tree-node .tree-count {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-left: 8px;
 }
 </style>
