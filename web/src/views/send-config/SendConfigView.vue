@@ -468,6 +468,40 @@
           <el-switch v-model="channelForm.is_default" />
           <span class="switch-note">开启后，新建演练默认使用此服务器</span>
         </el-form-item>
+
+        <!-- 测试邮件发送：仅已保存的 SMTP 通道可用 -->
+        <template v-if="editingChannel && channelForm.type === 'smtp'">
+          <el-divider content-position="left">测试邮件发送</el-divider>
+          <el-form-item label="收件邮箱">
+            <div class="test-email-row">
+              <el-input
+                v-model="testEmailTo"
+                placeholder="如：zhangsan@company.com"
+                style="width: 260px"
+                clearable
+              />
+              <el-button
+                type="primary"
+                plain
+                :icon="Promotion"
+                :loading="testEmailLoading"
+                @click="sendTestEmail"
+              >发送测试邮件</el-button>
+            </div>
+            <el-alert
+              v-if="testEmailResult"
+              :type="testEmailResult.ok ? 'success' : 'error'"
+              :closable="false"
+              show-icon
+              style="margin-top: 8px; width: 100%"
+            >
+              <template #title>{{ testEmailResult.message }}</template>
+            </el-alert>
+            <div class="form-hint">
+              通过当前通道真实发送一封测试邮件；仅已保存的 SMTP 通道支持
+            </div>
+          </el-form-item>
+        </template>
       </el-form>
       <template #footer>
         <el-button @click="channelDialogVisible = false">取消</el-button>
@@ -550,7 +584,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted } from 'vue'
-import { Plus, ArrowDown, Search } from '@element-plus/icons-vue'
+import { Plus, ArrowDown, Search, Promotion } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
@@ -749,6 +783,9 @@ function guessSmsProvider(provider?: string): string {
 
 function openChannelDialog(type: ChannelType, channel?: ChannelItem) {
   editingChannel.value = channel ?? null
+  // 重置测试邮件状态
+  testEmailTo.value = ''
+  testEmailResult.value = null
   Object.assign(channelForm, defaultChannelForm(type))
   if (channel) {
     channelForm.name = channel.name
@@ -979,6 +1016,31 @@ async function deleteChannel(c: ChannelItem) {
     await loadChannels()
   } catch {
     // 失败提示由 http 拦截器统一弹出
+  }
+}
+
+// ============ 测试邮件发送 ============
+const testEmailTo = ref('')
+const testEmailLoading = ref(false)
+const testEmailResult = ref<{ ok: boolean; message: string } | null>(null)
+
+async function sendTestEmail() {
+  if (!editingChannel.value) return
+  const to = testEmailTo.value.trim()
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    ElMessage.warning('请填写正确的收件邮箱地址')
+    return
+  }
+  testEmailLoading.value = true
+  testEmailResult.value = null
+  try {
+    const result = await channelApi.sendTestEmail(editingChannel.value.id, to)
+    testEmailResult.value = { ok: result.ok, message: result.message }
+    if (result.ok) ElMessage.success('测试邮件已发送')
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    testEmailLoading.value = false
   }
 }
 

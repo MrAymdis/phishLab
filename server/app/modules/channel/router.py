@@ -64,6 +64,15 @@ def test_channel(cid: int, to: str | None = None, account=Depends(get_current_ac
     return resp.ok(service.test_channel(db, account, cid, to))
 
 
+class SendTestRequest(BaseModel):
+    to: str
+
+
+@channels.post("/{cid}/send-test", summary="发送测试邮件（真实 SMTP 发信）")
+def send_test_email(cid: int, req: SendTestRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.send_test_email(db, account, cid, req.to))
+
+
 @domains.get("", summary="演练域名列表（含 DNS 状态/送达评分）")
 def list_domains(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.list_domains(db, account))

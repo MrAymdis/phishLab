@@ -90,6 +90,10 @@ export const channelApi = {
     post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
       `/api/v1/channels/${id}/test?to=${to ?? ''}`,
     ),
+  sendTestEmail: (id: number, to: string) =>
+    post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
+      `/api/v1/channels/${id}/send-test`, { to },
+    ),
   senderProfiles: () => get('/api/v1/sender-profiles'),
   createSenderProfile: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/sender-profiles', payload),

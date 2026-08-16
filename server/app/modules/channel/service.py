@@ -207,6 +207,77 @@ def delete_channel(db, account, channel_id: int) -> None:
     )
 
 
+def send_test_email(db, account, channel_id: int, to: str) -> dict:
+    """通过 SMTP 通道真实发送一封测试邮件（校验通道可用性）。"""
+    import smtplib
+    from email.mime.text import MIMEText
+    from email.utils import formataddr
+
+    from app.core.security import decrypt_secret
+
+    ch = db.get(SendChannel, channel_id)
+    if ch is None:
+        raise BizError(ErrorCode.NOT_FOUND)
+    if ch.type != "smtp":
+        raise BizError(ErrorCode.PARAM_INVALID, "仅 SMTP 通道支持测试邮件发送")
+    if not ch.smtp_host:
+        raise BizError(ErrorCode.PARAM_INVALID, "通道未配置 SMTP 服务器地址")
+    if not ch.smtp_username:
+        raise BizError(ErrorCode.PARAM_INVALID, "通道未配置发送账号")
+
+    try:
+        password = decrypt_secret(ch.smtp_password_enc) if ch.smtp_password_enc else ""
+    except Exception:
+        password = ""
+
+    msg = MIMEText(
+        f"这是一封来自 PhishLab 的测试邮件。\n\n发送通道：{ch.name}\n"
+        f"SMTP 服务器：{ch.smtp_host}:{ch.smtp_port}\n发送时间：{datetime.now():%Y-%m-%d %H:%M:%S}\n\n"
+        "收到此邮件表示该通道可以正常发信。",
+        "plain", "utf-8",
+    )
+    msg["Subject"] = "【PhishLab】发送通道测试邮件"
+    msg["From"] = formataddr((ch.name, ch.smtp_username))
+    msg["To"] = to
+
+    t0 = time.perf_counter()
+    server = None
+    try:
+        if ch.smtp_encrypt == "ssl":
+            server = smtplib.SMTP_SSL(ch.smtp_host, ch.smtp_port or 465, timeout=10)
+        else:
+            server = smtplib.SMTP(ch.smtp_host, ch.smtp_port or 587, timeout=10)
+            if ch.smtp_encrypt == "starttls":
+                server.starttls()
+        if password:
+            server.login(ch.smtp_username, password)
+        server.sendmail(ch.smtp_username, [to], msg.as_string())
+        latency = int((time.perf_counter() - t0) * 1000)
+        result = {"ok": True, "score": 100, "latency_ms": latency,
+                  "message": f"测试邮件已发送至 {to}（{latency}ms）"}
+    except (smtplib.SMTPException, OSError) as err:
+        result = {"ok": False, "score": 40, "latency_ms": None,
+                  "message": f"发送失败：{err}"}
+    finally:
+        if server is not None:
+            try:
+                server.quit()
+            except Exception:
+                pass
+
+    # 真实发信验证比 TCP 探测更强，回写最近测试结果
+    ch.last_test_result = result
+    ch.last_test_at = datetime.now()
+    if ch.status != "disabled":
+        ch.status = "normal" if result["ok"] else ch.status
+    db.commit()
+    record_audit(
+        db, account=account, module="channel", action="send_test_email",
+        target_type="send_channel", target_id=ch.id, detail={"to": to, "ok": result["ok"]},
+    )
+    return result
+
+
 def test_channel(db, account, channel_id: int, to: str | None = None) -> dict:
     """连通性复测，结果回写 last_test_result/last_test_at。"""
     ch = db.get(SendChannel, channel_id)
