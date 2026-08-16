@@ -1,0 +1,112 @@
+# PhishLab 部署编排（私有化）
+# 依赖: mysql redis minio；服务: server/worker/beat/track/landing/nginx
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_DATABASE: phishlab
+      MYSQL_USER: phishlab
+      MYSQL_PASSWORD: phishlab
+      MYSQL_ROOT_PASSWORD: root_change_me
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-proot_change_me"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/server.Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8080
+    env_file: ../server/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://phishlab:phishlab@mysql:3306/phishlab?charset=utf8mb4
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    working_dir: /srv/phishlab/server
+
+  worker:
+    build:
+      context: ..
+      dockerfile: deploy/server.Dockerfile
+    command: celery -A worker worker -l info
+    env_file: ../server/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://phishlab:phishlab@mysql:3306/phishlab?charset=utf8mb4
+      REDIS_URL: redis://redis:6379/0
+    depends_on: [mysql, redis]
+    working_dir: /srv/phishlab/server
+    deploy:
+      replicas: 2
+
+  beat:
+    build:
+      context: ..
+      dockerfile: deploy/server.Dockerfile
+    command: celery -A worker beat -l info   # 单实例
+    env_file: ../server/.env
+    environment:
+      DATABASE_URL: mysql+pymysql://phishlab:phishlab@mysql:3306/phishlab?charset=utf8mb4
+      REDIS_URL: redis://redis:6379/0
+    depends_on: [redis]
+    working_dir: /srv/phishlab/server
+
+  track:
+    build:
+      context: ..
+      dockerfile: deploy/server.Dockerfile
+    command: uvicorn track.main:app --host 0.0.0.0 --port 8081
+    env_file: ../server/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on: [redis]
+    working_dir: /srv/phishlab/server
+    # 生产：独立域名(DNS A 记录) + 独立证书，经独立 nginx 暴露
+
+  landing:
+    build:
+      context: ..
+      dockerfile: deploy/server.Dockerfile
+    command: uvicorn landing.main:app --host 0.0.0.0 --port 8082
+    env_file: ../server/.env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on: [redis]
+    working_dir: /srv/phishlab/server
+    # 生产：演练域名池 + 独立证书，严禁与主平台同域
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ../web/dist:/usr/share/nginx/html:ro
+    depends_on: [server]
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:

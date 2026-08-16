@@ -1,0 +1,1470 @@
+<h2 class="sr-only">钓鱼演练平台API开放平台页面，包含API概览、应用管理、API文档和调用日志</h2>
+<style>
+  :root{
+    --color-background-primary:#ffffff;
+    --color-background-secondary:#f5f5f5;
+    --color-background-tertiary:#eeeeee;
+    --color-background-info:rgba(55,138,221,0.1);
+    --color-text-primary:#1a1a1a;
+    --color-text-secondary:#595959;
+    --color-text-tertiary:#8c8c8c;
+    --color-text-info:#378ADD;
+    --color-text-success:#1D9E75;
+    --color-border-tertiary:#e8e8e8;
+    --color-border-info:#378ADD;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  /* 基础组件 */
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer;position:relative;overflow:hidden}
+  .nav-item::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.2s ease}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item:hover::before{transform:scaleY(1)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .nav-item.active::before{transform:scaleY(1)}
+  .nav-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+  .card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:12px;padding:14px 16px;transition:all 0.3s ease;border-top:3px solid transparent}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-1px)}
+  .card-blue{border-top-color:#378ADD;background:linear-gradient(180deg,rgba(55,138,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-green{border-top-color:#1D9E75;background:linear-gradient(180deg,rgba(29,158,117,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-orange{border-top-color:#D85A30;background:linear-gradient(180deg,rgba(216,90,48,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-purple{border-top-color:#7F77DD;background:linear-gradient(180deg,rgba(127,119,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-red{border-top-color:#A32D2D;background:linear-gradient(180deg,rgba(163,45,45,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-teal{border-top-color:#0D9488;background:linear-gradient(180deg,rgba(13,148,136,0.03) 0%,var(--color-background-primary) 30%)}
+
+  .card-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0 0 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;flex-shrink:0;margin-right:8px}
+
+  .tab{padding:3px 10px;font-size:11px;border:0.5px solid #d1d5db;border-radius:6px;color:var(--color-text-secondary);background:transparent;cursor:pointer;transition:all 0.2s ease}
+  .tab:hover{background:var(--color-background-secondary)}
+  .tab:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.1)}
+  .tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2);transform:translateY(1px)}
+
+  .badge{padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;white-space:nowrap}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .live-dot{animation:pulse 2s infinite}
+  .bar-track{background:var(--color-background-tertiary);border-radius:4px;height:6px;overflow:hidden;flex:1;position:relative}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+
+  /* 顶部栏 */
+  .top-bar{height:52px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+  .logo-area{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#1D9E75 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;font-size:12px}
+  .logo-text{font-size:15px;font-weight:600;color:var(--color-text-primary)}
+  .search-box{display:flex;align-items:center;background:var(--color-background-secondary);border-radius:6px;padding:6px 12px;width:280px;transition:all 0.2s ease}
+  .search-box:focus-within{background:var(--color-background-tertiary);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .search-input{border:none;outline:none;background:transparent;font-size:12px;color:var(--color-text-primary);width:100%;margin-left:6px}
+  .user-area{display:flex;align-items:center;gap:16px}
+  .notification-icon{position:relative;cursor:pointer;transition:all 0.2s ease}
+  .notification-icon:hover{color:var(--color-text-info)}
+  .notification-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#D85A30;border-radius:50%;font-size:10px;color:white;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .user-info{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.2s ease}
+  .user-info:hover{background:var(--color-background-secondary)}
+  .user-avatar{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500}
+  .user-name{font-size:12px;color:var(--color-text-primary)}
+
+  /* 侧边栏 */
+  .sidebar{width:144px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px 8px;display:flex;flex-direction:column;height:calc(100vh - 52px);position:sticky;top:52px}
+  .sidebar-header{padding:0 8px;margin:0 0 18px 0;display:flex;align-items:center;gap:6px}
+  .sidebar-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+
+  /* KPI统计卡片 */
+  .stat-card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:8px;padding:14px;transition:all 0.3s ease;cursor:pointer;position:relative;overflow:hidden}
+  .stat-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-2px)}
+  .stat-card.active{border-color:var(--color-text-info);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .stat-label{font-size:11px;color:var(--color-text-secondary);margin:0 0 6px 0}
+  .stat-value{font-size:24px;font-weight:500;color:var(--color-text-primary);margin:0;line-height:1.2}
+  .stat-delta{font-size:11px;margin:6px 0 0 0;font-weight:500}
+
+  /* 按钮 */
+  .btn{padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;transition:all 0.2s ease;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+  .btn-primary{background:#378ADD;color:white}
+  .btn-primary:hover{background:#2d75bf}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-default{background:var(--color-background-secondary);color:var(--color-text-primary);border:1px solid #d1d5db}
+  .btn-default:hover{background:var(--color-background-tertiary)}
+  .btn-success{background:#1D9E75;color:white}
+  .btn-success:hover{background:#177e5e}
+  .btn-warning{background:#EF9F27;color:white}
+  .btn-warning:hover{background:#d48920}
+  .btn-danger{background:#D85A30;color:white}
+  .btn-danger:hover{background:#b94920}
+  .btn-sm{padding:4px 8px;font-size:11px}
+  .btn-link{background:transparent;color:#378ADD;padding:2px 4px;border:none;cursor:pointer;font-size:12px}
+  .btn-link:hover{text-decoration:underline}
+
+  /* 表格 */
+  .data-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  .data-table thead tr{background:var(--color-background-secondary)}
+  .data-table th{text-align:left;padding:10px 12px;font-weight:500;color:var(--color-text-secondary);font-size:11px;border-bottom:1px solid #d1d5db}
+  .data-table td{padding:12px;border-bottom:0.5px solid #e5e7eb;color:var(--color-text-primary);vertical-align:middle}
+  .data-table tbody tr:hover{background:rgba(55,138,221,0.03);cursor:pointer}
+  .data-table tbody tr.selected{background:rgba(55,138,221,0.08)}
+  .row-check{width:16px;height:16px;accent-color:#378ADD;cursor:pointer}
+
+  /* 筛选标签 */
+  .filter-tag{padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;transition:all 0.2s ease;border:1px solid transparent;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+  .filter-tag:hover{background:var(--color-background-tertiary)}
+  .filter-tag.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .filter-tag .count{margin-left:4px;opacity:0.8;font-weight:500}
+
+  /* 分页 */
+  .pagination{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+  .page-btn{min-width:28px;height:28px;padding:0 8px;border-radius:6px;border:1px solid #d1d5db;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all 0.2s ease}
+  .page-btn:hover:not(:disabled){background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .page-btn.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .page-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* 表单 */
+  .form-group{margin-bottom:18px}
+  .form-label{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px;display:block}
+  .form-label .required{color:#D85A30;margin-left:2px}
+  .form-input{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:var(--color-text-primary);background:var(--color-background-primary);transition:all 0.2s ease;box-sizing:border-box}
+  .form-input:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .form-textarea{resize:vertical;min-height:80px;font-family:inherit}
+  .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+  .form-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+  /* 选项卡片 */
+  .option-card{border:1.5px solid #d1d5db;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-primary)}
+  .option-card:hover{border-color:#378ADD;background:rgba(55,138,221,0.03)}
+  .option-card.selected{border-color:#378ADD;background:rgba(55,138,221,0.06);box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .option-card-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .option-card-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;flex-shrink:0}
+  .option-card-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+  .option-card-desc{font-size:11px;color:var(--color-text-secondary);margin:0}
+
+  /* 模态框 */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;animation:fadeIn 0.2s ease}
+  .modal{background:var(--color-background-primary);border-radius:12px;max-width:1100px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:modalIn 0.25s ease}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;flex-shrink:0}
+  .modal-title{font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0}
+  .modal-close{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary);transition:all 0.2s ease}
+  .modal-close:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .modal-body{padding:20px;overflow-y:auto;flex:1}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e5e7eb;background:var(--color-background-secondary);flex-shrink:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes modalIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+
+  /* Toast提示 */
+  .toast-container{position:fixed;top:70px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:8px;font-size:12px;color:white;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn 0.3s ease}
+  .toast-success{background:#1D9E75}
+  .toast-error{background:#D85A30}
+  .toast-info{background:#378ADD}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+  /* 开关 */
+  .switch{position:relative;display:inline-block;width:36px;height:20px;vertical-align:middle}
+  .switch input{opacity:0;width:0;height:0}
+  .switch-slider{position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:20px;transition:0.3s}
+  .switch-slider:before{content:'';position:absolute;height:16px;width:16px;left:2px;bottom:2px;background:white;border-radius:50%;transition:0.3s}
+  .switch input:checked + .switch-slider{background:#1D9E75}
+  .switch input:checked + .switch-slider:before{transform:translateX(16px)}
+
+  /* 代码块 */
+  .code-block{background:#1e293b;color:#e2e8f0;border-radius:8px;padding:14px 16px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6;overflow-x:auto;position:relative;margin:0;white-space:pre-wrap;word-break:break-all}
+  .code-block .copy-btn{position:absolute;top:8px;right:8px;background:rgba(255,255,255,0.1);color:#e2e8f0;border:none;border-radius:4px;padding:3px 8px;font-size:11px;cursor:pointer;transition:all 0.2s ease}
+  .code-block .copy-btn:hover{background:rgba(255,255,255,0.2)}
+  .code-block .tok-key{color:#7dd3fc}
+  .code-block .tok-str{color:#86efac}
+  .code-block .tok-num{color:#fbbf24}
+  .code-block .tok-bool{color:#c4b5fd}
+  .code-block .tok-comment{color:#64748b}
+
+  /* API方法标签 */
+  .method-get{background:rgba(29,158,117,0.15);color:#1D9E75}
+  .method-post{background:rgba(55,138,221,0.15);color:#378ADD}
+  .method-put{background:rgba(239,159,39,0.15);color:#EF9F27}
+  .method-delete{background:rgba(216,90,48,0.15);color:#D85A30}
+
+  /* API文档侧边列表项 */
+  .api-group-title{font-size:11px;font-weight:600;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:0.5px;padding:12px 12px 6px;margin-top:4px}
+  .api-list-item{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:6px;cursor:pointer;transition:all 0.15s ease;font-size:12px}
+  .api-list-item:hover{background:var(--color-background-secondary)}
+  .api-list-item.active{background:var(--color-background-info);color:var(--color-text-info)}
+  .api-list-item .method-tag{font-size:9px;font-weight:600;padding:1px 5px;border-radius:3px;flex-shrink:0;min-width:38px;text-align:center}
+  .api-list-item .api-path{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+
+  @keyframes fadeIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+/* ===== Copilot 侧边栏 ===== */
+.copilot-fab{position:fixed;right:24px;bottom:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(55,138,221,0.35);z-index:9998;transition:all .3s ease}
+.copilot-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(55,138,221,0.45)}
+.copilot-fab svg{width:22px;height:22px}
+.copilot-fab .fab-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid #378ADD;animation:copilotPulse 2s ease-out infinite;opacity:0}
+@keyframes copilotPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.copilot-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9998;opacity:0;visibility:hidden;transition:all .3s}
+.copilot-overlay.show{opacity:1;visibility:visible}
+.copilot-drawer{position:fixed;top:0;right:-420px;width:400px;height:100vh;background:var(--color-background-primary,#fff);box-shadow:-4px 0 24px rgba(0,0,0,0.1);z-index:9999;display:flex;flex-direction:column;transition:right .35s cubic-bezier(.4,0,.2,1)}
+.copilot-drawer.open{right:0}
+.copilot-header{padding:14px 18px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.copilot-header-left{display:flex;align-items:center;gap:10px}
+.copilot-header-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center}
+.copilot-header-icon svg{width:18px;height:18px}
+.copilot-header-title{font-size:15px;font-weight:600}
+.copilot-header-sub{font-size:11px;opacity:.85;margin-top:2px}
+.copilot-close{background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;transition:opacity .2s}
+.copilot-close:hover{opacity:1}
+.copilot-close svg{width:18px;height:18px}
+.copilot-sessions{padding:8px 12px;border-bottom:1px solid #e8e8e8;display:flex;gap:6px;align-items:center;flex-shrink:0;overflow-x:auto}
+.copilot-session-btn{padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;transition:all .2s}
+.copilot-session-btn:hover{border-color:#378ADD;color:#378ADD}
+.copilot-session-btn.active{background:rgba(55,138,221,0.1);border-color:#378ADD;color:#378ADD}
+.copilot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.copilot-msg{display:flex;gap:10px;max-width:92%}
+.copilot-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.copilot-msg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+.copilot-msg.ai .copilot-msg-avatar{background:linear-gradient(135deg,#378ADD,#7F77DD)}
+.copilot-msg.user .copilot-msg-avatar{background:#8c8c8c}
+.copilot-msg-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word}
+.copilot-msg.ai .copilot-msg-bubble{background:#f5f5f5;color:#1a1a1a;border-top-left-radius:4px}
+.copilot-msg.user .copilot-msg-bubble{background:#378ADD;color:#fff;border-top-right-radius:4px}
+.copilot-msg-bubble h4{margin:8px 0 4px;font-size:13px}
+.copilot-msg-bubble ul,.copilot-msg-bubble ol{margin:4px 0;padding-left:18px}
+.copilot-msg-bubble li{margin:2px 0}
+.copilot-msg-bubble table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.copilot-msg-bubble th,.copilot-msg-bubble td{border:1px solid #d8d8d8;padding:4px 8px;text-align:left}
+.copilot-msg-bubble th{background:#e8e8e8}
+.copilot-msg-bubble strong{font-weight:600}
+.copilot-msg-bubble code{background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:12px}
+.copilot-msg-actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.copilot-action-btn{padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #378ADD;background:rgba(55,138,221,0.06);color:#378ADD;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.copilot-action-btn:hover{background:#378ADD;color:#fff}
+.copilot-action-btn svg{width:12px;height:12px}
+.copilot-typing{display:inline-flex;gap:3px;align-items:center;padding:4px 0}
+.copilot-typing span{width:6px;height:6px;border-radius:50%;background:#8c8c8c;animation:copilotTyping 1.4s infinite}
+.copilot-typing span:nth-child(2){animation-delay:.2s}
+.copilot-typing span:nth-child(3){animation-delay:.4s}
+@keyframes copilotTyping{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.copilot-context-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.15);font-size:11px;margin-top:4px}
+.copilot-context-badge svg{width:10px;height:10px}
+.copilot-input-area{padding:12px 16px;border-top:1px solid #e8e8e8;flex-shrink:0}
+.copilot-quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.copilot-quick-tag{padding:3px 8px;border-radius:12px;font-size:11px;background:#f0f5ff;color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.copilot-quick-tag:hover{background:#378ADD;color:#fff}
+.copilot-input-wrap{display:flex;gap:8px;align-items:flex-end}
+.copilot-input{flex:1;border:1px solid #d8d8d8;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;max-height:100px;min-height:38px;outline:none;transition:border-color .2s;line-height:1.5}
+.copilot-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.copilot-send{width:38px;height:38px;border-radius:10px;background:#378ADD;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.copilot-send:hover{background:#2979c9}
+.copilot-send:disabled{background:#ccc;cursor:not-allowed}
+.copilot-send svg{width:16px;height:16px}
+.copilot-draft-banner{padding:6px 12px;background:rgba(239,159,39,0.1);border-top:1px solid rgba(239,159,39,0.3);font-size:11px;color:#9a6800;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.copilot-draft-banner svg{width:12px;height:12px;flex-shrink:0}
+.copilot-empty{text-align:center;padding:40px 20px;color:#8c8c8c}
+.copilot-empty svg{width:40px;height:40px;margin-bottom:12px;opacity:.4}
+.copilot-empty h4{font-size:14px;margin-bottom:6px;color:#595959}
+.copilot-empty p{font-size:12px;line-height:1.6}
+.copilot-review-card{border:1px solid #e8e8e8;border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copilot-review-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.copilot-review-card-title{font-size:12px;font-weight:600;color:#1a1a1a}
+.copilot-review-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.copilot-review-badge.draft{background:rgba(239,159,39,0.15);color:#9a6800}
+.copilot-review-badge.confirmed{background:rgba(29,158,117,0.15);color:#1D9E75}
+.copilot-review-content{font-size:12px;color:#595959;line-height:1.6;padding:8px;background:#f9f9f9;border-radius:6px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+.copilot-review-actions{display:flex;gap:6px}
+.copilot-review-btn{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;transition:all .2s}
+.copilot-review-btn.preview{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.06)}
+.copilot-review-btn.preview:hover{background:#378ADD;color:#fff}
+.copilot-review-btn.confirm{border-color:#1D9E75;color:#1D9E75;background:rgba(29,158,117,0.06)}
+.copilot-review-btn.confirm:hover{background:#1D9E75;color:#fff}
+.copilot-review-btn.discard{border-color:#8c8c8c;color:#8c8c8c;background:transparent}
+.copilot-review-btn.discard:hover{background:#8c8c8c;color:#fff}
+.copilot-error{padding:8px 12px;background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:8px;font-size:12px;color:#A32D2D;display:flex;align-items:center;gap:8px}
+.copilot-error-retry{margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;border:1px solid #A32D2D;color:#A32D2D;cursor:pointer;background:transparent}
+.copilot-error-retry:hover{background:#A32D2D;color:#fff}
+</style>
+
+<div style="display:flex;flex-direction:column;font-family:var(--font-sans);min-height:560px;">
+  <!-- 顶部栏 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <div class="logo-icon">鱼</div>
+      <span class="logo-text">钓鱼演练平台</span>
+    </div>
+    <div class="user-area">
+      <div class="notification-icon" style="color:var(--color-text-secondary)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notification-badge">3</div>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar">张</div>
+        <span class="user-name">张管理</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;">
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+        </svg>
+        <span class="sidebar-title">导航菜单</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        数据概览
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        演练管理
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+        </div>
+        素材模板
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </div>
+        发送配置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        用户和组
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        </div>
+        安全培训
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </div>
+        数据报表
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+        </div>
+        邮件举报
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        系统设置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"></path>
+          </svg>
+        </div>
+        智能助手
+      </div>
+      <div class="nav-item active">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline>
+            <polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        API开放平台
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div style="flex:1;padding:14px 18px;min-width:0;overflow-y:auto;">
+
+      <!-- Tab导航 -->
+      <div style="display:flex;gap:6px;margin-bottom:16px;align-items:center;">
+        <button class="tab active" data-tab="overview">API概览</button>
+        <button class="tab" data-tab="apps">应用管理</button>
+        <button class="tab" data-tab="docs">API文档</button>
+        <button class="tab" data-tab="logs">调用日志</button>
+        <div style="flex:1;"></div>
+        <span style="font-size:11px;color:var(--color-text-tertiary);">API版本 v2.1</span>
+      </div>
+
+      <!-- ========== Tab 1: API概览 ========== -->
+      <div id="tab-overview" class="tab-pane">
+        <!-- 面包屑 -->
+        <div style="margin-bottom:14px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">API开放平台 / 概览</span>
+        </div>
+
+        <!-- 统计卡片 -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;">
+          <div class="stat-card">
+            <p class="stat-label">API总调用数（本月）</p>
+            <p class="stat-value" style="color:#378ADD;">1,286,540</p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↑ 18.3% 较上月</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">活跃应用数</p>
+            <p class="stat-value" style="color:#1D9E75;">12</p>
+            <p class="stat-delta" style="color:var(--color-text-secondary);">本月新增 2 个</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">调用成功率</p>
+            <p class="stat-value" style="color:#1D9E75;">99.87%</p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↑ 0.12% 较上月</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">平均响应时间</p>
+            <p class="stat-value" style="color:#EF9F27;">86<span style="font-size:13px;color:var(--color-text-tertiary);"> ms</span></p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↓ 4ms 较上月</p>
+          </div>
+        </div>
+
+        <!-- API分类导航 -->
+        <div class="card card-blue" style="margin-bottom:18px;border-top:none;padding:16px;">
+          <p class="card-title" style="margin-bottom:14px;">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">分</span>API分类导航</span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">共 6 个分类，48 个接口</span>
+          </p>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;" id="api-category-grid">
+            <!-- 由JS渲染 -->
+          </div>
+        </div>
+
+        <!-- 近7天调用趋势 -->
+        <div class="card card-teal" style="border-top:none;padding:16px;">
+          <p class="card-title" style="margin-bottom:14px;">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#0D9488;">趋</span>近7天调用趋势</span>
+            <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--color-text-success);font-weight:400;">
+              <span class="dot live-dot" style="background:var(--color-text-success);"></span>实时
+            </span>
+          </p>
+          <div style="display:flex;align-items:flex-end;gap:8px;height:120px;padding:0 4px;" id="trend-chart">
+            <!-- 由JS渲染柱状图 -->
+          </div>
+          <div style="display:flex;gap:8px;margin-top:8px;padding:0 4px;" id="trend-labels">
+            <!-- 由JS渲染日期 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== Tab 2: 应用管理 ========== -->
+      <div id="tab-apps" class="tab-pane" style="display:none;">
+        <!-- 面包屑 -->
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">API开放平台 / 应用管理</span>
+          <button class="btn btn-primary" id="btn-create-app">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            创建应用
+          </button>
+        </div>
+
+        <!-- 应用列表 -->
+        <div class="card" style="padding:0;border-top:3px solid #378ADD;overflow:hidden;">
+          <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb;">
+            <span style="font-size:12px;color:var(--color-text-secondary);">共 4 个应用</span>
+            <div class="search-box" style="width:240px;padding:5px 10px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" class="search-input" placeholder="搜索应用名称或AppID...">
+            </div>
+          </div>
+          <table class="data-table" id="app-table">
+            <thead>
+              <tr>
+                <th style="width:14%;">应用名称</th>
+                <th style="width:12%;">AppID</th>
+                <th style="width:16%;">AppSecret</th>
+                <th style="width:18%;">权限范围</th>
+                <th style="width:9%;">调用次数(本月)</th>
+                <th style="width:7%;">状态</th>
+                <th style="width:11%;">创建时间</th>
+                <th style="width:13%;text-align:right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="app-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- ========== Tab 3: API文档 ========== -->
+      <div id="tab-docs" class="tab-pane" style="display:none;">
+        <!-- 面包屑 -->
+        <div style="margin-bottom:14px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">API开放平台 / API文档</span>
+        </div>
+
+        <div style="display:flex;gap:14px;">
+          <!-- 左侧API列表 -->
+          <div class="card" style="width:220px;flex-shrink:0;padding:8px;position:sticky;top:0;max-height:calc(100vh - 140px);overflow-y:auto;">
+            <div style="padding:4px 8px 8px;">
+              <div class="search-box" style="width:100%;padding:5px 8px;box-sizing:border-box;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" class="search-input" placeholder="搜索接口..." style="font-size:11px;">
+              </div>
+            </div>
+            <div id="api-list-sidebar"></div>
+          </div>
+
+          <!-- 右侧API详情 -->
+          <div style="flex:1;min-width:0;" id="api-detail-content">
+            <!-- 由JS渲染 -->
+          </div>
+        </div>
+      </div>
+
+      <!-- ========== Tab 4: 调用日志 ========== -->
+      <div id="tab-logs" class="tab-pane" style="display:none;">
+        <!-- 面包屑 -->
+        <div style="margin-bottom:14px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">API开放平台 / 调用日志</span>
+        </div>
+
+        <!-- 统计卡片 -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+          <div class="stat-card">
+            <p class="stat-label">今日调用数</p>
+            <p class="stat-value" style="color:#378ADD;">42,580</p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↑ 6.2% 较昨日</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">成功率</p>
+            <p class="stat-value" style="color:#1D9E75;">99.92%</p>
+            <p class="stat-delta" style="color:var(--color-text-secondary);">失败 34 次</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">平均延迟</p>
+            <p class="stat-value" style="color:#EF9F27;">78<span style="font-size:13px;color:var(--color-text-tertiary);"> ms</span></p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↓ 3ms 较昨日</p>
+          </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-top:none;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <select class="form-input form-select" style="width:150px;" id="log-filter-app">
+              <option value="">全部应用</option>
+              <option>SOC监控大屏</option>
+              <option>HR同步系统</option>
+              <option>报表自动生成</option>
+              <option>邮件网关联动</option>
+            </select>
+            <div style="display:flex;gap:4px;">
+              <span class="filter-tag active" data-method="all">全部</span>
+              <span class="filter-tag" data-method="GET">GET</span>
+              <span class="filter-tag" data-method="POST">POST</span>
+              <span class="filter-tag" data-method="PUT">PUT</span>
+              <span class="filter-tag" data-method="DELETE">DELETE</span>
+            </div>
+            <div style="display:flex;gap:4px;">
+              <span class="filter-tag active" data-lstatus="all">全部</span>
+              <span class="filter-tag" data-lstatus="success">成功</span>
+              <span class="filter-tag" data-lstatus="failed">失败</span>
+            </div>
+            <input type="text" class="form-input" style="width:160px;" placeholder="选择日期范围..." value="2026-08-15">
+            <div class="search-box" style="width:200px;padding:5px 10px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" class="search-input" placeholder="搜索API路径..." id="log-search">
+            </div>
+          </div>
+        </div>
+
+        <!-- 日志表格 -->
+        <div class="card" style="padding:0;border-top:3px solid #378ADD;overflow:hidden;">
+          <table class="data-table" id="log-table">
+            <thead>
+              <tr>
+                <th style="width:14%;">时间</th>
+                <th style="width:11%;">应用名称</th>
+                <th style="width:7%;">方法</th>
+                <th style="width:22%;">API路径</th>
+                <th style="width:7%;">状态码</th>
+                <th style="width:10%;">响应时间(ms)</th>
+                <th style="width:12%;">请求IP</th>
+                <th style="width:8%;text-align:right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="log-tbody"></tbody>
+          </table>
+          <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e5e7eb;">
+            <span style="font-size:11px;color:var(--color-text-tertiary);" id="log-info">显示 1 - 12 条，共 42 条记录</span>
+            <div class="pagination" id="log-pagination"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- 创建应用弹窗 -->
+<div class="modal-overlay" id="create-app-modal" style="display:none;">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-header">
+      <h3 class="modal-title">创建应用</h3>
+      <button class="modal-close" id="app-modal-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">应用名称<span class="required">*</span></label>
+        <input type="text" class="form-input" placeholder="如：SOC监控大屏" id="app-name-input">
+      </div>
+      <div class="form-group">
+        <label class="form-label">应用描述</label>
+        <textarea class="form-input form-textarea" placeholder="简要描述应用用途...">用于安全运营中心实时监控演练数据和风险指标</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">权限范围<span class="required">*</span></label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;padding:12px;border:1px solid #d1d5db;border-radius:8px;background:var(--color-background-secondary);">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check" checked> 演练管理</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check"> 用户管理</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check"> 模板管理</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check" checked> 数据报表</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check"> 举报管理</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check"> 系统管理</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">IP白名单</label>
+        <div style="border:1px solid #d1d5db;border-radius:8px;padding:8px;min-height:40px;background:var(--color-background-secondary);display:flex;flex-wrap:wrap;gap:6px;" id="ip-whitelist">
+          <span class="badge" style="background:#378ADD22;color:#378ADD;">10.0.0.0/8 ✕</span>
+          <span class="badge" style="background:#378ADD22;color:#378ADD;">192.168.1.100 ✕</span>
+          <input type="text" placeholder="输入IP回车添加..." style="border:none;outline:none;background:transparent;font-size:12px;flex:1;min-width:140px;color:var(--color-text-primary);" id="ip-input">
+        </div>
+        <p class="form-hint">不设置则不限制IP访问</p>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">回调URL</label>
+          <input type="text" class="form-input" placeholder="https://..." value="https://soc.company.com/api/callback">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Rate Limit（每分钟最大请求数）</label>
+          <input type="number" class="form-input" value="600">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" id="app-modal-cancel">取消</button>
+      <button class="btn btn-primary" id="app-modal-confirm">创建应用</button>
+    </div>
+  </div>
+</div>
+
+<!-- 日志详情弹窗 -->
+<div class="modal-overlay" id="log-detail-modal" style="display:none;">
+  <div class="modal" style="max-width:760px;">
+    <div class="modal-header">
+      <h3 class="modal-title">调用详情</h3>
+      <button class="modal-close" id="log-detail-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="log-detail-body">
+      <!-- 由JS渲染 -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" id="log-detail-copy">复制完整日志</button>
+      <button class="btn btn-primary" id="log-detail-ok">关闭</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast容器 -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+(function(){
+  // ========== Toast 提示 ==========
+  function showToast(msg, type){
+    var container = document.getElementById('toast-container');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type || 'info');
+    t.innerHTML = (type==='success'?'✓':(type==='error'?'✕':'ⓘ')) + ' <span>' + msg + '</span>';
+    container.appendChild(t);
+    setTimeout(function(){
+      t.style.transition = 'opacity 0.3s, transform 0.3s';
+      t.style.opacity = '0'; t.style.transform = 'translateX(30px)';
+      setTimeout(function(){ t.remove(); }, 300);
+    }, 2600);
+  }
+
+  // ========== Tab 切换 ==========
+  document.querySelectorAll('.tab[data-tab]').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      document.querySelectorAll('.tab[data-tab]').forEach(function(t){ t.classList.remove('active'); });
+      tab.classList.add('active');
+      var name = tab.getAttribute('data-tab');
+      document.querySelectorAll('.tab-pane').forEach(function(p){ p.style.display = 'none'; });
+      var pane = document.getElementById('tab-' + name);
+      if(pane) pane.style.display = 'block';
+    });
+  });
+
+  // ========== Tab 1: API概览 ==========
+  var apiCategories = [
+    {name:'演练管理API', icon:'演', color:'#378ADD', count:8, calls:'456,200', desc:'创建演练、查询状态、获取报告', apis:['创建演练','查询状态','获取报告']},
+    {name:'用户管理API', icon:'用', color:'#1D9E75', count:6, calls:'328,500', desc:'人员同步、风险查询、分组管理', apis:['人员同步','风险查询','分组管理']},
+    {name:'模板管理API', icon:'模', color:'#EF9F27', count:7, calls:'186,300', desc:'模板列表、模板生成、落地页管理', apis:['模板列表','模板生成','落地页管理']},
+    {name:'数据报表API', icon:'报', color:'#7F77DD', count:9, calls:'152,800', desc:'演练报表、部门报表、趋势数据', apis:['演练报表','部门报表','趋势数据']},
+    {name:'举报管理API', icon:'举', color:'#D85A30', count:5, calls:'98,400', desc:'举报列表、举报处理、奖励发放', apis:['举报列表','举报处理','奖励发放']},
+    {name:'系统管理API', icon:'系', color:'#0D9488', count:13, calls:'64,340', desc:'审计日志、配置查询、健康检查', apis:['审计日志','配置查询','健康检查']}
+  ];
+
+  function renderApiCategories(){
+    var grid = document.getElementById('api-category-grid');
+    var html = '';
+    apiCategories.forEach(function(c){
+      var apisHtml = c.apis.map(function(a){
+        return '<span class="badge" style="background:'+c.color+'15;color:'+c.color+';">'+a+'</span>';
+      }).join(' ');
+      html += '<div class="option-card" style="cursor:pointer;">'+
+        '<div class="option-card-header">'+
+          '<div class="option-card-icon" style="background:'+c.color+';">'+c.icon+'</div>'+
+          '<div class="option-card-title">'+c.name+'</div>'+
+          '<span class="badge" style="background:var(--color-background-secondary);color:var(--color-text-secondary);margin-left:auto;">'+c.count+' 接口</span>'+
+        '</div>'+
+        '<p class="option-card-desc" style="margin-bottom:8px;">'+c.desc+'</p>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px;">'+apisHtml+'</div>'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;padding-top:8px;border-top:1px dashed #e5e7eb;">'+
+          '<span style="font-size:11px;color:var(--color-text-tertiary);">月调用 <span style="color:var(--color-text-primary);font-weight:500;">'+c.calls+'</span></span>'+
+          '<button class="btn btn-sm btn-link" data-cat="'+c.name+'">查看文档 →</button>'+
+        '</div>'+
+      '</div>';
+    });
+    grid.innerHTML = html;
+    grid.querySelectorAll('[data-cat]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        // 跳转到API文档Tab
+        document.querySelectorAll('.tab[data-tab]').forEach(function(t){ t.classList.remove('active'); });
+        document.querySelector('.tab[data-tab="docs"]').classList.add('active');
+        document.querySelectorAll('.tab-pane').forEach(function(p){ p.style.display = 'none'; });
+        document.getElementById('tab-docs').style.display = 'block';
+        showToast('已跳转到「' + btn.getAttribute('data-cat') + '」文档', 'info');
+      });
+    });
+  }
+
+  function renderTrendChart(){
+    var data = [38200, 41500, 39800, 45200, 52100, 48300, 42580];
+    var labels = ['08-09','08-10','08-11','08-12','08-13','08-14','08-15'];
+    var max = Math.max.apply(null, data);
+    var chart = document.getElementById('trend-chart');
+    var labelBox = document.getElementById('trend-labels');
+    var html = '', labelHtml = '';
+    data.forEach(function(v, i){
+      var h = Math.round(v / max * 100);
+      var isToday = i === data.length - 1;
+      var color = isToday ? '#378ADD' : '#7dd3fc';
+      html += '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;">'+
+        '<span style="font-size:10px;color:var(--color-text-secondary);margin-bottom:4px;font-weight:500;">'+ (v/1000).toFixed(1) +'k</span>'+
+        '<div style="width:60%;background:'+color+';border-radius:4px 4px 0 0;height:'+h+'%;transition:height 0.6s ease;min-height:4px;"></div>'+
+      '</div>';
+      labelHtml += '<span style="flex:1;text-align:center;font-size:10px;color:'+(isToday?'var(--color-text-info)':'var(--color-text-tertiary)')+';font-weight:'+(isToday?'500':'400')+';">'+labels[i]+'</span>';
+    });
+    chart.innerHTML = html;
+    labelBox.innerHTML = labelHtml;
+  }
+
+  // ========== Tab 2: 应用管理 ==========
+  var appData = [
+    {id:1, name:'SOC监控大屏', appid:'app_8f3a2b1c', secret:'sk_live_demo_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX1', scopes:['演练管理','数据报表'], calls:'456,200', status:true, created:'2026-03-15 10:30'},
+    {id:2, name:'HR同步系统', appid:'app_2d9e8f7a', secret:'sk_live_demo_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX2', scopes:['用户管理','数据报表','模板管理'], calls:'328,500', status:true, created:'2026-04-22 14:15'},
+    {id:3, name:'报表自动生成', appid:'app_6a1b3c5d', secret:'sk_live_demo_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX3', scopes:['数据报表','举报管理'], calls:'152,800', status:true, created:'2026-05-08 09:42'},
+    {id:4, name:'邮件网关联动', appid:'app_9c4d7e2a', secret:'sk_live_demo_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX4', scopes:['举报管理','演练管理','系统管理'], calls:'98,400', status:false, created:'2026-06-12 16:28'}
+  ];
+
+  function scopeBadge(s){
+    var colors = {'演练管理':'#378ADD','用户管理':'#1D9E75','模板管理':'#EF9F27','数据报表':'#7F77DD','举报管理':'#D85A30','系统管理':'#0D9488'};
+    return '<span class="badge" style="background:'+colors[s]+'15;color:'+colors[s]+';margin-right:3px;">'+s+'</span>';
+  }
+
+  function renderAppTable(){
+    var tbody = document.getElementById('app-tbody');
+    var html = '';
+    appData.forEach(function(a){
+      var scopesHtml = a.scopes.map(scopeBadge).join('');
+      html += '<tr data-id="'+a.id+'">'+
+        '<td><div style="font-weight:500;">'+a.name+'</div></td>'+
+        '<td style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--color-text-secondary);">'+a.appid+'</td>'+
+        '<td>'+
+          '<div style="display:flex;align-items:center;gap:4px;">'+
+            '<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--color-text-secondary);" data-secret="'+a.id+'">'+a.secret.substring(0,12)+'••••••••</span>'+
+            '<button class="btn-link" style="font-size:11px;padding:1px 4px;" data-toggle-secret="'+a.id+'" title="显示/隐藏">'+
+              '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>'+
+            '</button>'+
+          '</div>'+
+        '</td>'+
+        '<td>'+scopesHtml+'</td>'+
+        '<td style="font-weight:500;">'+a.calls+'</td>'+
+        '<td>'+
+          '<label class="switch">'+
+            '<input type="checkbox" '+(a.status?'checked':'')+' data-app-switch="'+a.id+'">'+
+            '<span class="switch-slider"></span>'+
+          '</label>'+
+          '<span style="font-size:11px;margin-left:6px;color:'+(a.status?'#1D9E75':'var(--color-text-tertiary)')+';" data-status-text="'+a.id+'">'+(a.status?'启用':'禁用')+'</span>'+
+        '</td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+a.created+'</td>'+
+        '<td style="text-align:right;white-space:nowrap;">'+
+          '<button class="btn-link" data-app-action="secret" data-id="'+a.id+'">查看密钥</button>'+
+          '<button class="btn-link" data-app-action="edit" data-id="'+a.id+'">编辑权限</button>'+
+          '<button class="btn-link" style="color:#EF9F27;" data-app-action="disable" data-id="'+a.id+'">'+(a.status?'禁用':'启用')+'</button>'+
+          '<button class="btn-link" style="color:#A32D2D;" data-app-action="delete" data-id="'+a.id+'">删除</button>'+
+        '</td>'+
+      '</tr>';
+    });
+    tbody.innerHTML = html;
+
+    // Secret显示切换
+    tbody.querySelectorAll('[data-toggle-secret]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var id = btn.getAttribute('data-toggle-secret');
+        var span = tbody.querySelector('[data-secret="'+id+'"]');
+        var app = appData.filter(function(x){ return String(x.id) === id; })[0];
+        if(span.textContent.indexOf('••') >= 0){
+          span.textContent = app.secret;
+          btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+        } else {
+          span.textContent = app.secret.substring(0,12) + '••••••••';
+          btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+        }
+      });
+    });
+
+    // 状态开关
+    tbody.querySelectorAll('[data-app-switch]').forEach(function(sw){
+      sw.addEventListener('change', function(e){
+        var id = sw.getAttribute('data-app-switch');
+        var app = appData.filter(function(x){ return String(x.id) === id; })[0];
+        app.status = sw.checked;
+        var txt = tbody.querySelector('[data-status-text="'+id+'"]');
+        txt.textContent = app.status ? '启用' : '禁用';
+        txt.style.color = app.status ? '#1D9E75' : 'var(--color-text-tertiary)';
+        showToast('应用「'+app.name+'」已'+(app.status?'启用':'禁用'), app.status?'success':'info');
+      });
+    });
+
+    // 操作按钮
+    tbody.querySelectorAll('[data-app-action]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var action = btn.getAttribute('data-app-action');
+        var id = btn.getAttribute('data-id');
+        var app = appData.filter(function(x){ return String(x.id) === id; })[0];
+        if(action === 'secret'){
+          var span = tbody.querySelector('[data-secret="'+id+'"]');
+          span.textContent = app.secret;
+          showToast('密钥已显示', 'info');
+        } else if(action === 'edit'){
+          showToast('编辑「'+app.name+'」权限', 'info');
+        } else if(action === 'disable'){
+          app.status = !app.status;
+          var sw = tbody.querySelector('[data-app-switch="'+id+'"]');
+          sw.checked = app.status;
+          var txt = tbody.querySelector('[data-status-text="'+id+'"]');
+          txt.textContent = app.status ? '启用' : '禁用';
+          txt.style.color = app.status ? '#1D9E75' : 'var(--color-text-tertiary)';
+          btn.textContent = app.status ? '禁用' : '启用';
+          showToast('应用「'+app.name+'」已'+(app.status?'启用':'禁用'), app.status?'success':'info');
+        } else if(action === 'delete'){
+          if(confirm('确认删除应用「'+app.name+'」？此操作不可撤销')){
+            showToast('应用已删除', 'error');
+          }
+        }
+      });
+    });
+  }
+
+  // 创建应用弹窗
+  document.getElementById('btn-create-app').addEventListener('click', function(){
+    document.getElementById('create-app-modal').style.display = 'flex';
+  });
+  document.getElementById('app-modal-close').addEventListener('click', function(){
+    document.getElementById('create-app-modal').style.display = 'none';
+  });
+  document.getElementById('app-modal-cancel').addEventListener('click', function(){
+    document.getElementById('create-app-modal').style.display = 'none';
+  });
+  document.getElementById('app-modal-confirm').addEventListener('click', function(){
+    var name = document.getElementById('app-name-input').value.trim();
+    if(!name){ showToast('请输入应用名称', 'error'); return; }
+    document.getElementById('create-app-modal').style.display = 'none';
+    showToast('应用「'+name+'」创建成功！AppID: app_'+Math.random().toString(16).substring(2,10), 'success');
+    document.getElementById('app-name-input').value = '';
+  });
+
+  // IP白名单标签输入
+  var ipInput = document.getElementById('ip-input');
+  ipInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && ipInput.value.trim()){
+      e.preventDefault();
+      var val = ipInput.value.trim();
+      var tag = document.createElement('span');
+      tag.className = 'badge';
+      tag.style.cssText = 'background:#378ADD22;color:#378ADD;';
+      tag.innerHTML = val + ' ✕';
+      tag.style.cursor = 'pointer';
+      tag.addEventListener('click', function(){ tag.remove(); });
+      ipInput.parentNode.insertBefore(tag, ipInput);
+      ipInput.value = '';
+    }
+  });
+  document.getElementById('ip-whitelist').querySelectorAll('.badge').forEach(function(tag){
+    tag.style.cursor = 'pointer';
+    tag.addEventListener('click', function(){ tag.remove(); });
+  });
+
+  // ========== Tab 3: API文档 ==========
+  var apiDocs = [
+    // 演练管理
+    {group:'演练管理', name:'创建演练', method:'POST', path:'/api/v2/drills', desc:'创建一次新的钓鱼演练任务', params:[
+      {name:'name', type:'string', required:true, desc:'演练名称'},
+      {name:'type', type:'string', required:true, desc:'演练类型：email/sms/social/usb'},
+      {name:'target_users', type:'array', required:true, desc:'目标用户ID列表'},
+      {name:'template_id', type:'integer', required:true, desc:'邮件模板ID'},
+      {name:'send_time', type:'datetime', required:false, desc:'定时发送时间（ISO8601）'},
+      {name:'callback_url', type:'string', required:false, desc:'演练完成回调URL'}
+    ], reqExample:'{\n  "name": "Q3全员防钓鱼演练",\n  "type": "email",\n  "target_users": [1001, 1002, 1003],\n  "template_id": 42,\n  "send_time": "2026-08-20T09:30:00+08:00",\n  "callback_url": "https://soc.company.com/callback"\n}',
+    respExample:'{\n  "code": 0,\n  "message": "success",\n  "data": {\n    "drill_id": 1286,\n    "status": "pending",\n    "created_at": "2026-08-15T14:32:00+08:00"\n  }\n}',
+    errors:[
+      {code:'40001', desc:'参数缺失或格式错误', solution:'检查必填参数是否完整'},
+      {code:'40301', desc:'权限不足', solution:'确认应用已申请演练管理权限'},
+      {code:'42901', desc:'超过Rate Limit', solution:'降低调用频率或联系管理员提升配额'}
+    ]},
+    {group:'演练管理', name:'查询演练状态', method:'GET', path:'/api/v2/drills/{drill_id}', desc:'获取指定演练的实时状态和统计数据', params:[
+      {name:'drill_id', type:'integer', required:true, desc:'演练ID（路径参数）'},
+      {name:'include_detail', type:'boolean', required:false, desc:'是否包含详细用户行为数据'}
+    ], reqExample:'{\n  "drill_id": 1286,\n  "include_detail": true\n}',
+    respExample:'{\n  "code": 0,\n  "data": {\n    "drill_id": 1286,\n    "name": "Q3全员防钓鱼演练",\n    "status": "running",\n    "delivered": 1200,\n    "read": 856,\n    "clicked": 324,\n    "submitted": 187,\n    "reported": 268\n  }\n}',
+    errors:[
+      {code:'40401', desc:'演练不存在', solution:'检查drill_id是否正确'},
+      {code:'40301', desc:'无权访问该演练', solution:'确认应用权限范围'}
+    ]},
+    {group:'演练管理', name:'获取演练报告', method:'GET', path:'/api/v2/drills/{drill_id}/report', desc:'导出演练的完整分析报告', params:[
+      {name:'drill_id', type:'integer', required:true, desc:'演练ID（路径参数）'},
+      {name:'format', type:'string', required:false, desc:'报告格式：json/pdf/excel'},
+      {name:'department', type:'string', required:false, desc:'按部门筛选'}
+    ], reqExample:'{\n  "drill_id": 1286,\n  "format": "json"\n}',
+    respExample:'{\n  "code": 0,\n  "data": {\n    "drill_id": 1286,\n    "total_users": 3580,\n    "click_rate": 0.27,\n    "submit_rate": 0.156,\n    "report_rate": 0.223,\n    "departments": [\n      {"name": "研发部", "click_rate": 0.18},\n      {"name": "财务部", "click_rate": 0.32}\n    ]\n  }\n}',
+    errors:[
+      {code:'40401', desc:'演练不存在', solution:'检查drill_id'},
+      {code:'40002', desc:'演练尚未完成', solution:'等待演练结束后再获取报告'}
+    ]},
+    {group:'演练管理', name:'终止演练', method:'DELETE', path:'/api/v2/drills/{drill_id}', desc:'强制终止进行中的演练', params:[
+      {name:'drill_id', type:'integer', required:true, desc:'演练ID（路径参数）'},
+      {name:'reason', type:'string', required:true, desc:'终止原因'}
+    ], reqExample:'{\n  "drill_id": 1286,\n  "reason": "检测到真实攻击，紧急终止"\n}',
+    respExample:'{\n  "code": 0,\n  "message": "演练已终止",\n  "data": {\n    "drill_id": 1286,\n    "status": "aborted",\n    "stopped_at": "2026-08-15T15:00:00+08:00"\n  }\n}',
+    errors:[
+      {code:'40401', desc:'演练不存在', solution:'检查drill_id'},
+      {code:'40003', desc:'演练已结束，无法终止', solution:'确认演练当前状态为running'}
+    ]},
+    // 用户管理
+    {group:'用户管理', name:'同步用户', method:'POST', path:'/api/v2/users/sync', desc:'从外部系统同步用户数据', params:[
+      {name:'source', type:'string', required:true, desc:'数据源：ldap/ad/csv'},
+      {name:'users', type:'array', required:true, desc:'用户数据数组'},
+      {name:'mode', type:'string', required:false, desc:'同步模式：full/incremental'}
+    ], reqExample:'{\n  "source": "ldap",\n  "mode": "incremental",\n  "users": [\n    {\n      "employee_id": "EMP001",\n      "name": "张三",\n      "email": "zhangsan@company.com",\n      "department": "研发部"\n    }\n  ]\n}',
+    respExample:'{\n  "code": 0,\n  "data": {\n    "synced": 158,\n    "created": 12,\n    "updated": 146,\n    "failed": 0\n  }\n}',
+    errors:[
+      {code:'40001', desc:'用户数据格式错误', solution:'检查字段完整性'},
+      {code:'40301', desc:'无用户管理权限', solution:'申请用户管理API权限'}
+    ]},
+    {group:'用户管理', name:'查询风险画像', method:'GET', path:'/api/v2/users/{user_id}/risk', desc:'获取用户的安全风险画像和历史记录', params:[
+      {name:'user_id', type:'integer', required:true, desc:'用户ID（路径参数）'},
+      {name:'time_range', type:'string', required:false, desc:'时间范围：30d/90d/365d'}
+    ], reqExample:'{\n  "user_id": 1001,\n  "time_range": "90d"\n}',
+    respExample:'{\n  "code": 0,\n  "data": {\n    "user_id": 1001,\n    "name": "张三",\n    "risk_level": "medium",\n    "total_clicks": 3,\n    "total_submits": 1,\n    "reports_made": 5,\n    "training_completed": 2,\n    "trend": "improving"\n  }\n}',
+    errors:[
+      {code:'40401', desc:'用户不存在', solution:'检查user_id'}
+    ]},
+    {group:'用户管理', name:'获取分组列表', method:'GET', path:'/api/v2/groups', desc:'获取所有用户分组信息', params:[
+      {name:'page', type:'integer', required:false, desc:'页码，默认1'},
+      {name:'page_size', type:'integer', required:false, desc:'每页数量，默认20'}
+    ], reqExample:'{\n  "page": 1,\n  "page_size": 20\n}',
+    respExample:'{\n  "code": 0,\n  "data": {\n    "total": 15,\n    "groups": [\n      {"id": 1, "name": "新员工组", "count": 30},\n      {"id": 2, "name": "高管组", "count": 28}\n    ]\n  }\n}',
+    errors:[
+      {code:'40301', desc:'权限不足', solution:'申请用户管理权限'}
+    ]},
+    // 数据报表
+    {group:'数据报表', name:'获取演练报表', method:'GET', path:'/api/v2/reports/drills', desc:'获取演练综合统计报表', params:[
+      {name:'start_date', type:'date', required:true, desc:'开始日期（YYYY-MM-DD）'},
+      {name:'end_date', type:'date', required:true, desc:'结束日期（YYYY-MM-DD）'},
+      {name:'group_by', type:'string', required:false, desc:'分组维度：day/week/month'}
+    ], reqExample:'{\n  "start_date": "2026-01-01",\n  "end_date": "2026-08-15",\n  "group_by": "month"\n}',
+    respExample:'{\n  "code": 0,\n  "data": {\n    "total_drills": 128,\n    "avg_click_rate": 0.178,\n    "avg_submit_rate": 0.142,\n    "trend": [\n      {"month": "2026-01", "drills": 5, "click_rate": 0.193},\n      {"month": "2026-02", "drills": 8, "click_rate": 0.181}\n    ]\n  }\n}',
+    errors:[
+      {code:'40001', desc:'日期范围错误', solution:'确保end_date大于start_date'}
+    ]},
+    {group:'数据报表', name:'获取部门报表', method:'GET', path:'/api/v2/reports/departments', desc:'按部门维度获取安全统计数据', params:[
+      {name:'start_date', type:'date', required:true, desc:'开始日期'},
+      {name:'end_date', type:'date', required:true, desc:'结束日期'},
+      {name:'department', type:'string', required:false, desc:'指定部门，不填则返回全部'}
+    ], reqExample:'{\n  "start_date": "2026-01-01",\n  "end_date": "2026-08-15"\n}',
+    respExample:'{\n  "code": 0,\n  "data": {\n    "departments": [\n      {\n        "name": "研发部",\n        "user_count": 420,\n        "click_rate": 0.18,\n        "report_rate": 0.25\n      },\n      {\n        "name": "财务部",\n        "user_count": 56,\n        "click_rate": 0.286,\n        "report_rate": 0.15\n      }\n    ]\n  }\n}',
+    errors:[
+      {code:'40301', desc:'无数据报表权限', solution:'申请数据报表API权限'}
+    ]}
+  ];
+
+  var currentApiIdx = 0;
+
+  function renderApiList(){
+    var sidebar = document.getElementById('api-list-sidebar');
+    var groups = {};
+    apiDocs.forEach(function(a, i){
+      if(!groups[a.group]) groups[a.group] = [];
+      groups[a.group].push({api:a, idx:i});
+    });
+    var html = '';
+    for(var g in groups){
+      html += '<div class="api-group-title">'+g+'</div>';
+      groups[g].forEach(function(item){
+        var a = item.api;
+        var mc = a.method === 'GET' ? 'method-get' : (a.method === 'POST' ? 'method-post' : (a.method === 'PUT' ? 'method-put' : 'method-delete'));
+        html += '<div class="api-list-item '+(item.idx===currentApiIdx?'active':'')+'" data-api-idx="'+item.idx+'">'+
+          '<span class="method-tag '+mc+'">'+a.method+'</span>'+
+          '<span class="api-path">'+a.path+'</span>'+
+        '</div>';
+      });
+    }
+    sidebar.innerHTML = html;
+    sidebar.querySelectorAll('[data-api-idx]').forEach(function(item){
+      item.addEventListener('click', function(){
+        currentApiIdx = parseInt(item.getAttribute('data-api-idx'));
+        sidebar.querySelectorAll('.api-list-item').forEach(function(x){ x.classList.remove('active'); });
+        item.classList.add('active');
+        renderApiDetail();
+      });
+    });
+  }
+
+  function highlightJson(json){
+    return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function(m){
+      if(/^"/.test(m)){
+        if(/:$/.test(m)) return '<span class="tok-key">'+m+'</span>';
+        return '<span class="tok-str">'+m+'</span>';
+      }
+      if(/true|false/.test(m)) return '<span class="tok-bool">'+m+'</span>';
+      if(/null/.test(m)) return '<span class="tok-bool">'+m+'</span>';
+      return '<span class="tok-num">'+m+'</span>';
+    });
+  }
+
+  function renderApiDetail(){
+    var a = apiDocs[currentApiIdx];
+    var mc = a.method === 'GET' ? 'method-get' : (a.method === 'POST' ? 'method-post' : (a.method === 'PUT' ? 'method-put' : 'method-delete'));
+    var content = document.getElementById('api-detail-content');
+    var paramsHtml = '';
+    a.params.forEach(function(p){
+      paramsHtml += '<tr>'+
+        '<td style="font-family:ui-monospace,monospace;font-size:11px;color:var(--color-text-info);">'+p.name+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+p.type+'</td>'+
+        '<td>'+(p.required?'<span class="badge" style="background:rgba(216,90,48,0.15);color:#D85A30;">必填</span>':'<span class="badge" style="background:var(--color-background-secondary);color:var(--color-text-tertiary);">选填</span>')+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+p.desc+'</td>'+
+      '</tr>';
+    });
+    var errorsHtml = '';
+    a.errors.forEach(function(e){
+      errorsHtml += '<tr>'+
+        '<td style="font-family:ui-monospace,monospace;font-size:11px;color:#D85A30;">'+e.code+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-primary);">'+e.desc+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+e.solution+'</td>'+
+      '</tr>';
+    });
+    content.innerHTML = 
+      '<div class="card card-blue" style="margin-bottom:14px;border-top:none;">'+
+        '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">'+
+          '<span class="badge '+mc+'" style="font-weight:600;font-size:11px;">'+a.method+'</span>'+
+          '<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;color:var(--color-text-primary);font-weight:500;">'+a.path+'</span>'+
+        '</div>'+
+        '<h3 style="font-size:16px;font-weight:500;margin:0 0 6px;color:var(--color-text-primary);">'+a.name+'</h3>'+
+        '<p style="font-size:12px;color:var(--color-text-secondary);margin:0;">'+a.desc+'</p>'+
+      '</div>'+
+
+      '<div class="card" style="margin-bottom:14px;border-top:none;padding:16px;">'+
+        '<p class="card-title" style="margin-bottom:10px;"><span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">头</span>请求头</span></p>'+
+        '<div style="background:var(--color-background-secondary);border-radius:6px;padding:10px 14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--color-text-secondary);">'+
+          'Authorization: Bearer <span style="color:var(--color-text-info);">{your_access_token}</span><br>'+
+          'Content-Type: application/json<br>'+
+          'X-App-Id: <span style="color:var(--color-text-info);">{your_app_id}</span>'+
+        '</div>'+
+      '</div>'+
+
+      '<div class="card" style="margin-bottom:14px;border-top:none;padding:16px;">'+
+        '<p class="card-title" style="margin-bottom:10px;"><span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#7F77DD;">参</span>请求参数</span></p>'+
+        '<table class="data-table" style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">'+
+          '<thead><tr><th style="width:20%;">参数名</th><th style="width:12%;">类型</th><th style="width:10%;">必填</th><th>说明</th></tr></thead>'+
+          '<tbody>'+paramsHtml+'</tbody>'+
+        '</table>'+
+      '</div>'+
+
+      '<div class="card" style="margin-bottom:14px;border-top:none;padding:16px;">'+
+        '<p class="card-title" style="margin-bottom:10px;"><span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#1D9E75;">请</span>请求示例</span></p>'+
+        '<div class="code-block"><button class="copy-btn" data-copy="'+currentApiIdx+'_req">复制</button>'+highlightJson(a.reqExample)+'</div>'+
+      '</div>'+
+
+      '<div class="card" style="margin-bottom:14px;border-top:none;padding:16px;">'+
+        '<p class="card-title" style="margin-bottom:10px;"><span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#0D9488;">响</span>响应示例</span></p>'+
+        '<div class="code-block"><button class="copy-btn" data-copy="'+currentApiIdx+'_resp">复制</button>'+highlightJson(a.respExample)+'</div>'+
+      '</div>'+
+
+      '<div class="card card-red" style="border-top:none;padding:16px;">'+
+        '<p class="card-title" style="margin-bottom:10px;"><span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#A32D2D;">错</span>错误码</span></p>'+
+        '<table class="data-table" style="border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">'+
+          '<thead><tr><th style="width:15%;">错误码</th><th style="width:35%;">说明</th><th>解决方案</th></tr></thead>'+
+          '<tbody>'+errorsHtml+'</tbody>'+
+        '</table>'+
+      '</div>';
+
+    // 绑定复制按钮
+    content.querySelectorAll('.copy-btn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        var key = btn.getAttribute('data-copy');
+        var text = key.indexOf('_req') >= 0 ? a.reqExample : a.respExample;
+        // 创建临时textarea复制
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try{ document.execCommand('copy'); showToast('已复制到剪贴板', 'success'); }
+        catch(e){ showToast('复制失败', 'error'); }
+        document.body.removeChild(ta);
+      });
+    });
+  }
+
+  // ========== Tab 4: 调用日志 ==========
+  var logData = [
+    {time:'14:32:18', app:'SOC监控大屏', method:'GET', path:'/api/v2/drills/1286/status', code:200, rt:45, ip:'10.12.0.88', status:'success'},
+    {time:'14:31:55', app:'报表自动生成', method:'GET', path:'/api/v2/reports/drills?start_date=2026-01-01&end_date=2026-08-15', code:200, rt:128, ip:'10.12.5.22', status:'success'},
+    {time:'14:31:30', app:'HR同步系统', method:'POST', path:'/api/v2/users/sync', code:200, rt:342, ip:'10.12.3.15', status:'success'},
+    {time:'14:30:58', app:'SOC监控大屏', method:'GET', path:'/api/v2/users/1001/risk', code:200, rt:38, ip:'10.12.0.88', status:'success'},
+    {time:'14:30:42', app:'邮件网关联动', method:'POST', path:'/api/v2/reports/handle', code:400, rt:56, ip:'10.12.8.100', status:'failed'},
+    {time:'14:30:15', app:'报表自动生成', method:'GET', path:'/api/v2/reports/departments', code:200, rt:89, ip:'10.12.5.22', status:'success'},
+    {time:'14:29:48', app:'HR同步系统', method:'GET', path:'/api/v2/groups?page=1&page_size=20', code:200, rt:32, ip:'10.12.3.15', status:'success'},
+    {time:'14:29:22', app:'SOC监控大屏', method:'GET', path:'/api/v2/drills/1286/report?format=json', code:200, rt:156, ip:'10.12.0.88', status:'success'},
+    {time:'14:28:55', app:'邮件网关联动', method:'DELETE', path:'/api/v2/drills/1285', code:500, rt:2100, ip:'10.12.8.100', status:'failed'},
+    {time:'14:28:30', app:'SOC监控大屏', method:'GET', path:'/api/v2/drills?status=running', code:200, rt:42, ip:'10.12.0.88', status:'success'},
+    {time:'14:27:58', app:'HR同步系统', method:'POST', path:'/api/v2/users/sync', code:429, rt:12, ip:'10.12.3.15', status:'failed'},
+    {time:'14:27:30', app:'报表自动生成', method:'GET', path:'/api/v2/reports/drills?group_by=month', code:200, rt:95, ip:'10.12.5.22', status:'success'},
+    {time:'14:26:48', app:'SOC监控大屏', method:'GET', path:'/api/v2/users/1002/risk?time_range=90d', code:200, rt:41, ip:'10.12.0.88', status:'success'},
+    {time:'14:26:15', app:'邮件网关联动', method:'POST', path:'/api/v2/reports/list', code:200, rt:67, ip:'10.12.8.100', status:'success'},
+    {time:'14:25:50', app:'HR同步系统', method:'GET', path:'/api/v2/users/1003/risk', code:200, rt:35, ip:'10.12.3.15', status:'success'}
+  ];
+
+  var logCurrentPage = 1;
+  var logPageSize = 12;
+  var logFilterMethod = 'all';
+  var logFilterStatus = 'all';
+
+  function getFilteredLogs(){
+    return logData.filter(function(l){
+      if(logFilterMethod !== 'all' && l.method !== logFilterMethod) return false;
+      if(logFilterStatus !== 'all' && l.status !== logFilterStatus) return false;
+      return true;
+    });
+  }
+
+  function renderLogTable(){
+    var tbody = document.getElementById('log-tbody');
+    var data = getFilteredLogs();
+    var total = data.length;
+    var totalPages = Math.max(1, Math.ceil(total / logPageSize));
+    if(logCurrentPage > totalPages) logCurrentPage = totalPages;
+    var start = (logCurrentPage - 1) * logPageSize;
+    var pageData = data.slice(start, start + logPageSize);
+
+    var html = '';
+    pageData.forEach(function(l, i){
+      var mc = l.method === 'GET' ? 'method-get' : (l.method === 'POST' ? 'method-post' : (l.method === 'PUT' ? 'method-put' : 'method-delete'));
+      var codeCls = l.code === 200 ? 'background:rgba(29,158,117,0.15);color:#1D9E75;' : (l.code >= 400 && l.code < 500 ? 'background:rgba(239,159,39,0.15);color:#EF9F27;' : 'background:rgba(216,90,48,0.15);color:#D85A30;');
+      var rtColor = l.rt > 1000 ? '#A32D2D' : (l.rt > 200 ? '#EF9F27' : 'var(--color-text-primary)');
+      html += '<tr data-log-idx="'+(start+i)+'">'+
+        '<td style="font-family:ui-monospace,monospace;font-size:11px;color:var(--color-text-secondary);">'+l.time+'</td>'+
+        '<td style="font-size:11px;">'+l.app+'</td>'+
+        '<td><span class="badge '+mc+'" style="font-weight:600;">'+l.method+'</span></td>'+
+        '<td style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--color-text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0;">'+l.path+'</td>'+
+        '<td><span class="badge" style="'+codeCls+';font-weight:600;">'+l.code+'</span></td>'+
+        '<td style="color:'+rtColor+';font-weight:500;">'+l.rt+'</td>'+
+        '<td style="font-family:ui-monospace,monospace;font-size:11px;color:var(--color-text-secondary);">'+l.ip+'</td>'+
+        '<td style="text-align:right;"><button class="btn-link" data-log-detail="'+(start+i)+'">查看详情</button></td>'+
+      '</tr>';
+    });
+    if(pageData.length === 0){
+      html = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--color-text-tertiary);font-size:12px;">暂无符合条件的日志</td></tr>';
+    }
+    tbody.innerHTML = html;
+
+    document.getElementById('log-info').textContent = '显示 '+(start+1)+' - '+Math.min(start+logPageSize, total)+' 条，共 '+total+' 条记录';
+    renderLogPagination(totalPages);
+
+    tbody.querySelectorAll('[data-log-detail]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var idx = parseInt(btn.getAttribute('data-log-detail'));
+        openLogDetail(idx);
+      });
+    });
+  }
+
+  function renderLogPagination(totalPages){
+    var pg = document.getElementById('log-pagination');
+    if(!pg) return;
+    var html = '';
+    html += '<button class="page-btn" '+(logCurrentPage===1?'disabled':'')+' onclick="window._lg('+ (logCurrentPage-1) +')">‹</button>';
+    var s = Math.max(1, logCurrentPage - 2);
+    var e = Math.min(totalPages, s + 4);
+    if(s > 1){ html += '<button class="page-btn" onclick="window._lg(1)">1</button>'; if(s>2) html += '<button class="page-btn" disabled>...</button>'; }
+    for(var i=s;i<=e;i++){
+      html += '<button class="page-btn '+(i===logCurrentPage?'active':'')+'" onclick="window._lg('+i+')">'+i+'</button>';
+    }
+    if(e < totalPages){ if(e<totalPages-1) html += '<button class="page-btn" disabled>...</button>'; html += '<button class="page-btn" onclick="window._lg('+totalPages+')">'+totalPages+'</button>'; }
+    html += '<button class="page-btn" '+(logCurrentPage===totalPages?'disabled':'')+' onclick="window._lg('+(logCurrentPage+1)+')">›</button>';
+    pg.innerHTML = html;
+  }
+  window._lg = function(p){ logCurrentPage = p; renderLogTable(); };
+
+  function openLogDetail(idx){
+    var l = logData[idx];
+    var body = document.getElementById('log-detail-body');
+    var mc = l.method === 'GET' ? 'method-get' : (l.method === 'POST' ? 'method-post' : (l.method === 'PUT' ? 'method-put' : 'method-delete'));
+    var codeCls = l.code === 200 ? 'background:rgba(29,158,117,0.15);color:#1D9E75;' : (l.code >= 400 && l.code < 500 ? 'background:rgba(239,159,39,0.15);color:#EF9F27;' : 'background:rgba(216,90,48,0.15);color:#D85A30;');
+    body.innerHTML = 
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;">'+
+        '<div style="background:var(--color-background-secondary);border-radius:8px;padding:12px;">'+
+          '<p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 4px;">请求时间</p>'+
+          '<p style="font-size:13px;font-weight:500;margin:0;">2026-08-15 '+l.time+'</p>'+
+        '</div>'+
+        '<div style="background:var(--color-background-secondary);border-radius:8px;padding:12px;">'+
+          '<p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 4px;">响应时间</p>'+
+          '<p style="font-size:13px;font-weight:500;margin:0;color:'+(l.rt>1000?'#A32D2D':'var(--color-text-primary)')+';">'+l.rt+' ms</p>'+
+        '</div>'+
+      '</div>'+
+      '<div style="margin-bottom:14px;">'+
+        '<p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 6px;">请求方法与路径</p>'+
+        '<div style="display:flex;align-items:center;gap:8px;">'+
+          '<span class="badge '+mc+'" style="font-weight:600;">'+l.method+'</span>'+
+          '<span style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;color:var(--color-text-primary);">'+l.path+'</span>'+
+        '</div>'+
+      '</div>'+
+      '<div style="margin-bottom:14px;">'+
+        '<p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 6px;">状态码</p>'+
+        '<span class="badge" style="'+codeCls+';font-weight:600;font-size:13px;">'+l.code+'</span>'+
+      '</div>'+
+      '<div style="margin-bottom:14px;">'+
+        '<p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 6px;">请求头</p>'+
+        '<div class="code-block" style="font-size:11px;">Authorization: Bearer eyJhbGciOiJIUzI1NiJ9...<br>Content-Type: application/json<br>X-App-Id: '+(l.app==='SOC监控大屏'?'app_8f3a2b1c':l.app==='HR同步系统'?'app_2d9e8f7a':l.app==='报表自动生成'?'app_6a1b3c5d':'app_9c4d7e2a')+'<br>X-Request-Id: req_'+Math.random().toString(36).substring(2,10)+'</div>'+
+      '</div>'+
+      '<div style="margin-bottom:14px;">'+
+        '<p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 6px;">请求体</p>'+
+        '<div class="code-block" style="font-size:11px;">'+highlightJson(l.method==='GET'?'{}':'{\n  "drill_id": 1286,\n  "include_detail": true\n}')+'</div>'+
+      '</div>'+
+      '<div style="margin-bottom:14px;">'+
+        '<p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 6px;">响应体</p>'+
+        '<div class="code-block" style="font-size:11px;">'+highlightJson(l.code===200?'{\n  "code": 0,\n  "message": "success",\n  "data": {\n    "drill_id": 1286,\n    "status": "running"\n  }\n}':(l.code===429?'{\n  "code": 42901,\n  "message": "Rate limit exceeded",\n  "retry_after": 60\n}':'{\n  "code": 500,\n  "message": "Internal server error",\n  "trace_id": "trace_'+Math.random().toString(36).substring(2,10)+'"\n}'))+'</div>'+
+      '</div>'+
+      (l.code !== 200 ? '<div style="padding:12px;border-radius:8px;background:rgba(216,90,48,0.06);border-left:3px solid #D85A30;">'+
+        '<p style="font-size:12px;font-weight:500;color:#D85A30;margin:0 0 4px;">⚠️ 错误信息</p>'+
+        '<p style="font-size:11px;color:var(--color-text-secondary);margin:0;">'+(l.code===400?'请求参数缺失或格式错误：缺少必填字段':l.code===429?'超过每分钟请求限制，请降低调用频率':'服务器内部错误，已自动重试，请联系管理员')+'</p>'+
+      '</div>' : '');
+    document.getElementById('log-detail-modal').style.display = 'flex';
+  }
+
+  document.getElementById('log-detail-close').addEventListener('click', function(){ document.getElementById('log-detail-modal').style.display = 'none'; });
+  document.getElementById('log-detail-ok').addEventListener('click', function(){ document.getElementById('log-detail-modal').style.display = 'none'; });
+  document.getElementById('log-detail-copy').addEventListener('click', function(){ showToast('完整日志已复制到剪贴板', 'success'); });
+
+  // 日志筛选
+  document.querySelectorAll('[data-method]').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('[data-method]').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      logFilterMethod = tag.getAttribute('data-method');
+      logCurrentPage = 1;
+      renderLogTable();
+    });
+  });
+  document.querySelectorAll('[data-lstatus]').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('[data-lstatus]').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      logFilterStatus = tag.getAttribute('data-lstatus');
+      logCurrentPage = 1;
+      renderLogTable();
+    });
+  });
+
+  // 点击遮罩关闭
+  [document.getElementById('create-app-modal'), document.getElementById('log-detail-modal')].forEach(function(m){
+    if(m) m.addEventListener('click', function(e){ if(e.target === m) m.style.display = 'none'; });
+  });
+
+  // 初始渲染
+  renderApiCategories();
+  renderTrendChart();
+  renderAppTable();
+  renderApiList();
+  renderApiDetail();
+  renderLogTable();
+})();
+</script>
+
+<!-- Copilot FAB -->
+<div class="copilot-fab" id="copilotFab" onclick="Copilot.open()">
+  <span class="fab-pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg>
+</div>
+<!-- Copilot Drawer -->
+<div class="copilot-overlay" id="copilotOverlay" onclick="Copilot.close()"></div>
+<div class="copilot-drawer" id="copilotDrawer" data-page="API开放平台">
+  <div class="copilot-header">
+    <div class="copilot-header-left">
+      <div class="copilot-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg></div>
+      <div>
+        <div class="copilot-header-title">AI Copilot</div>
+        <div class="copilot-header-sub" id="copilotContext">当前上下文：API开放平台</div>
+      </div>
+    </div>
+    <button class="copilot-close" onclick="Copilot.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="copilot-sessions">
+    <div class="copilot-session-btn active" onclick="Copilot.switchSession(this,'current')">当前会话</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s1')">演练分析</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s2')">模板生成</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s3')">风险报告</div>
+    <div class="copilot-session-btn" onclick="Copilot.newSession()">+ 新建</div>
+  </div>
+  <div class="copilot-messages" id="copilotMessages">
+    <div class="copilot-empty" id="copilotEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h4>AI Copilot 智能助手</h4>
+      <p>我是您的安全演练AI助手，可以帮您分析演练数据、生成模板、撰写报告等。<br/>下方快捷问题可直接点击使用。</p>
+    </div>
+  </div>
+  <div class="copilot-draft-banner" id="copilotDraftBanner" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span>AI生成内容处于草稿态，需人工确认后生效。审核记录将进入审计日志。</span>
+  </div>
+  <div class="copilot-input-area">
+    <div class="copilot-quick-tags" id="copilotQuickTags">
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">API调用分析</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">异常调用检查</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">设置调用限制</span>
+    </div>
+    <div class="copilot-input-wrap">
+      <textarea class="copilot-input" id="copilotInput" placeholder="输入您的问题..." rows="1" onkeydown="Copilot.onKeydown(event)" oninput="Copilot.autoResize(this)"></textarea>
+      <button class="copilot-send" id="copilotSend" onclick="Copilot.send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+if(typeof showToast!=='function'){function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}}
+
+// ===== Copilot 全局AI助手 =====
+var Copilot=(function(){
+  var drawer=document.getElementById('copilotDrawer');
+  var overlay=document.getElementById('copilotOverlay');
+  var messagesEl=document.getElementById('copilotMessages');
+  var inputEl=document.getElementById('copilotInput');
+  var sendBtn=document.getElementById('copilotSend');
+  var emptyEl=document.getElementById('copilotEmpty');
+  var draftBanner=document.getElementById('copilotDraftBanner');
+  var pageContext=drawer?drawer.getAttribute('data-page'):'';
+  var isGenerating=false;
+  var messages=[];
+
+  function open(){if(!drawer)return;drawer.classList.add('open');overlay.classList.add('show');setTimeout(function(){inputEl&&inputEl.focus();},350);}
+  function close(){if(!drawer)return;drawer.classList.remove('open');overlay.classList.remove('show');}
+  function switchSession(btn,key){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');btn.classList.add('active');showToast('已切换到会话：'+btn.textContent,'info');}
+  function newSession(){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');messages=[];if(emptyEl)emptyEl.style.display='block';messagesEl.innerHTML='';messagesEl.appendChild(emptyEl);showToast('已创建新会话','info');}
+  function quickAsk(text){if(!inputEl)return;inputEl.value=text;autoResize(inputEl);send();}
+  function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+  function autoResize(el){el.style.height='38px';el.style.height=Math.min(el.scrollHeight,100)+'px';}
+  function addMessage(role,content,opts){
+    opts=opts||{};
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');msg.className='copilot-msg '+role;
+    var avatar=document.createElement('div');avatar.className='copilot-msg-avatar';avatar.textContent=role==='ai'?'AI':'我';
+    var bubble=document.createElement('div');bubble.className='copilot-msg-bubble';
+    if(role==='ai'){bubble.innerHTML=renderMarkdown(content);}else{bubble.textContent=content;}
+    msg.appendChild(avatar);msg.appendChild(bubble);
+    if(role==='ai'&&opts.showContext){var badge=document.createElement('div');badge.className='copilot-context-badge';badge.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>上下文：'+pageContext;bubble.appendChild(badge);}
+    if(role==='ai'&&opts.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';opts.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}
+    if(role==='ai'&&opts.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+opts.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+opts.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}
+    messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;return bubble;
+  }
+  function showTyping(){if(emptyEl)emptyEl.style.display='none';var msg=document.createElement('div');msg.className='copilot-msg ai';msg.id='copilotTypingMsg';msg.innerHTML='<div class="copilot-msg-avatar">AI</div><div class="copilot-msg-bubble"><div class="copilot-typing"><span></span><span></span><span></span></div></div>';messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;}
+  function hideTyping(){var t=document.getElementById('copilotTypingMsg');if(t)t.remove();}
+  function typewriter(el,text,opts){opts=opts||{};var i=0;var speed=15;el.innerHTML='';function type(){if(i<text.length){el.innerHTML=renderMarkdown(text.substring(0,i+1));i++;messagesEl.scrollTop=messagesEl.scrollHeight;setTimeout(type,speed);}else{isGenerating=false;sendBtn.disabled=false;if(opts.onComplete)opts.onComplete();}}type();}
+  function renderMarkdown(text){var html=text;html=html.replace(/```([\s\S]*?)```/g,function(m,c){return '<pre style="background:#1a1a1a;color:#0f0;padding:8px 12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:8px 0"><code>'+c.replace(/</g,'&lt;')+'</code></pre>';});html=html.replace(/`([^`]+)`/g,'<code>$1</code>');html=html.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');html=html.replace(/^### (.+)$/gm,'<h4>$1</h4>');html=html.replace(/^- (.+)$/gm,'<li>$1</li>');html=html.replace(/(<li>.*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';});html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');html=html.replace(/\n/g,'<br>');return html;}
+  function send(){if(isGenerating)return;var text=inputEl.value.trim();if(!text)return;addMessage('user',text);inputEl.value='';inputEl.style.height='38px';isGenerating=true;sendBtn.disabled=true;showTyping();setTimeout(function(){hideTyping();var response=generateResponse(text);var bubble=addMessage('ai','',{showContext:messages.length<=1});typewriter(bubble,response.text,{onComplete:function(){if(response.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';response.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}if(response.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+response.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+response.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}messagesEl.scrollTop=messagesEl.scrollHeight;}});},800);}
+  function generateResponse(text){
+    var pageResponses={
+      '数据概览':{text:'**当前页面：数据概览**\n\n根据最新数据分析：\n\n- 本月中招率 **18.5%**，较上月下降3.2%，趋势向好\n- **财务部**中招率最高（32.1%），建议优先安排培训\n- 举报率22.3%，员工安全意识在提升\n- 培训通过率86.2%，仍有提升空间\n\n### 建议措施\n1. 针对财务部开展专项钓鱼演练\n2. 推送财务类钓鱼识别培训课程\n3. 对连续中招人员启动一对一辅导',actions:[{label:'一键生成报告'},{label:'创建财务部演练'},{label:'推荐培训课程'}]},
+      '演练管理':{text:'**当前页面：演练管理**\n\n最近一次演练「Q3财务钓鱼演练」分析：\n\n| 指标 | 数值 | 评价 |\n|------|------|------|\n| 发送数 | 580 | - |\n| 打开率 | 72.3% | 偏高 |\n| 点击率 | 28.1% | 风险高 |\n| 中招率 | 18.6% | 需关注 |\n| 举报率 | 15.2% | 正常 |\n\n### 关键发现\n- **邮件主题**「紧急：财务报销确认」点击率异常高\n- 发送后2小时内集中中招，说明员工缺乏犹豫期\n- 3人重复中招（已标记为高风险）',actions:[{label:'查看详情'},{label:'生成演练报告'},{label:'标记高危人员'}]},
+      '素材模板':{text:'**当前页面：素材模板**\n\n根据历史演练数据，为您推荐模板生成方案：\n\n### 高效模板特征\n- **场景**：节假日福利领取（点击率平均34.2%）\n- **语气**：紧急+友好混合（打开率提升25%）\n- **发件人**：伪装HR部门（信任度高）\n\n已为您生成草稿模板，请审核确认后入库：',draft:{title:'AI生成模板：节假日福利领取',content:'主题：【福利】2026年中秋礼品领取通知\n发件人：HR-福利管理 <hr-welfare@company.com>\n正文：尊敬的同事，2026年中秋节礼品领取通道已开放，请点击下方链接选择您的礼品...\n预估点击率：32%',actions:true}},
+      '发送配置':{text:'**当前页面：发送配置**\n\n发送通道健康度检查：\n\n- **平台默认SMTP** — 送达率 98.2% ✅\n- **Office365 (EWS)** — 送达率 95.7% ✅\n- **阿里云短信** — 送达率 99.1% ✅\n\n### DNS记录状态\n- SPF ✅ 已配置\n- DKIM ✅ 已配置\n- DMARC ⚠️ 建议添加`p=quarantine`策略\n\n建议：为提升送达率可信度，请完善DMARC记录。',actions:[{label:'查看DMARC配置指引'}]},
+      '用户和组':{text:'**当前页面：用户和组**\n\n高风险人员分析（共86人）：\n\n### 风险分布\n- **极高危险**（风险值>80）：12人\n- **高危险**（风险值60-80）：28人\n- **中危险**（风险值40-60）：46人\n\n### Top 3 高危人员\n1. **王某某**（财务部）— 3次中招，风险值92\n2. **李某**（市场部）— 2次中招+1次误报，风险值87\n3. **张某**（行政部）— 2次中招，风险值85\n\n建议立即安排专项培训。',actions:[{label:'查看风险画像'},{label:'分配培训计划'},{label:'创建针对演练'}]},
+      '安全培训':{text:'**当前页面：安全培训**\n\n培训效果分析：\n\n- 课程完成率：**86.2%**\n- 考试通过率：**78.5%**\n- 培训后中招率下降：**42.3%**\n\n### 薄弱知识点\n1. 邮件头信息识别（错误率61%）\n2. 短链接安全判断（错误率48%）\n3. 附件安全检查（错误率35%）\n\n已为您生成针对性题库草稿，请审核：',draft:{title:'AI生成题库：邮件头识别专项',content:'1. 以下哪项邮件头字段可用于验证发件人身份？\nA. Subject  B. X-Powered-By  C. Received-SPF  D. Date\n答案：C\n\n2. DKIM签名验证失败说明什么？\nA. 邮件被篡改  B. 发件人未认证  C. 服务器宕机  D. 以上都对\n答案：A',actions:true}},
+      '数据报表':{text:'**当前页面：数据报表**\n\n跨演练趋势分析：\n\n### 中招率变化趋势\n- 2026 Q1平均中招率：**24.5%**\n- 2026 Q2平均中招率：**21.2%**\n- 2026 Q3平均中招率：**18.5%**\n\n**整体下降趋势明显**，季度环比下降约14%。\n\n### 最有效改进场景\n- 系统升级类：中招率从31%→18%（下降42%）\n- 财务类：中招率从28%→22%（下降21%）\n\n### 仍需关注\n- 节假日类中招率仅下降8%，建议加强场景化培训',actions:[{label:'导出分析报告'},{label:'生成趋势图表'},{label:'生成改进方案'}]},
+      '邮件举报':{text:'**当前页面：邮件举报**\n\n举报数据分析：\n\n- 本月举报总数：**186次**\n- 演练邮件举报：**142次**（76.3%）\n- 真实钓鱼举报：**32次**（17.2%）\n- 误报：**12次**（6.5%）\n\n### 举报响应时间\n- 平均响应：**4.2分钟**（优秀）\n- 最快：**47秒**\n- 最慢：**23分钟**\n\n举报率持续提升，说明员工安全意识在增强。建议对Top举报者给予积分奖励。',actions:[{label:'查看积分排行'},{label:'生成举报报告'}]},
+      '系统设置':{text:'**当前页面：系统设置**\n\n系统安全配置检查：\n\n### 检查结果\n- 两步验证：✅ 已启用\n- 密码策略：✅ 满足复杂度要求\n- IP白名单：✅ 已配置12个IP\n- 数据加密：✅ 已启用\n- 审计模式：✅ 已启用\n\n### 建议优化\n- ⚠️ 会话超时设置为60分钟，建议缩短至30分钟\n- ⚠️ 数据留存期限为1年，建议根据合规要求调整为2年\n- 💡 建议启用SIEM推送，实现实时告警',actions:[{label:'应用安全建议'}]},
+      '智能助手':{text:'**当前页面：智能助手**\n\nAI能力使用统计：\n\n- 本月API调用：**3,420次**\n- Token消耗：**2.1M**\n- 费用预估：**¥186**\n\n### 各功能使用占比\n1. AI对话助手：48%\n2. 智能分析报告：28%\n3. AI模板生成：18%\n4. 培训推荐：6%\n\n所有AI生成内容均已进入审核队列，确保安全合规。',actions:[{label:'查看审核队列'},{label:'优化AI配置'}]},
+      'API开放平台':{text:'**当前页面：API开放平台**\n\nAPI调用分析：\n\n- 本月总调用：**12,580次**\n- 成功率：**99.2%**\n- 平均响应：**128ms**\n\n### Top 3 调用API\n1. `POST /api/v1/drills` — 4,200次\n2. `GET /api/v1/reports/drills/{id}` — 3,150次\n3. `GET /api/v1/users/risk` — 2,830次\n\n### 异常调用\n- ⚠️ AppID `app_xxxx` 在凌晨3点有异常高频调用，建议检查\n- ⚠️ 2次401认证失败来自IP `10.12.34.56`',actions:[{label:'查看异常日志'},{label:'设置调用限制'}]}
+    };
+    if(text.indexOf('报告')>-1||text.indexOf('分析')>-1){return pageResponses[pageContext]||pageResponses['数据概览'];}
+    if(text.indexOf('生成')>-1||text.indexOf('模板')>-1||text.indexOf('创建')>-1){return pageResponses[pageContext]||pageResponses['素材模板'];}
+    if(text.indexOf('风险')>-1||text.indexOf('高危')>-1){return pageResponses[pageContext]||pageResponses['用户和组'];}
+    return pageResponses[pageContext]||{text:'我是您的AI Copilot助手。当前页面上下文：**'+pageContext+'**。\n\n我可以帮您：\n- 分析当前页面数据\n- 生成报告和建议\n- 创建模板和课程\n- 风险评估和预警\n\n请问有什么可以帮您的？',actions:[]};
+  }
+  function confirmDraft(btn){var card=btn.closest('.copilot-review-card');var badge=card.querySelector('.copilot-review-badge');badge.className='copilot-review-badge confirmed';badge.textContent='已确认入库';var actions=card.querySelector('.copilot-review-actions');actions.innerHTML='<span style="font-size:11px;color:#1D9E75">✓ 审核通过 · 操作人：张管理 · '+new Date().toLocaleString()+'</span>';showToast('草稿已确认入库，审核记录已写入审计日志','success');draftBanner.style.display='none';}
+  function discardDraft(btn){var card=btn.closest('.copilot-review-card');card.style.opacity='0.5';card.querySelector('.copilot-review-actions').innerHTML='<span style="font-size:11px;color:#8c8c8c">已丢弃</span>';showToast('草稿已丢弃','info');}
+  return{open:open,close:close,switchSession:switchSession,newSession:newSession,quickAsk:quickAsk,onKeydown:onKeydown,autoResize:autoResize,send:send,confirmDraft:confirmDraft,discardDraft:discardDraft};
+})();
+</script>

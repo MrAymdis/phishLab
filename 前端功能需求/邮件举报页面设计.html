@@ -1,0 +1,1467 @@
+<h2 class="sr-only">钓鱼演练平台邮件举报页面，包含举报中心列表、举报详情、插件管理与API配置、举报奖励机制</h2>
+<style>
+  :root{
+    --color-background-primary:#ffffff;
+    --color-background-secondary:#f5f5f5;
+    --color-background-tertiary:#eeeeee;
+    --color-background-info:rgba(55,138,221,0.1);
+    --color-text-primary:#1a1a1a;
+    --color-text-secondary:#595959;
+    --color-text-tertiary:#8c8c8c;
+    --color-text-info:#378ADD;
+    --color-text-success:#1D9E75;
+    --color-border-tertiary:#e8e8e8;
+    --color-border-info:#378ADD;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  /* 基础组件 */
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer;position:relative;overflow:hidden}
+  .nav-item::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.2s ease}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item:hover::before{transform:scaleY(1)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .nav-item.active::before{transform:scaleY(1)}
+  .nav-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+  .card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:12px;padding:14px 16px;transition:all 0.3s ease;border-top:3px solid transparent}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-1px)}
+  .card-blue{border-top-color:#378ADD;background:linear-gradient(180deg,rgba(55,138,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-green{border-top-color:#1D9E75;background:linear-gradient(180deg,rgba(29,158,117,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-orange{border-top-color:#D85A30;background:linear-gradient(180deg,rgba(216,90,48,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-purple{border-top-color:#7F77DD;background:linear-gradient(180deg,rgba(127,119,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-red{border-top-color:#A32D2D;background:linear-gradient(180deg,rgba(163,45,45,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-teal{border-top-color:#0D9488;background:linear-gradient(180deg,rgba(13,148,136,0.03) 0%,var(--color-background-primary) 30%)}
+
+  .card-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0 0 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;flex-shrink:0;margin-right:8px}
+
+  .tab{padding:3px 10px;font-size:11px;border:0.5px solid #d1d5db;border-radius:6px;color:var(--color-text-secondary);background:transparent;cursor:pointer;transition:all 0.2s ease}
+  .tab:hover{background:var(--color-background-secondary)}
+  .tab:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.1)}
+  .tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2);transform:translateY(1px)}
+  .tab-panel{display:none}
+  .tab-panel.active{display:block;animation:fadeIn 0.25s ease}
+
+  .badge{padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;white-space:nowrap}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .live-dot{animation:pulse 2s infinite}
+  .bar-track{background:var(--color-background-tertiary);border-radius:4px;height:6px;overflow:hidden;flex:1;position:relative}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+
+  /* 顶部栏 */
+  .top-bar{height:52px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+  .logo-area{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#1D9E75 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;font-size:12px}
+  .logo-text{font-size:15px;font-weight:600;color:var(--color-text-primary)}
+  .search-box{display:flex;align-items:center;background:var(--color-background-secondary);border-radius:6px;padding:6px 12px;width:280px;transition:all 0.2s ease}
+  .search-box:focus-within{background:var(--color-background-tertiary);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .search-input{border:none;outline:none;background:transparent;font-size:12px;color:var(--color-text-primary);width:100%;margin-left:6px}
+  .user-area{display:flex;align-items:center;gap:16px}
+  .notification-icon{position:relative;cursor:pointer;transition:all 0.2s ease}
+  .notification-icon:hover{color:var(--color-text-info)}
+  .notification-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#D85A30;border-radius:50%;font-size:10px;color:white;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .user-info{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.2s ease}
+  .user-info:hover{background:var(--color-background-secondary)}
+  .user-avatar{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500}
+  .user-name{font-size:12px;color:var(--color-text-primary)}
+
+  /* 侧边栏 */
+  .sidebar{width:144px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px 8px;display:flex;flex-direction:column;height:calc(100vh - 52px);position:sticky;top:52px}
+  .sidebar-header{padding:0 8px;margin:0 0 18px 0;display:flex;align-items:center;gap:6px}
+  .sidebar-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+
+  /* KPI统计卡片 */
+  .stat-card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:8px;padding:14px;transition:all 0.3s ease;cursor:pointer;position:relative;overflow:hidden}
+  .stat-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-2px)}
+  .stat-card.active{border-color:var(--color-text-info);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .stat-label{font-size:11px;color:var(--color-text-secondary);margin:0 0 6px 0}
+  .stat-value{font-size:24px;font-weight:500;color:var(--color-text-primary);margin:0;line-height:1.2}
+  .stat-delta{font-size:11px;margin:6px 0 0 0;font-weight:500}
+
+  /* 按钮 */
+  .btn{padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;transition:all 0.2s ease;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+  .btn-primary{background:#378ADD;color:white}
+  .btn-primary:hover{background:#2d75bf}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-default{background:var(--color-background-secondary);color:var(--color-text-primary);border:1px solid #d1d5db}
+  .btn-default:hover{background:var(--color-background-tertiary)}
+  .btn-success{background:#1D9E75;color:white}
+  .btn-success:hover{background:#177e5e}
+  .btn-warning{background:#EF9F27;color:white}
+  .btn-warning:hover{background:#d48920}
+  .btn-danger{background:#D85A30;color:white}
+  .btn-danger:hover{background:#b94920}
+  .btn-sm{padding:4px 8px;font-size:11px}
+  .btn-link{background:transparent;color:#378ADD;padding:2px 4px;border:none;cursor:pointer;font-size:12px}
+  .btn-link:hover{text-decoration:underline}
+
+  /* 表格 */
+  .data-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  .data-table thead tr{background:var(--color-background-secondary)}
+  .data-table th{text-align:left;padding:10px 12px;font-weight:500;color:var(--color-text-secondary);font-size:11px;border-bottom:1px solid #d1d5db}
+  .data-table td{padding:12px;border-bottom:0.5px solid #e5e7eb;color:var(--color-text-primary);vertical-align:middle}
+  .data-table tbody tr:hover{background:rgba(55,138,221,0.03);cursor:pointer}
+  .data-table tbody tr.selected{background:rgba(55,138,221,0.08)}
+  .row-check{width:16px;height:16px;accent-color:#378ADD;cursor:pointer}
+
+  /* 筛选标签 */
+  .filter-tag{padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;transition:all 0.2s ease;border:1px solid transparent;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+  .filter-tag:hover{background:var(--color-background-tertiary)}
+  .filter-tag.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .filter-tag .count{margin-left:4px;opacity:0.8;font-weight:500}
+
+  /* 分页 */
+  .pagination{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+  .page-btn{min-width:28px;height:28px;padding:0 8px;border-radius:6px;border:1px solid #d1d5db;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all 0.2s ease}
+  .page-btn:hover:not(:disabled){background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .page-btn.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .page-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* 表单 */
+  .form-group{margin-bottom:18px}
+  .form-label{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px;display:block}
+  .form-label .required{color:#D85A30;margin-left:2px}
+  .form-input{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:var(--color-text-primary);background:var(--color-background-primary);transition:all 0.2s ease;box-sizing:border-box}
+  .form-input:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .form-input:read-only{background:var(--color-background-secondary);color:var(--color-text-secondary);cursor:not-allowed}
+  .form-textarea{resize:vertical;min-height:80px;font-family:inherit}
+  .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+  .form-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+  /* 开关 */
+  .switch{position:relative;display:inline-block;width:38px;height:20px;flex-shrink:0}
+  .switch input{opacity:0;width:0;height:0}
+  .slider{position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:20px;transition:0.3s}
+  .slider::before{content:'';position:absolute;height:14px;width:14px;left:3px;bottom:3px;background:white;border-radius:50%;transition:0.3s}
+  .switch input:checked + .slider{background:#1D9E75}
+  .switch input:checked + .slider::before{transform:translateX(18px)}
+
+  /* 模态框 */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;animation:fadeIn 0.2s ease}
+  .modal{background:var(--color-background-primary);border-radius:12px;max-width:1100px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:modalIn 0.25s ease}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;flex-shrink:0}
+  .modal-title{font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0}
+  .modal-close{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary);transition:all 0.2s ease}
+  .modal-close:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .modal-body{padding:20px;overflow-y:auto;flex:1}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e5e7eb;background:var(--color-background-secondary);flex-shrink:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes modalIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+
+  /* Toast提示 */
+  .toast-container{position:fixed;top:70px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:8px;font-size:12px;color:white;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn 0.3s ease}
+  .toast-success{background:#1D9E75}
+  .toast-error{background:#D85A30}
+  .toast-info{background:#378ADD}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+  /* 邮件预览 */
+  .email-preview{border:1px solid #d1d5db;border-radius:8px;overflow:hidden;background:var(--color-background-primary)}
+  .email-preview-head{background:var(--color-background-secondary);padding:12px 14px;border-bottom:1px solid #e5e7eb;font-size:12px}
+  .email-preview-body{padding:14px;font-size:12px;color:var(--color-text-primary);line-height:1.7}
+
+  /* 邮件头折叠 */
+  .header-row{display:flex;gap:8px;padding:6px 0;font-size:11px;border-bottom:0.5px solid #f0f0f0}
+  .header-key{width:120px;color:var(--color-text-tertiary);flex-shrink:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .header-val{color:var(--color-text-secondary);word-break:break-all;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* 排行榜行 */
+  .rank-row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;transition:background 0.2s ease}
+  .rank-row:hover{background:var(--color-background-secondary)}
+  .rank-num{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0;background:var(--color-background-tertiary);color:var(--color-text-secondary)}
+  .rank-num.top1{background:#EF9F27;color:white}
+  .rank-num.top2{background:#8c8c8c;color:white}
+  .rank-num.top3{background:#D85A30;color:white}
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+
+  @keyframes fadeIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+/* ===== Copilot 侧边栏 ===== */
+.copilot-fab{position:fixed;right:24px;bottom:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(55,138,221,0.35);z-index:9998;transition:all .3s ease}
+.copilot-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(55,138,221,0.45)}
+.copilot-fab svg{width:22px;height:22px}
+.copilot-fab .fab-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid #378ADD;animation:copilotPulse 2s ease-out infinite;opacity:0}
+@keyframes copilotPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.copilot-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9998;opacity:0;visibility:hidden;transition:all .3s}
+.copilot-overlay.show{opacity:1;visibility:visible}
+.copilot-drawer{position:fixed;top:0;right:-420px;width:400px;height:100vh;background:var(--color-background-primary,#fff);box-shadow:-4px 0 24px rgba(0,0,0,0.1);z-index:9999;display:flex;flex-direction:column;transition:right .35s cubic-bezier(.4,0,.2,1)}
+.copilot-drawer.open{right:0}
+.copilot-header{padding:14px 18px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.copilot-header-left{display:flex;align-items:center;gap:10px}
+.copilot-header-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center}
+.copilot-header-icon svg{width:18px;height:18px}
+.copilot-header-title{font-size:15px;font-weight:600}
+.copilot-header-sub{font-size:11px;opacity:.85;margin-top:2px}
+.copilot-close{background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;transition:opacity .2s}
+.copilot-close:hover{opacity:1}
+.copilot-close svg{width:18px;height:18px}
+.copilot-sessions{padding:8px 12px;border-bottom:1px solid #e8e8e8;display:flex;gap:6px;align-items:center;flex-shrink:0;overflow-x:auto}
+.copilot-session-btn{padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;transition:all .2s}
+.copilot-session-btn:hover{border-color:#378ADD;color:#378ADD}
+.copilot-session-btn.active{background:rgba(55,138,221,0.1);border-color:#378ADD;color:#378ADD}
+.copilot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.copilot-msg{display:flex;gap:10px;max-width:92%}
+.copilot-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.copilot-msg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+.copilot-msg.ai .copilot-msg-avatar{background:linear-gradient(135deg,#378ADD,#7F77DD)}
+.copilot-msg.user .copilot-msg-avatar{background:#8c8c8c}
+.copilot-msg-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word}
+.copilot-msg.ai .copilot-msg-bubble{background:#f5f5f5;color:#1a1a1a;border-top-left-radius:4px}
+.copilot-msg.user .copilot-msg-bubble{background:#378ADD;color:#fff;border-top-right-radius:4px}
+.copilot-msg-bubble h4{margin:8px 0 4px;font-size:13px}
+.copilot-msg-bubble ul,.copilot-msg-bubble ol{margin:4px 0;padding-left:18px}
+.copilot-msg-bubble li{margin:2px 0}
+.copilot-msg-bubble table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.copilot-msg-bubble th,.copilot-msg-bubble td{border:1px solid #d8d8d8;padding:4px 8px;text-align:left}
+.copilot-msg-bubble th{background:#e8e8e8}
+.copilot-msg-bubble strong{font-weight:600}
+.copilot-msg-bubble code{background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:12px}
+.copilot-msg-actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.copilot-action-btn{padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #378ADD;background:rgba(55,138,221,0.06);color:#378ADD;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.copilot-action-btn:hover{background:#378ADD;color:#fff}
+.copilot-action-btn svg{width:12px;height:12px}
+.copilot-typing{display:inline-flex;gap:3px;align-items:center;padding:4px 0}
+.copilot-typing span{width:6px;height:6px;border-radius:50%;background:#8c8c8c;animation:copilotTyping 1.4s infinite}
+.copilot-typing span:nth-child(2){animation-delay:.2s}
+.copilot-typing span:nth-child(3){animation-delay:.4s}
+@keyframes copilotTyping{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.copilot-context-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.15);font-size:11px;margin-top:4px}
+.copilot-context-badge svg{width:10px;height:10px}
+.copilot-input-area{padding:12px 16px;border-top:1px solid #e8e8e8;flex-shrink:0}
+.copilot-quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.copilot-quick-tag{padding:3px 8px;border-radius:12px;font-size:11px;background:#f0f5ff;color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.copilot-quick-tag:hover{background:#378ADD;color:#fff}
+.copilot-input-wrap{display:flex;gap:8px;align-items:flex-end}
+.copilot-input{flex:1;border:1px solid #d8d8d8;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;max-height:100px;min-height:38px;outline:none;transition:border-color .2s;line-height:1.5}
+.copilot-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.copilot-send{width:38px;height:38px;border-radius:10px;background:#378ADD;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.copilot-send:hover{background:#2979c9}
+.copilot-send:disabled{background:#ccc;cursor:not-allowed}
+.copilot-send svg{width:16px;height:16px}
+.copilot-draft-banner{padding:6px 12px;background:rgba(239,159,39,0.1);border-top:1px solid rgba(239,159,39,0.3);font-size:11px;color:#9a6800;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.copilot-draft-banner svg{width:12px;height:12px;flex-shrink:0}
+.copilot-empty{text-align:center;padding:40px 20px;color:#8c8c8c}
+.copilot-empty svg{width:40px;height:40px;margin-bottom:12px;opacity:.4}
+.copilot-empty h4{font-size:14px;margin-bottom:6px;color:#595959}
+.copilot-empty p{font-size:12px;line-height:1.6}
+.copilot-review-card{border:1px solid #e8e8e8;border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copilot-review-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.copilot-review-card-title{font-size:12px;font-weight:600;color:#1a1a1a}
+.copilot-review-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.copilot-review-badge.draft{background:rgba(239,159,39,0.15);color:#9a6800}
+.copilot-review-badge.confirmed{background:rgba(29,158,117,0.15);color:#1D9E75}
+.copilot-review-content{font-size:12px;color:#595959;line-height:1.6;padding:8px;background:#f9f9f9;border-radius:6px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+.copilot-review-actions{display:flex;gap:6px}
+.copilot-review-btn{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;transition:all .2s}
+.copilot-review-btn.preview{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.06)}
+.copilot-review-btn.preview:hover{background:#378ADD;color:#fff}
+.copilot-review-btn.confirm{border-color:#1D9E75;color:#1D9E75;background:rgba(29,158,117,0.06)}
+.copilot-review-btn.confirm:hover{background:#1D9E75;color:#fff}
+.copilot-review-btn.discard{border-color:#8c8c8c;color:#8c8c8c;background:transparent}
+.copilot-review-btn.discard:hover{background:#8c8c8c;color:#fff}
+.copilot-error{padding:8px 12px;background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:8px;font-size:12px;color:#A32D2D;display:flex;align-items:center;gap:8px}
+.copilot-error-retry{margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;border:1px solid #A32D2D;color:#A32D2D;cursor:pointer;background:transparent}
+.copilot-error-retry:hover{background:#A32D2D;color:#fff}
+</style>
+
+<div style="display:flex;flex-direction:column;font-family:var(--font-sans);min-height:560px;">
+  <!-- 顶部栏 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <div class="logo-icon">鱼</div>
+      <span class="logo-text">钓鱼演练平台</span>
+    </div>
+    <div class="user-area">
+      <div class="notification-icon" style="color:var(--color-text-secondary)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notification-badge">3</div>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar">张</div>
+        <span class="user-name">张管理</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;">
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+        </svg>
+        <span class="sidebar-title">导航菜单</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        数据概览
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        演练管理
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+        </div>
+        素材模板
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </div>
+        发送配置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        用户和组
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        </div>
+        安全培训
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </div>
+        数据报表
+      </div>
+      <div class="nav-item active">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+        </div>
+        邮件举报
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        系统设置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"></path>
+          </svg>
+        </div>
+        智能助手
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        API开放平台
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div style="flex:1;padding:14px 18px;min-width:0;overflow-y:auto;">
+      <!-- 标题 + Tab -->
+      <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:16px;font-weight:600;color:var(--color-text-primary);">邮件举报</span>
+        </div>
+        <div style="display:flex;gap:8px;" id="tab-bar">
+          <button class="tab active" data-tab="center">举报中心</button>
+          <button class="tab" data-tab="plugin">举报插件管理</button>
+        </div>
+      </div>
+
+      <!-- ============ Tab 1: 举报中心 ============ -->
+      <div class="tab-panel active" id="panel-center">
+        <!-- 面包屑 -->
+        <div style="margin-bottom:14px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">邮件举报 / 举报中心</span>
+        </div>
+
+        <!-- 统计卡片行 -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px;">
+          <div class="stat-card" data-stat="all">
+            <p class="stat-label">本月举报总数</p>
+            <p class="stat-value">486</p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↑ 18.2% 较上月</p>
+          </div>
+          <div class="stat-card" data-stat="drill">
+            <p class="stat-label">演练邮件举报数</p>
+            <p class="stat-value" style="color:#378ADD;">312</p>
+            <p class="stat-delta" style="color:var(--color-text-secondary);">演练识别率 64.2%</p>
+          </div>
+          <div class="stat-card" data-stat="real">
+            <p class="stat-label">真实钓鱼举报数</p>
+            <p class="stat-value" style="color:#A32D2D;">98</p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↑ 23 真实威胁</p>
+          </div>
+          <div class="stat-card" data-stat="false">
+            <p class="stat-label">误报数</p>
+            <p class="stat-value" style="color:#6b7280;">76</p>
+            <p class="stat-delta" style="color:var(--color-text-tertiary);">误报率 15.6%</p>
+          </div>
+          <div class="stat-card" data-stat="rate">
+            <p class="stat-label">举报率</p>
+            <p class="stat-value" style="color:#1D9E75;">22.3%</p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↑ 1.8% 较上月</p>
+          </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-top:none;">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <!-- 分类筛选 -->
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="filter-tag active" data-status="all">全部<span class="count">486</span></span>
+              <span class="filter-tag" data-status="drill">演练邮件<span class="count">312</span></span>
+              <span class="filter-tag" data-status="real">真实钓鱼<span class="count">98</span></span>
+              <span class="filter-tag" data-status="false">误报<span class="count">76</span></span>
+            </div>
+
+            <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+              <!-- 时间筛选 -->
+              <select class="form-input form-select" style="width:120px;" id="filter-time">
+                <option value="7">近7天</option>
+                <option value="30" selected>本月</option>
+                <option value="90">本季度</option>
+              </select>
+
+              <!-- 搜索框 -->
+              <div class="search-box" style="width:220px;padding:5px 10px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" class="search-input" placeholder="搜索举报人/邮件主题..." id="filter-search">
+              </div>
+
+              <button class="btn btn-default" id="btn-export">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                导出报表
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 举报列表表格 -->
+        <div class="card" style="padding:0;border-top:3px solid #378ADD;overflow:hidden;">
+          <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <input type="checkbox" class="row-check" id="check-all">
+              <span style="font-size:12px;color:var(--color-text-secondary);" id="selected-info">共 486 条</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-size:11px;color:var(--color-text-tertiary);">每页</span>
+              <select class="form-input form-select" style="width:70px;padding:4px 8px;" id="page-size">
+                <option selected>10</option><option>20</option><option>50</option>
+              </select>
+              <span style="font-size:11px;color:var(--color-text-tertiary);">条</span>
+            </div>
+          </div>
+
+          <table class="data-table" id="report-table">
+            <thead>
+              <tr>
+                <th style="width:40px;"><input type="checkbox" class="row-check"></th>
+                <th style="width:13%;">举报时间</th>
+                <th style="width:14%;">举报人</th>
+                <th style="width:20%;">邮件主题</th>
+                <th style="width:14%;">发件人地址</th>
+                <th style="width:9%;">分类结果</th>
+                <th style="width:8%;">响应时间</th>
+                <th style="width:8%;">处理状态</th>
+                <th style="width:14%;text-align:right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="report-tbody">
+            </tbody>
+          </table>
+
+          <!-- 分页 -->
+          <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e5e7eb;">
+            <span style="font-size:11px;color:var(--color-text-tertiary);" id="page-info">显示 1 - 10 条，共 486 条记录</span>
+            <div class="pagination" id="pagination"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ Tab 2: 举报插件管理 ============ -->
+      <div class="tab-panel" id="panel-plugin">
+        <!-- 面包屑 -->
+        <div style="margin-bottom:14px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">邮件举报 / 插件管理</span>
+        </div>
+
+        <!-- 插件下载与分发 -->
+        <div class="card card-blue" style="margin-bottom:16px;">
+          <p class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">插</span>插件下载与分发</span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">员工可一键安装举报插件</span>
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+            <!-- Outlook插件 -->
+            <div style="border:1px solid #d1d5db;border-radius:8px;padding:16px;display:flex;gap:14px;align-items:flex-start;background:var(--color-background-primary);">
+              <div style="width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,#378ADD 0%,#2d75bf 100%);display:flex;align-items:center;justify-content:center;color:white;flex-shrink:0;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                  <span style="font-size:14px;font-weight:500;color:var(--color-text-primary);">Outlook 插件</span>
+                  <span class="badge" style="background:rgba(55,138,221,0.15);color:#378ADD;">v2.4.1</span>
+                </div>
+                <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 8px 0;">支持 Outlook 2016/2019/365，一键举报按钮嵌入邮件工具栏</p>
+                <div style="display:flex;gap:12px;margin-bottom:12px;font-size:11px;color:var(--color-text-tertiary);">
+                  <span>📦 下载 1,286 次</span>
+                  <span>💻 Windows / Mac</span>
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button class="btn btn-primary btn-sm" data-download="outlook-win">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Windows 版下载
+                  </button>
+                  <button class="btn btn-default btn-sm" data-download="outlook-mac">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Mac 版下载
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Web邮箱扩展 -->
+            <div style="border:1px solid #d1d5db;border-radius:8px;padding:16px;display:flex;gap:14px;align-items:flex-start;background:var(--color-background-primary);">
+              <div style="width:48px;height:48px;border-radius:10px;background:linear-gradient(135deg,#1D9E75 0%,#177e5e 100%);display:flex;align-items:center;justify-content:center;color:white;flex-shrink:0;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+                  <span style="font-size:14px;font-weight:500;color:var(--color-text-primary);">Web 邮箱扩展</span>
+                  <span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;">v1.8.3</span>
+                </div>
+                <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 8px 0;">浏览器扩展，支持网页邮箱一键举报，自动提取邮件原文与头信息</p>
+                <div style="display:flex;gap:12px;margin-bottom:12px;font-size:11px;color:var(--color-text-tertiary);">
+                  <span>📦 下载 864 次</span>
+                  <span>💻 Firefox / Chrome</span>
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button class="btn btn-success btn-sm" data-download="ext-firefox">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Firefox 扩展
+                  </button>
+                  <button class="btn btn-default btn-sm" data-download="ext-chrome">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    Chrome 扩展
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- API接口配置 -->
+        <div class="card card-green" style="margin-bottom:16px;">
+          <p class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#1D9E75;">API</span>API 接口配置</span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">插件通过此接口提交举报数据</span>
+          </p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">API 端点 URL</label>
+              <input type="text" class="form-input" value="https://phish-platform.company.com/api/v1/report" readonly>
+              <p class="form-hint">端点地址固定，无需修改</p>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">API Key</label>
+              <div style="display:flex;gap:8px;">
+                <input type="password" class="form-input" id="api-key-input" value="sk-rpt-9f3a7c2e8b1d4f6a0e5c8d2b7a9f3e1c" style="flex:1;">
+                <button class="btn btn-default" id="api-key-toggle" style="flex-shrink:0;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="api-key-icon"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                  显示
+                </button>
+              </div>
+              <p class="form-hint">用于插件鉴权，请妥善保管</p>
+            </div>
+            <div class="form-group" style="margin-bottom:0;grid-column:span 2;">
+              <label class="form-label">允许的域名列表</label>
+              <div style="border:1px solid #d1d5db;border-radius:6px;padding:8px;min-height:38px;background:var(--color-background-primary);" id="domain-tags">
+                <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+                  <span class="badge" style="background:rgba(55,138,221,0.15);color:#378ADD;">@company.com ✕</span>
+                  <span class="badge" style="background:rgba(55,138,221,0.15);color:#378ADD;">@jianfa.com ✕</span>
+                  <span class="badge" style="background:rgba(55,138,221,0.15);color:#378ADD;">@mail.jianfa.com ✕</span>
+                  <input type="text" placeholder="输入域名后回车添加..." style="border:none;outline:none;font-size:12px;padding:4px;flex:1;min-width:160px;background:transparent;" id="domain-input">
+                </div>
+              </div>
+              <p class="form-hint">仅允许这些域名下的邮箱使用插件举报</p>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">Webhook 回调 URL</label>
+              <input type="text" class="form-input" value="https://soc.company.com/webhook/phish-report" placeholder="https://...">
+              <p class="form-hint">举报提交后将推送到此地址</p>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">自动分类</label>
+              <div style="display:flex;align-items:center;gap:10px;padding-top:2px;">
+                <label class="switch">
+                  <input type="checkbox" checked id="switch-autoclass">
+                  <span class="slider"></span>
+                </label>
+                <span style="font-size:12px;color:var(--color-text-secondary);">开启后系统将自动识别举报邮件类型</span>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;grid-column:span 2;">
+              <label class="form-label">举报通知推送</label>
+              <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;padding-top:2px;">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                  <label class="switch"><input type="checkbox" checked id="switch-wecom"><span class="slider"></span></label>
+                  <span style="font-size:12px;color:var(--color-text-primary);">企业微信</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                  <label class="switch"><input type="checkbox" id="switch-dingtalk"><span class="slider"></span></label>
+                  <span style="font-size:12px;color:var(--color-text-primary);">钉钉</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                  <label class="switch"><input type="checkbox" checked id="switch-feishu"><span class="slider"></span></label>
+                  <span style="font-size:12px;color:var(--color-text-primary);">飞书</span>
+                </label>
+                <span style="font-size:11px;color:var(--color-text-tertiary);">真实钓鱼举报将即时推送到所选平台</span>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:18px;padding-top:14px;border-top:1px solid #e5e7eb;">
+            <button class="btn btn-default" id="btn-test-api">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              测试连接
+            </button>
+            <button class="btn btn-primary" id="btn-save-api">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              保存配置
+            </button>
+          </div>
+        </div>
+
+        <!-- 举报奖励机制 -->
+        <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;">
+          <!-- 奖励规则 -->
+          <div class="card card-orange">
+            <p class="card-title">
+              <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#D85A30;">奖</span>举报奖励规则</span>
+              <button class="btn-link" id="btn-edit-rule">编辑规则</button>
+            </p>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th style="width:30%;">举报类型</th>
+                  <th style="width:20%;">奖励积分</th>
+                  <th>说明</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><span class="badge" style="background:rgba(55,138,221,0.15);color:#378ADD;">演练邮件</span></td>
+                  <td><span style="font-size:14px;font-weight:600;color:#EF9F27;">+5</span> 积分</td>
+                  <td style="font-size:11px;color:var(--color-text-secondary);">成功识别并举报演练钓鱼邮件</td>
+                </tr>
+                <tr>
+                  <td><span class="badge" style="background:rgba(163,45,45,0.15);color:#A32D2D;">真实钓鱼</span></td>
+                  <td><span style="font-size:14px;font-weight:600;color:#EF9F27;">+20</span> 积分</td>
+                  <td style="font-size:11px;color:var(--color-text-secondary);">举报真实钓鱼邮件，消除安全隐患</td>
+                </tr>
+                <tr>
+                  <td><span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;">首次举报</span></td>
+                  <td><span style="font-size:14px;font-weight:600;color:#EF9F27;">+10</span> 积分</td>
+                  <td style="font-size:11px;color:var(--color-text-secondary);">员工首次参与举报的额外奖励</td>
+                </tr>
+                <tr>
+                  <td><span class="badge" style="background:rgba(127,119,221,0.15);color:#7F77DD;">连续举报</span></td>
+                  <td><span style="font-size:14px;font-weight:600;color:#EF9F27;">+3</span> 积分/次</td>
+                  <td style="font-size:11px;color:var(--color-text-secondary);">连续3次正确举报，每次额外奖励</td>
+                </tr>
+              </tbody>
+            </table>
+            <p class="form-hint" style="margin-top:12px;">💡 积分可用于兑换安全培训课程或年度安全卫士评选，季度清零</p>
+          </div>
+
+          <!-- 积分排行榜 -->
+          <div class="card card-purple">
+            <p class="card-title">
+              <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#7F77DD;">榜</span>举报积分排行 TOP10</span>
+              <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">本月</span>
+            </p>
+            <div id="rank-list">
+              <div class="rank-row">
+                <div class="rank-num top1">1</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">王晓彤</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">财务部 · 举报 28 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">386</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num top2">2</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">李建国</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">研发中心 · 举报 24 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">342</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num top3">3</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">陈思雨</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">市场部 · 举报 22 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">298</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num">4</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">张伟</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">人力资源部 · 举报 19 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">256</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num">5</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">刘芳</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">采购部 · 举报 17 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">228</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num">6</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">赵磊</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">研发中心 · 举报 16 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">210</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num">7</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">孙静</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">财务部 · 举报 15 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">195</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num">8</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">周明</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">运营部 · 举报 14 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">182</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num">9</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">吴婷婷</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">市场部 · 举报 13 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">168</span>
+              </div>
+              <div class="rank-row">
+                <div class="rank-num">10</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">郑浩</div>
+                  <div style="font-size:10px;color:var(--color-text-tertiary);">法务部 · 举报 12 次</div>
+                </div>
+                <span style="font-size:13px;font-weight:600;color:#EF9F27;">154</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 举报详情模态框 -->
+<div class="modal-overlay" id="detail-modal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title" style="display:flex;align-items:center;gap:10px;">
+        举报详情
+        <span class="badge" id="detail-cat-badge" style="background:rgba(55,138,221,0.15);color:#378ADD;">演练邮件</span>
+      </h3>
+      <button class="modal-close" id="detail-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- 举报人信息 -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;">
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:12px;">
+          <p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 4px 0;">举报人</p>
+          <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0;">王晓彤</p>
+        </div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:12px;">
+          <p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 4px 0;">部门</p>
+          <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0;">财务部</p>
+        </div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:12px;">
+          <p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 4px 0;">举报时间</p>
+          <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0;">2026-08-15 10:32</p>
+        </div>
+        <div style="background:var(--color-background-secondary);border-radius:8px;padding:12px;">
+          <p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 4px 0;">响应时间</p>
+          <p style="font-size:13px;font-weight:500;color:#1D9E75;margin:0;">4 分 12 秒</p>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;">
+        <!-- 邮件原文预览 -->
+        <div>
+          <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0 0 10px 0;">邮件原文预览</p>
+          <div class="email-preview">
+            <div class="email-preview-head">
+              <div style="display:flex;margin-bottom:6px;"><span style="width:50px;color:var(--color-text-tertiary);">发件人:</span><span style="color:var(--color-text-primary);">财务通知 &lt;finance-notice@jianfa-pay.com&gt;</span></div>
+              <div style="display:flex;margin-bottom:6px;"><span style="width:50px;color:var(--color-text-tertiary);">收件人:</span><span style="color:var(--color-text-primary);">王晓彤 &lt;xiaotong.wang@company.com&gt;</span></div>
+              <div style="display:flex;"><span style="width:50px;color:var(--color-text-tertiary);">主&nbsp;&nbsp;题:</span><span style="color:var(--color-text-primary);font-weight:500;">【紧急】8月工资发放异常，请尽快核对银行账户信息</span></div>
+            </div>
+            <div class="email-preview-body">
+              <p style="margin:0 0 10px 0;">尊敬的员工您好：</p>
+              <p style="margin:0 0 10px 0;">系统检测到您 8 月份的工资发放出现异常，银行卡信息可能存在错误。为避免影响本月薪资到账，请<span style="color:#D85A30;font-weight:500;">立即点击下方链接</span>核对并更新您的银行账户信息。</p>
+              <p style="margin:0 0 10px 0;color:#378ADD;text-decoration:underline;word-break:break-all;">http://jianfa-pay.com/verify-account?id=8a7c...</p>
+              <p style="margin:0 0 10px 0;">如未在 24 小时内完成核对，薪资将顺延至下月发放。如有疑问请联系财务部。</p>
+              <p style="margin:0;color:var(--color-text-tertiary);font-size:11px;">—— 财务部通知系统</p>
+            </div>
+          </div>
+
+          <!-- 附件列表 -->
+          <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:16px 0 10px 0;">附件列表</p>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #d1d5db;border-radius:6px;">
+              <div style="width:30px;height:30px;border-radius:6px;background:rgba(216,90,48,0.1);display:flex;align-items:center;justify-content:center;color:#D85A30;flex-shrink:0;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <p style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin:0;">工资核对表.xlsx</p>
+                <p style="font-size:10px;color:var(--color-text-tertiary);margin:2px 0 0 0;">48 KB · 含可疑宏脚本</p>
+              </div>
+              <span class="badge" style="background:rgba(216,90,48,0.15);color:#D85A30;">⚠ 高风险</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;padding:10px;border:1px solid #d1d5db;border-radius:6px;">
+              <div style="width:30px;height:30px;border-radius:6px;background:rgba(107,114,128,0.1);display:flex;align-items:center;justify-content:center;color:#6b7280;flex-shrink:0;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+              </div>
+              <div style="flex:1;min-width:0;">
+                <p style="font-size:12px;font-weight:500;color:var(--color-text-primary);margin:0;">银行信息更新说明.pdf</p>
+                <p style="font-size:10px;color:var(--color-text-tertiary);margin:2px 0 0 0;">126 KB</p>
+              </div>
+              <span class="badge" style="background:rgba(107,114,128,0.15);color:#6b7280;">普通</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 邮件头信息 -->
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+            <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0;">邮件头信息</p>
+            <button class="btn-link" id="toggle-headers" style="font-size:11px;">展开 ▾</button>
+          </div>
+          <div id="headers-box" style="display:none;border:1px solid #d1d5db;border-radius:8px;padding:12px;background:var(--color-background-secondary);max-height:280px;overflow-y:auto;">
+            <div class="header-row"><span class="header-key">From</span><span class="header-val">finance-notice@jianfa-pay.com</span></div>
+            <div class="header-row"><span class="header-key">To</span><span class="header-val">xiaotong.wang@company.com</span></div>
+            <div class="header-row"><span class="header-key">Subject</span><span class="header-val">=?utf-8?B?8J+UgOKAnOacqOi/kOi+veS9nOS4t+WGmeS4uuiupOS4ui4uLg==?=</span></div>
+            <div class="header-row"><span class="header-key">Received-SPF</span><span class="header-val" style="color:#A32D2D;">Fail (domain jianfa-pay.com does not designate ...)</span></div>
+            <div class="header-row"><span class="header-key">DKIM-Signature</span><span class="header-val" style="color:#A32D2D;">none (未找到有效签名)</span></div>
+            <div class="header-row"><span class="header-key">DMARC</span><span class="header-val" style="color:#A32D2D;">fail (p=reject)</span></div>
+            <div class="header-row"><span class="header-key">Return-Path</span><span class="header-val">&lt;bounce@jianfa-pay.com&gt;</span></div>
+            <div class="header-row"><span class="header-key">Received</span><span class="header-val">from [185.234.12.88] by mx.company.com</span></div>
+            <div class="header-row"><span class="header-key">Message-ID</span><span class="header-val">&lt;202608150231.88A7C@jianfa-pay.com&gt;</span></div>
+            <div class="header-row" style="border-bottom:none;"><span class="header-key">X-Spam-Status</span><span class="header-val" style="color:#A32D2D;">Yes, score=8.4 (高风险)</span></div>
+          </div>
+          <div id="headers-hint" style="font-size:11px;color:var(--color-text-tertiary);padding:8px 0;">点击"展开"查看完整邮件头，含 SPF/DKIM/DMARC 鉴权结果</div>
+
+          <!-- 安全分析 -->
+          <p style="font-size:13px;font-weight:500;color:var(--color-text-primary);margin:16px 0 10px 0;">安全分析</p>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:6px;background:rgba(163,45,45,0.06);">
+              <span style="font-size:11px;color:var(--color-text-secondary);">SPF 鉴权</span>
+              <span class="badge" style="background:rgba(163,45,45,0.15);color:#A32D2D;">失败</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:6px;background:rgba(163,45,45,0.06);">
+              <span style="font-size:11px;color:var(--color-text-secondary);">DKIM 签名</span>
+              <span class="badge" style="background:rgba(163,45,45,0.15);color:#A32D2D;">缺失</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:6px;background:rgba(216,90,48,0.06);">
+              <span style="font-size:11px;color:var(--color-text-secondary);">发件 IP 归属</span>
+              <span style="font-size:11px;color:#D85A30;font-weight:500;">境外 · 185.234.12.88</span>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-radius:6px;background:rgba(163,45,45,0.06);">
+              <span style="font-size:11px;color:var(--color-text-secondary);">链接域名</span>
+              <span class="badge" style="background:rgba(163,45,45,0.15);color:#A32D2D;">仿冒 jianfa-pay.com</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" style="flex-direction:column;align-items:stretch;gap:12px;">
+      <!-- 分类操作按钮 -->
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--color-text-secondary);margin-right:4px;">标记分类：</span>
+        <button class="btn btn-sm btn-primary" data-mark="drill">标记为演练邮件</button>
+        <button class="btn btn-sm btn-danger" data-mark="real">标记为真实钓鱼</button>
+        <button class="btn btn-sm btn-default" data-mark="false">标记为误报</button>
+        <div style="flex:1;"></div>
+        <!-- 奖励积分 -->
+        <div style="display:flex;align-items:center;gap:6px;">
+          <span style="font-size:12px;color:var(--color-text-secondary);">奖励积分：</span>
+          <input type="number" class="form-input" id="reward-input" value="5" style="width:70px;padding:4px 8px;" min="0" max="100">
+          <button class="btn btn-sm btn-warning" id="btn-reward">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+            发放
+          </button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn btn-default" id="detail-close2">关闭</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 奖励积分确认弹窗 -->
+<div class="modal-overlay" id="reward-modal" style="display:none;">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <h3 class="modal-title">发放举报奖励</h3>
+      <button class="modal-close" id="reward-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div style="text-align:center;padding:12px 0;">
+        <div style="width:56px;height:56px;border-radius:50%;background:rgba(239,159,39,0.12);display:flex;align-items:center;justify-content:center;color:#EF9F27;margin:0 auto 14px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
+        </div>
+        <p style="font-size:14px;color:var(--color-text-primary);margin:0 0 6px 0;">将向 <span style="font-weight:600;">王晓彤（财务部）</span> 发放奖励</p>
+        <p style="font-size:11px;color:var(--color-text-tertiary);margin:0 0 16px 0;">当前积分 386，发放后将成为 <span style="color:#EF9F27;font-weight:500;">391 积分</span></p>
+        <div class="form-group" style="text-align:left;margin-bottom:0;">
+          <label class="form-label">奖励积分</label>
+          <input type="number" class="form-input" id="reward-confirm-input" value="5" min="0" max="100">
+          <p class="form-hint">建议：演练邮件 +5，真实钓鱼 +20，误报 +0</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" id="reward-cancel">取消</button>
+      <button class="btn btn-warning" id="reward-confirm">确认发放</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+(function(){
+  // ========== 模拟数据 ==========
+  var catMap = {
+    drill:  { label:'演练邮件', cls:'background:rgba(55,138,221,0.15);color:#378ADD;' },
+    real:   { label:'真实钓鱼', cls:'background:rgba(163,45,45,0.15);color:#A32D2D;' },
+    false:  { label:'误报', cls:'background:rgba(107,114,128,0.15);color:#6b7280;' }
+  };
+  var statusMap = {
+    pending:  { label:'待处理', cls:'background:rgba(239,159,39,0.15);color:#EF9F27;' },
+    confirmed:{ label:'已确认', cls:'background:rgba(29,158,117,0.15);color:#1D9E75;' },
+    ignored:  { label:'已忽略', cls:'background:rgba(107,114,128,0.15);color:#6b7280;' }
+  };
+
+  var reportData = [
+    {id:1, time:'08-15 10:32', reporter:'王晓彤', dept:'财务部', subject:'【紧急】8月工资发放异常，请尽快核对银行账户信息', sender:'finance-notice@jianfa-pay.com', cat:'real', resp:'4分12秒', status:'pending'},
+    {id:2, time:'08-15 09:48', reporter:'李建国', dept:'研发中心', subject:'您的账号存在异常登录，请立即验证身份', sender:'security@company-verify.com', cat:'drill', resp:'8分05秒', status:'confirmed'},
+    {id:3, time:'08-15 09:15', reporter:'陈思雨', dept:'市场部', subject:'【系统通知】您有一条新的待审批流程', sender:'oa-system@company.com', cat:'false', resp:'1分32秒', status:'ignored'},
+    {id:4, time:'08-14 17:22', reporter:'张伟', dept:'人力资源部', subject:'关于2026年员工体检安排的通知', sender:'hr-benefit@jianfa.com', cat:'false', resp:'22分08秒', status:'ignored'},
+    {id:5, time:'08-14 16:05', reporter:'刘芳', dept:'采购部', subject:'采购订单确认 - 请核对付款信息', sender:'vendor-pay@supplier-cn.net', cat:'real', resp:'6分48秒', status:'confirmed'},
+    {id:6, time:'08-14 14:30', reporter:'赵磊', dept:'研发中心', subject:'GitHub 仓库访问权限即将到期', sender:'noreply@github-secure.com', cat:'drill', resp:'3分25秒', status:'confirmed'},
+    {id:7, time:'08-14 11:18', reporter:'孙静', dept:'财务部', subject:'发票核验通知 - 增值税专用发票', sender:'tax-invoice@china-tax.org', cat:'real', resp:'15分42秒', status:'pending'},
+    {id:8, time:'08-14 10:02', reporter:'周明', dept:'运营部', subject:'企业邮箱存储空间不足，请清理', sender:'postmaster@mail-service.com', cat:'drill', resp:'5分18秒', status:'confirmed'},
+    {id:9, time:'08-13 16:45', reporter:'吴婷婷', dept:'市场部', subject:'中秋节福利发放登记通知', sender:'welfare@jianfa-benefit.com', cat:'drill', resp:'9分30秒', status:'confirmed'},
+    {id:10, time:'08-13 15:20', reporter:'郑浩', dept:'法务部', subject:'合同文件请签收 - 紧急法务事项', sender:'legal-notice@company-legal.com', cat:'false', resp:'3分08秒', status:'ignored'},
+    {id:11, time:'08-13 14:12', reporter:'王晓彤', dept:'财务部', subject:'银行账户信息变更确认请求', sender:'bank-verify@cb-bank.cn', cat:'real', resp:'7分22秒', status:'confirmed'},
+    {id:12, time:'08-13 11:30', reporter:'李建国', dept:'研发中心', subject:'代码评审邀请 - 安全漏洞修复', sender:'codereview@dev-platform.com', cat:'drill', resp:'4分55秒', status:'confirmed'},
+    {id:13, time:'08-13 09:48', reporter:'陈思雨', dept:'市场部', subject:'客户回访满意度调查问卷', sender:'survey@customer-svc.com', cat:'false', resp:'18分12秒', status:'ignored'},
+    {id:14, time:'08-12 17:55', reporter:'张伟', dept:'人力资源部', subject:'新员工入职培训材料下载', sender:'training@jianfa-edu.com', cat:'drill', resp:'6分02秒', status:'confirmed'},
+    {id:15, time:'08-12 16:18', reporter:'刘芳', dept:'采购部', subject:'供应商资质年审提醒', sender:'audit@procure-sys.com', cat:'false', resp:'12分35秒', status:'ignored'},
+    {id:16, time:'08-12 14:40', reporter:'赵磊', dept:'研发中心', subject:'服务器证书即将过期警告', sender:'admin@infra-alert.com', cat:'real', resp:'2分48秒', status:'confirmed'},
+    {id:17, time:'08-12 11:25', reporter:'孙静', dept:'财务部', subject:'年度审计报告请查收', sender:'audit-report@jianfa.com', cat:'false', resp:'25分10秒', status:'ignored'},
+    {id:18, time:'08-12 10:08', reporter:'周明', dept:'运营部', subject:'运营数据日报 - 8月11日', sender:'data-report@ops-platform.com', cat:'drill', resp:'8分22秒', status:'confirmed'}
+  ];
+
+  // ========== Toast 提示 ==========
+  function showToast(msg, type){
+    var container = document.getElementById('toast-container');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type || 'info');
+    t.innerHTML = (type==='success'?'✓':(type==='error'?'✕':'ⓘ')) + ' <span>' + msg + '</span>';
+    container.appendChild(t);
+    setTimeout(function(){
+      t.style.transition = 'opacity 0.3s, transform 0.3s';
+      t.style.opacity = '0'; t.style.transform = 'translateX(30px)';
+      setTimeout(function(){ t.remove(); }, 300);
+    }, 2600);
+  }
+
+  // ========== Tab 切换 ==========
+  var tabBar = document.getElementById('tab-bar');
+  tabBar.addEventListener('click', function(e){
+    var btn = e.target.closest('.tab');
+    if(!btn) return;
+    var name = btn.getAttribute('data-tab');
+    document.querySelectorAll('#tab-bar .tab').forEach(function(t){ t.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+    document.getElementById('panel-' + name).classList.add('active');
+  });
+
+  // ========== 渲染举报列表 ==========
+  var currentStatus = 'all';
+  var currentPage = 1;
+  var pageSize = 10;
+  var searchKeyword = '';
+
+  function getFilteredData(){
+    return reportData.filter(function(d){
+      if(currentStatus !== 'all' && d.cat !== currentStatus) return false;
+      if(searchKeyword){
+        var kw = searchKeyword.toLowerCase();
+        if(d.reporter.toLowerCase().indexOf(kw) < 0 && d.subject.toLowerCase().indexOf(kw) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderTable(){
+    var tbody = document.getElementById('report-tbody');
+    var data = getFilteredData();
+    var total = data.length;
+    var totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if(currentPage > totalPages) currentPage = totalPages;
+    var start = (currentPage - 1) * pageSize;
+    var pageData = data.slice(start, start + pageSize);
+
+    var html = '';
+    pageData.forEach(function(d){
+      var cat = catMap[d.cat];
+      var st = statusMap[d.status];
+      var subjectDisplay = d.subject.length > 24 ? d.subject.substring(0,24) + '...' : d.subject;
+      var actions = '';
+      actions += '<button class="btn-link" data-action="detail">查看详情</button>';
+      actions += '<button class="btn-link" style="color:#1D9E75;" data-action="mark">标记分类</button>';
+      actions += '<button class="btn-link" style="color:#EF9F27;" data-action="reward">奖励积分</button>';
+
+      html += '<tr data-id="'+d.id+'">'+
+        '<td><input type="checkbox" class="row-check" onclick="event.stopPropagation()"></td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+d.time+'</td>'+
+        '<td><div style="font-weight:500;">'+d.reporter+'</div><div style="font-size:10px;color:var(--color-text-tertiary);margin-top:2px;">'+d.dept+'</div></td>'+
+        '<td><div style="font-size:11px;color:var(--color-text-primary);" title="'+d.subject+'">'+subjectDisplay+'</div></td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);word-break:break-all;">'+d.sender+'</td>'+
+        '<td><span class="badge" style="'+cat.cls+'">'+cat.label+'</span></td>'+
+        '<td style="font-size:11px;color:var(--color-text-primary);font-weight:500;">'+d.resp+'</td>'+
+        '<td><span class="badge" style="'+st.cls+'">'+st.label+'</span></td>'+
+        '<td style="text-align:right;white-space:nowrap;">'+actions+'</td>'+
+      '</tr>';
+    });
+    if(pageData.length === 0){
+      html = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--color-text-tertiary);font-size:12px;">暂无数据</td></tr>';
+    }
+    tbody.innerHTML = html;
+
+    // 更新统计
+    document.getElementById('selected-info').textContent = '共 ' + total + ' 条';
+    var endIdx = Math.min(start + pageSize, total);
+    document.getElementById('page-info').textContent = total === 0 ? '暂无记录' : ('显示 ' + (start+1) + ' - ' + endIdx + ' 条，共 ' + total + ' 条记录');
+
+    // 绑定行点击
+    tbody.querySelectorAll('tr').forEach(function(tr){
+      tr.addEventListener('click', function(e){
+        if(e.target.closest('.btn-link') || e.target.type === 'checkbox') return;
+        openDetailModal();
+      });
+    });
+
+    tbody.querySelectorAll('[data-action]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var action = btn.getAttribute('data-action');
+        if(action === 'detail'){ openDetailModal(); }
+        else if(action === 'mark'){ showToast('请在详情弹窗中标记分类', 'info'); openDetailModal(); }
+        else if(action === 'reward'){ openRewardModal(); }
+      });
+    });
+
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages){
+    var pg = document.getElementById('pagination');
+    if(!pg) return;
+    var html = '';
+    html += '<button class="page-btn" '+(currentPage===1?'disabled':'')+' onclick="window._rp('+(currentPage-1)+')">‹</button>';
+    var s = Math.max(1, currentPage - 2);
+    var e = Math.min(totalPages, s + 4);
+    if(s > 1){ html += '<button class="page-btn" onclick="window._rp(1)">1</button>'; if(s>2) html += '<button class="page-btn" disabled>...</button>'; }
+    for(var i=s;i<=e;i++){
+      html += '<button class="page-btn '+(i===currentPage?'active':'')+'" onclick="window._rp('+i+')">'+i+'</button>';
+    }
+    if(e < totalPages){ if(e<totalPages-1) html += '<button class="page-btn" disabled>...</button>'; html += '<button class="page-btn" onclick="window._rp('+totalPages+')">'+totalPages+'</button>'; }
+    html += '<button class="page-btn" '+(currentPage===totalPages?'disabled':'')+' onclick="window._rp('+(currentPage+1)+')">›</button>';
+    pg.innerHTML = html;
+  }
+  window._rp = function(p){ currentPage = p; renderTable(); };
+
+  // ========== 筛选标签 ==========
+  document.querySelectorAll('.filter-tag').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('.filter-tag').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      currentStatus = tag.getAttribute('data-status');
+      currentPage = 1;
+      renderTable();
+    });
+  });
+
+  // 顶部统计卡点击筛选
+  document.querySelectorAll('.stat-card').forEach(function(card){
+    card.addEventListener('click', function(){
+      var s = card.getAttribute('data-stat');
+      if(s === 'rate') { showToast('举报率 = 举报数 / 收到邮件总数', 'info'); return; }
+      document.querySelectorAll('.filter-tag').forEach(function(t){
+        t.classList.toggle('active', t.getAttribute('data-status') === s);
+      });
+      currentStatus = s; currentPage = 1; renderTable();
+      document.querySelectorAll('.stat-card').forEach(function(c){ c.classList.remove('active'); });
+      card.classList.add('active');
+    });
+  });
+
+  // 搜索
+  document.getElementById('filter-search').addEventListener('input', function(e){
+    searchKeyword = e.target.value;
+    currentPage = 1;
+    renderTable();
+  });
+
+  // 时间筛选
+  document.getElementById('filter-time').addEventListener('change', function(e){
+    var labels = {'7':'近7天','30':'本月','90':'本季度'};
+    showToast('已切换时间范围：' + labels[e.target.value], 'info');
+    currentPage = 1;
+    renderTable();
+  });
+
+  // 每页条数
+  document.getElementById('page-size').addEventListener('change', function(e){
+    pageSize = parseInt(e.target.value);
+    currentPage = 1;
+    renderTable();
+  });
+
+  // 全选
+  document.getElementById('check-all').addEventListener('change', function(e){
+    document.querySelectorAll('#report-tbody .row-check').forEach(function(c){
+      c.checked = e.target.checked;
+    });
+  });
+
+  // 导出
+  document.getElementById('btn-export').addEventListener('click', function(){
+    showToast('正在导出举报报表，请稍候...', 'info');
+    setTimeout(function(){ showToast('报表导出成功，共 ' + getFilteredData().length + ' 条记录', 'success'); }, 1200);
+  });
+
+  // ========== 举报详情弹窗 ==========
+  function openDetailModal(){ document.getElementById('detail-modal').style.display = 'flex'; }
+  function closeDetailModal(){ document.getElementById('detail-modal').style.display = 'none'; }
+  document.getElementById('detail-close').addEventListener('click', closeDetailModal);
+  document.getElementById('detail-close2').addEventListener('click', closeDetailModal);
+
+  // 邮件头展开
+  var headersExpanded = false;
+  document.getElementById('toggle-headers').addEventListener('click', function(){
+    headersExpanded = !headersExpanded;
+    document.getElementById('headers-box').style.display = headersExpanded ? 'block' : 'none';
+    document.getElementById('headers-hint').style.display = headersExpanded ? 'none' : 'block';
+    this.textContent = headersExpanded ? '收起 ▴' : '展开 ▾';
+  });
+
+  // 分类标记按钮
+  document.querySelectorAll('#detail-modal [data-mark]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var mark = btn.getAttribute('data-mark');
+      var labels = {drill:'演练邮件', real:'真实钓鱼', false:'误报'};
+      var colors = {drill:'background:rgba(55,138,221,0.15);color:#378ADD;', real:'background:rgba(163,45,45,0.15);color:#A32D2D;', false:'background:rgba(107,114,128,0.15);color:#6b7280;'};
+      var badge = document.getElementById('detail-cat-badge');
+      badge.textContent = labels[mark];
+      badge.setAttribute('style', colors[mark] + 'display:inline-block;white-space:nowrap;padding:2px 8px;border-radius:4px;font-size:11px;');
+      showToast('已标记为：' + labels[mark], 'success');
+    });
+  });
+
+  // 详情页奖励积分
+  document.getElementById('btn-reward').addEventListener('click', function(){
+    var val = parseInt(document.getElementById('reward-input').value) || 0;
+    if(val <= 0){ showToast('请输入有效的积分数量', 'error'); return; }
+    openRewardModal(val);
+  });
+
+  // ========== 奖励积分弹窗 ==========
+  function openRewardModal(initVal){
+    var input = document.getElementById('reward-confirm-input');
+    if(initVal !== undefined) input.value = initVal;
+    document.getElementById('reward-modal').style.display = 'flex';
+  }
+  function closeRewardModal(){ document.getElementById('reward-modal').style.display = 'none'; }
+  document.getElementById('reward-close').addEventListener('click', closeRewardModal);
+  document.getElementById('reward-cancel').addEventListener('click', closeRewardModal);
+  document.getElementById('reward-confirm').addEventListener('click', function(){
+    var val = parseInt(document.getElementById('reward-confirm-input').value) || 0;
+    if(val <= 0){ showToast('积分必须大于 0', 'error'); return; }
+    closeRewardModal();
+    showToast('已向王晓彤发放 ' + val + ' 积分奖励', 'success');
+    document.getElementById('reward-input').value = 5;
+  });
+
+  // ========== API Key 显示切换 ==========
+  var apiKeyVisible = false;
+  document.getElementById('api-key-toggle').addEventListener('click', function(){
+    apiKeyVisible = !apiKeyVisible;
+    var input = document.getElementById('api-key-input');
+    input.type = apiKeyVisible ? 'text' : 'password';
+    this.innerHTML = apiKeyVisible
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg> 隐藏'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg> 显示';
+  });
+
+  // 域名标签输入
+  var domainInput = document.getElementById('domain-input');
+  domainInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' && this.value.trim()){
+      e.preventDefault();
+      var val = this.value.trim();
+      if(val.indexOf('@') !== 0) val = '@' + val;
+      var tag = document.createElement('span');
+      tag.className = 'badge';
+      tag.setAttribute('style', 'background:rgba(55,138,221,0.15);color:#378ADD;');
+      tag.innerHTML = val + ' ✕';
+      tag.style.cursor = 'pointer';
+      tag.addEventListener('click', function(){ this.remove(); });
+      this.parentNode.insertBefore(tag, this);
+      this.value = '';
+      showToast('已添加域名：' + val, 'success');
+    }
+  });
+  // 已有标签点击删除
+  document.querySelectorAll('#domain-tags .badge').forEach(function(t){
+    t.style.cursor = 'pointer';
+    t.addEventListener('click', function(){
+      this.remove();
+      showToast('已移除域名', 'info');
+    });
+  });
+
+  // 测试连接
+  document.getElementById('btn-test-api').addEventListener('click', function(){
+    var btn = this;
+    var oldHTML = btn.innerHTML;
+    btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:pulse 1s infinite;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> 测试中...';
+    btn.disabled = true;
+    setTimeout(function(){
+      btn.innerHTML = oldHTML;
+      btn.disabled = false;
+      showToast('API 连接测试成功，响应时间 86ms', 'success');
+    }, 1500);
+  });
+
+  // 保存配置
+  document.getElementById('btn-save-api').addEventListener('click', function(){
+    showToast('API 配置已保存', 'success');
+  });
+
+  // 插件下载
+  document.querySelectorAll('[data-download]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var names = {
+        'outlook-win':'Outlook 插件 (Windows)',
+        'outlook-mac':'Outlook 插件 (Mac)',
+        'ext-firefox':'Firefox 扩展',
+        'ext-chrome':'Chrome 扩展'
+      };
+      var key = btn.getAttribute('data-download');
+      showToast('正在下载 ' + names[key] + '...', 'info');
+      setTimeout(function(){ showToast(names[key] + ' 下载完成', 'success'); }, 1200);
+    });
+  });
+
+  // 编辑规则
+  document.getElementById('btn-edit-rule').addEventListener('click', function(){
+    showToast('奖励规则编辑功能开发中', 'info');
+  });
+
+  // 点击遮罩关闭弹窗
+  [document.getElementById('detail-modal'), document.getElementById('reward-modal')].forEach(function(m){
+    if(m) m.addEventListener('click', function(e){ if(e.target === m) m.style.display = 'none'; });
+  });
+
+  // ========== 初始化 ==========
+  renderTable();
+})();
+</script>
+
+<!-- Copilot FAB -->
+<div class="copilot-fab" id="copilotFab" onclick="Copilot.open()">
+  <span class="fab-pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg>
+</div>
+<!-- Copilot Drawer -->
+<div class="copilot-overlay" id="copilotOverlay" onclick="Copilot.close()"></div>
+<div class="copilot-drawer" id="copilotDrawer" data-page="邮件举报">
+  <div class="copilot-header">
+    <div class="copilot-header-left">
+      <div class="copilot-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg></div>
+      <div>
+        <div class="copilot-header-title">AI Copilot</div>
+        <div class="copilot-header-sub" id="copilotContext">当前上下文：邮件举报</div>
+      </div>
+    </div>
+    <button class="copilot-close" onclick="Copilot.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="copilot-sessions">
+    <div class="copilot-session-btn active" onclick="Copilot.switchSession(this,'current')">当前会话</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s1')">演练分析</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s2')">模板生成</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s3')">风险报告</div>
+    <div class="copilot-session-btn" onclick="Copilot.newSession()">+ 新建</div>
+  </div>
+  <div class="copilot-messages" id="copilotMessages">
+    <div class="copilot-empty" id="copilotEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h4>AI Copilot 智能助手</h4>
+      <p>我是您的安全演练AI助手，可以帮您分析演练数据、生成模板、撰写报告等。<br/>下方快捷问题可直接点击使用。</p>
+    </div>
+  </div>
+  <div class="copilot-draft-banner" id="copilotDraftBanner" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span>AI生成内容处于草稿态，需人工确认后生效。审核记录将进入审计日志。</span>
+  </div>
+  <div class="copilot-input-area">
+    <div class="copilot-quick-tags" id="copilotQuickTags">
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">举报数据分析</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">举报响应时间</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">积分排行查询</span>
+    </div>
+    <div class="copilot-input-wrap">
+      <textarea class="copilot-input" id="copilotInput" placeholder="输入您的问题..." rows="1" onkeydown="Copilot.onKeydown(event)" oninput="Copilot.autoResize(this)"></textarea>
+      <button class="copilot-send" id="copilotSend" onclick="Copilot.send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+if(typeof showToast!=='function'){function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}}
+
+// ===== Copilot 全局AI助手 =====
+var Copilot=(function(){
+  var drawer=document.getElementById('copilotDrawer');
+  var overlay=document.getElementById('copilotOverlay');
+  var messagesEl=document.getElementById('copilotMessages');
+  var inputEl=document.getElementById('copilotInput');
+  var sendBtn=document.getElementById('copilotSend');
+  var emptyEl=document.getElementById('copilotEmpty');
+  var draftBanner=document.getElementById('copilotDraftBanner');
+  var pageContext=drawer?drawer.getAttribute('data-page'):'';
+  var isGenerating=false;
+  var messages=[];
+
+  function open(){if(!drawer)return;drawer.classList.add('open');overlay.classList.add('show');setTimeout(function(){inputEl&&inputEl.focus();},350);}
+  function close(){if(!drawer)return;drawer.classList.remove('open');overlay.classList.remove('show');}
+  function switchSession(btn,key){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');btn.classList.add('active');showToast('已切换到会话：'+btn.textContent,'info');}
+  function newSession(){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');messages=[];if(emptyEl)emptyEl.style.display='block';messagesEl.innerHTML='';messagesEl.appendChild(emptyEl);showToast('已创建新会话','info');}
+  function quickAsk(text){if(!inputEl)return;inputEl.value=text;autoResize(inputEl);send();}
+  function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+  function autoResize(el){el.style.height='38px';el.style.height=Math.min(el.scrollHeight,100)+'px';}
+  function addMessage(role,content,opts){
+    opts=opts||{};
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');msg.className='copilot-msg '+role;
+    var avatar=document.createElement('div');avatar.className='copilot-msg-avatar';avatar.textContent=role==='ai'?'AI':'我';
+    var bubble=document.createElement('div');bubble.className='copilot-msg-bubble';
+    if(role==='ai'){bubble.innerHTML=renderMarkdown(content);}else{bubble.textContent=content;}
+    msg.appendChild(avatar);msg.appendChild(bubble);
+    if(role==='ai'&&opts.showContext){var badge=document.createElement('div');badge.className='copilot-context-badge';badge.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>上下文：'+pageContext;bubble.appendChild(badge);}
+    if(role==='ai'&&opts.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';opts.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}
+    if(role==='ai'&&opts.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+opts.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+opts.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}
+    messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;return bubble;
+  }
+  function showTyping(){if(emptyEl)emptyEl.style.display='none';var msg=document.createElement('div');msg.className='copilot-msg ai';msg.id='copilotTypingMsg';msg.innerHTML='<div class="copilot-msg-avatar">AI</div><div class="copilot-msg-bubble"><div class="copilot-typing"><span></span><span></span><span></span></div></div>';messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;}
+  function hideTyping(){var t=document.getElementById('copilotTypingMsg');if(t)t.remove();}
+  function typewriter(el,text,opts){opts=opts||{};var i=0;var speed=15;el.innerHTML='';function type(){if(i<text.length){el.innerHTML=renderMarkdown(text.substring(0,i+1));i++;messagesEl.scrollTop=messagesEl.scrollHeight;setTimeout(type,speed);}else{isGenerating=false;sendBtn.disabled=false;if(opts.onComplete)opts.onComplete();}}type();}
+  function renderMarkdown(text){var html=text;html=html.replace(/```([\s\S]*?)```/g,function(m,c){return '<pre style="background:#1a1a1a;color:#0f0;padding:8px 12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:8px 0"><code>'+c.replace(/</g,'&lt;')+'</code></pre>';});html=html.replace(/`([^`]+)`/g,'<code>$1</code>');html=html.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');html=html.replace(/^### (.+)$/gm,'<h4>$1</h4>');html=html.replace(/^- (.+)$/gm,'<li>$1</li>');html=html.replace(/(<li>.*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';});html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');html=html.replace(/\n/g,'<br>');return html;}
+  function send(){if(isGenerating)return;var text=inputEl.value.trim();if(!text)return;addMessage('user',text);inputEl.value='';inputEl.style.height='38px';isGenerating=true;sendBtn.disabled=true;showTyping();setTimeout(function(){hideTyping();var response=generateResponse(text);var bubble=addMessage('ai','',{showContext:messages.length<=1});typewriter(bubble,response.text,{onComplete:function(){if(response.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';response.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}if(response.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+response.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+response.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}messagesEl.scrollTop=messagesEl.scrollHeight;}});},800);}
+  function generateResponse(text){
+    var pageResponses={
+      '数据概览':{text:'**当前页面：数据概览**\n\n根据最新数据分析：\n\n- 本月中招率 **18.5%**，较上月下降3.2%，趋势向好\n- **财务部**中招率最高（32.1%），建议优先安排培训\n- 举报率22.3%，员工安全意识在提升\n- 培训通过率86.2%，仍有提升空间\n\n### 建议措施\n1. 针对财务部开展专项钓鱼演练\n2. 推送财务类钓鱼识别培训课程\n3. 对连续中招人员启动一对一辅导',actions:[{label:'一键生成报告'},{label:'创建财务部演练'},{label:'推荐培训课程'}]},
+      '演练管理':{text:'**当前页面：演练管理**\n\n最近一次演练「Q3财务钓鱼演练」分析：\n\n| 指标 | 数值 | 评价 |\n|------|------|------|\n| 发送数 | 580 | - |\n| 打开率 | 72.3% | 偏高 |\n| 点击率 | 28.1% | 风险高 |\n| 中招率 | 18.6% | 需关注 |\n| 举报率 | 15.2% | 正常 |\n\n### 关键发现\n- **邮件主题**「紧急：财务报销确认」点击率异常高\n- 发送后2小时内集中中招，说明员工缺乏犹豫期\n- 3人重复中招（已标记为高风险）',actions:[{label:'查看详情'},{label:'生成演练报告'},{label:'标记高危人员'}]},
+      '素材模板':{text:'**当前页面：素材模板**\n\n根据历史演练数据，为您推荐模板生成方案：\n\n### 高效模板特征\n- **场景**：节假日福利领取（点击率平均34.2%）\n- **语气**：紧急+友好混合（打开率提升25%）\n- **发件人**：伪装HR部门（信任度高）\n\n已为您生成草稿模板，请审核确认后入库：',draft:{title:'AI生成模板：节假日福利领取',content:'主题：【福利】2026年中秋礼品领取通知\n发件人：HR-福利管理 <hr-welfare@company.com>\n正文：尊敬的同事，2026年中秋节礼品领取通道已开放，请点击下方链接选择您的礼品...\n预估点击率：32%',actions:true}},
+      '发送配置':{text:'**当前页面：发送配置**\n\n发送通道健康度检查：\n\n- **平台默认SMTP** — 送达率 98.2% ✅\n- **Office365 (EWS)** — 送达率 95.7% ✅\n- **阿里云短信** — 送达率 99.1% ✅\n\n### DNS记录状态\n- SPF ✅ 已配置\n- DKIM ✅ 已配置\n- DMARC ⚠️ 建议添加`p=quarantine`策略\n\n建议：为提升送达率可信度，请完善DMARC记录。',actions:[{label:'查看DMARC配置指引'}]},
+      '用户和组':{text:'**当前页面：用户和组**\n\n高风险人员分析（共86人）：\n\n### 风险分布\n- **极高危险**（风险值>80）：12人\n- **高危险**（风险值60-80）：28人\n- **中危险**（风险值40-60）：46人\n\n### Top 3 高危人员\n1. **王某某**（财务部）— 3次中招，风险值92\n2. **李某**（市场部）— 2次中招+1次误报，风险值87\n3. **张某**（行政部）— 2次中招，风险值85\n\n建议立即安排专项培训。',actions:[{label:'查看风险画像'},{label:'分配培训计划'},{label:'创建针对演练'}]},
+      '安全培训':{text:'**当前页面：安全培训**\n\n培训效果分析：\n\n- 课程完成率：**86.2%**\n- 考试通过率：**78.5%**\n- 培训后中招率下降：**42.3%**\n\n### 薄弱知识点\n1. 邮件头信息识别（错误率61%）\n2. 短链接安全判断（错误率48%）\n3. 附件安全检查（错误率35%）\n\n已为您生成针对性题库草稿，请审核：',draft:{title:'AI生成题库：邮件头识别专项',content:'1. 以下哪项邮件头字段可用于验证发件人身份？\nA. Subject  B. X-Powered-By  C. Received-SPF  D. Date\n答案：C\n\n2. DKIM签名验证失败说明什么？\nA. 邮件被篡改  B. 发件人未认证  C. 服务器宕机  D. 以上都对\n答案：A',actions:true}},
+      '数据报表':{text:'**当前页面：数据报表**\n\n跨演练趋势分析：\n\n### 中招率变化趋势\n- 2026 Q1平均中招率：**24.5%**\n- 2026 Q2平均中招率：**21.2%**\n- 2026 Q3平均中招率：**18.5%**\n\n**整体下降趋势明显**，季度环比下降约14%。\n\n### 最有效改进场景\n- 系统升级类：中招率从31%→18%（下降42%）\n- 财务类：中招率从28%→22%（下降21%）\n\n### 仍需关注\n- 节假日类中招率仅下降8%，建议加强场景化培训',actions:[{label:'导出分析报告'},{label:'生成趋势图表'},{label:'生成改进方案'}]},
+      '邮件举报':{text:'**当前页面：邮件举报**\n\n举报数据分析：\n\n- 本月举报总数：**186次**\n- 演练邮件举报：**142次**（76.3%）\n- 真实钓鱼举报：**32次**（17.2%）\n- 误报：**12次**（6.5%）\n\n### 举报响应时间\n- 平均响应：**4.2分钟**（优秀）\n- 最快：**47秒**\n- 最慢：**23分钟**\n\n举报率持续提升，说明员工安全意识在增强。建议对Top举报者给予积分奖励。',actions:[{label:'查看积分排行'},{label:'生成举报报告'}]},
+      '系统设置':{text:'**当前页面：系统设置**\n\n系统安全配置检查：\n\n### 检查结果\n- 两步验证：✅ 已启用\n- 密码策略：✅ 满足复杂度要求\n- IP白名单：✅ 已配置12个IP\n- 数据加密：✅ 已启用\n- 审计模式：✅ 已启用\n\n### 建议优化\n- ⚠️ 会话超时设置为60分钟，建议缩短至30分钟\n- ⚠️ 数据留存期限为1年，建议根据合规要求调整为2年\n- 💡 建议启用SIEM推送，实现实时告警',actions:[{label:'应用安全建议'}]},
+      '智能助手':{text:'**当前页面：智能助手**\n\nAI能力使用统计：\n\n- 本月API调用：**3,420次**\n- Token消耗：**2.1M**\n- 费用预估：**¥186**\n\n### 各功能使用占比\n1. AI对话助手：48%\n2. 智能分析报告：28%\n3. AI模板生成：18%\n4. 培训推荐：6%\n\n所有AI生成内容均已进入审核队列，确保安全合规。',actions:[{label:'查看审核队列'},{label:'优化AI配置'}]},
+      'API开放平台':{text:'**当前页面：API开放平台**\n\nAPI调用分析：\n\n- 本月总调用：**12,580次**\n- 成功率：**99.2%**\n- 平均响应：**128ms**\n\n### Top 3 调用API\n1. `POST /api/v1/drills` — 4,200次\n2. `GET /api/v1/reports/drills/{id}` — 3,150次\n3. `GET /api/v1/users/risk` — 2,830次\n\n### 异常调用\n- ⚠️ AppID `app_xxxx` 在凌晨3点有异常高频调用，建议检查\n- ⚠️ 2次401认证失败来自IP `10.12.34.56`',actions:[{label:'查看异常日志'},{label:'设置调用限制'}]}
+    };
+    if(text.indexOf('报告')>-1||text.indexOf('分析')>-1){return pageResponses[pageContext]||pageResponses['数据概览'];}
+    if(text.indexOf('生成')>-1||text.indexOf('模板')>-1||text.indexOf('创建')>-1){return pageResponses[pageContext]||pageResponses['素材模板'];}
+    if(text.indexOf('风险')>-1||text.indexOf('高危')>-1){return pageResponses[pageContext]||pageResponses['用户和组'];}
+    return pageResponses[pageContext]||{text:'我是您的AI Copilot助手。当前页面上下文：**'+pageContext+'**。\n\n我可以帮您：\n- 分析当前页面数据\n- 生成报告和建议\n- 创建模板和课程\n- 风险评估和预警\n\n请问有什么可以帮您的？',actions:[]};
+  }
+  function confirmDraft(btn){var card=btn.closest('.copilot-review-card');var badge=card.querySelector('.copilot-review-badge');badge.className='copilot-review-badge confirmed';badge.textContent='已确认入库';var actions=card.querySelector('.copilot-review-actions');actions.innerHTML='<span style="font-size:11px;color:#1D9E75">✓ 审核通过 · 操作人：张管理 · '+new Date().toLocaleString()+'</span>';showToast('草稿已确认入库，审核记录已写入审计日志','success');draftBanner.style.display='none';}
+  function discardDraft(btn){var card=btn.closest('.copilot-review-card');card.style.opacity='0.5';card.querySelector('.copilot-review-actions').innerHTML='<span style="font-size:11px;color:#8c8c8c">已丢弃</span>';showToast('草稿已丢弃','info');}
+  return{open:open,close:close,switchSession:switchSession,newSession:newSession,quickAsk:quickAsk,onKeydown:onKeydown,autoResize:autoResize,send:send,confirmDraft:confirmDraft,discardDraft:discardDraft};
+})();
+</script>

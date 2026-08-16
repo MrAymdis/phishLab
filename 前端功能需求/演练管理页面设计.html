@@ -1,0 +1,1606 @@
+<h2 class="sr-only">钓鱼演练平台演练管理页面，包含演练列表、状态筛选、搜索、发起演练向导和演练详情监控</h2>
+<style>
+  :root{
+    --color-background-primary:#ffffff;
+    --color-background-secondary:#f5f5f5;
+    --color-background-tertiary:#eeeeee;
+    --color-background-info:rgba(55,138,221,0.1);
+    --color-text-primary:#1a1a1a;
+    --color-text-secondary:#595959;
+    --color-text-tertiary:#8c8c8c;
+    --color-text-info:#378ADD;
+    --color-text-success:#1D9E75;
+    --color-border-tertiary:#e8e8e8;
+    --color-border-info:#378ADD;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  /* 基础组件 */
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer;position:relative;overflow:hidden}
+  .nav-item::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.2s ease}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item:hover::before{transform:scaleY(1)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .nav-item.active::before{transform:scaleY(1)}
+  .nav-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+  .card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:12px;padding:14px 16px;transition:all 0.3s ease;border-top:3px solid transparent}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-1px)}
+  .card-blue{border-top-color:#378ADD;background:linear-gradient(180deg,rgba(55,138,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-green{border-top-color:#1D9E75;background:linear-gradient(180deg,rgba(29,158,117,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-orange{border-top-color:#D85A30;background:linear-gradient(180deg,rgba(216,90,48,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-purple{border-top-color:#7F77DD;background:linear-gradient(180deg,rgba(127,119,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-red{border-top-color:#A32D2D;background:linear-gradient(180deg,rgba(163,45,45,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-teal{border-top-color:#0D9488;background:linear-gradient(180deg,rgba(13,148,136,0.03) 0%,var(--color-background-primary) 30%)}
+
+  .card-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0 0 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;flex-shrink:0;margin-right:8px}
+
+  .tab{padding:3px 10px;font-size:11px;border:0.5px solid #d1d5db;border-radius:6px;color:var(--color-text-secondary);background:transparent;cursor:pointer;transition:all 0.2s ease}
+  .tab:hover{background:var(--color-background-secondary)}
+  .tab:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.1)}
+  .tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2);transform:translateY(1px)}
+
+  .badge{padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;white-space:nowrap}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .live-dot{animation:pulse 2s infinite}
+  .bar-track{background:var(--color-background-tertiary);border-radius:4px;height:6px;overflow:hidden;flex:1;position:relative}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+
+  /* 顶部栏 */
+  .top-bar{height:52px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+  .logo-area{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#1D9E75 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;font-size:12px}
+  .logo-text{font-size:15px;font-weight:600;color:var(--color-text-primary)}
+  .search-box{display:flex;align-items:center;background:var(--color-background-secondary);border-radius:6px;padding:6px 12px;width:280px;transition:all 0.2s ease}
+  .search-box:focus-within{background:var(--color-background-tertiary);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .search-input{border:none;outline:none;background:transparent;font-size:12px;color:var(--color-text-primary);width:100%;margin-left:6px}
+  .user-area{display:flex;align-items:center;gap:16px}
+  .notification-icon{position:relative;cursor:pointer;transition:all 0.2s ease}
+  .notification-icon:hover{color:var(--color-text-info)}
+  .notification-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#D85A30;border-radius:50%;font-size:10px;color:white;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .user-info{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.2s ease}
+  .user-info:hover{background:var(--color-background-secondary)}
+  .user-avatar{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500}
+  .user-name{font-size:12px;color:var(--color-text-primary)}
+
+  /* 侧边栏 */
+  .sidebar{width:144px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px 8px;display:flex;flex-direction:column;height:calc(100vh - 52px);position:sticky;top:52px}
+  .sidebar-header{padding:0 8px;margin:0 0 18px 0;display:flex;align-items:center;gap:6px}
+  .sidebar-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+
+  /* KPI统计卡片 */
+  .stat-card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:8px;padding:14px;transition:all 0.3s ease;cursor:pointer;position:relative;overflow:hidden}
+  .stat-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-2px)}
+  .stat-card.active{border-color:var(--color-text-info);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .stat-label{font-size:11px;color:var(--color-text-secondary);margin:0 0 6px 0}
+  .stat-value{font-size:24px;font-weight:500;color:var(--color-text-primary);margin:0;line-height:1.2}
+  .stat-delta{font-size:11px;margin:6px 0 0 0;font-weight:500}
+
+  /* 按钮 */
+  .btn{padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;transition:all 0.2s ease;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+  .btn-primary{background:#378ADD;color:white}
+  .btn-primary:hover{background:#2d75bf}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-default{background:var(--color-background-secondary);color:var(--color-text-primary);border:1px solid #d1d5db}
+  .btn-default:hover{background:var(--color-background-tertiary)}
+  .btn-success{background:#1D9E75;color:white}
+  .btn-success:hover{background:#177e5e}
+  .btn-warning{background:#EF9F27;color:white}
+  .btn-warning:hover{background:#d48920}
+  .btn-danger{background:#D85A30;color:white}
+  .btn-danger:hover{background:#b94920}
+  .btn-sm{padding:4px 8px;font-size:11px}
+  .btn-link{background:transparent;color:#378ADD;padding:2px 4px;border:none;cursor:pointer;font-size:12px}
+  .btn-link:hover{text-decoration:underline}
+
+  /* 表格 */
+  .data-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  .data-table thead tr{background:var(--color-background-secondary)}
+  .data-table th{text-align:left;padding:10px 12px;font-weight:500;color:var(--color-text-secondary);font-size:11px;border-bottom:1px solid #d1d5db}
+  .data-table td{padding:12px;border-bottom:0.5px solid #e5e7eb;color:var(--color-text-primary);vertical-align:middle}
+  .data-table tbody tr:hover{background:rgba(55,138,221,0.03);cursor:pointer}
+  .data-table tbody tr.selected{background:rgba(55,138,221,0.08)}
+  .row-check{width:16px;height:16px;accent-color:#378ADD;cursor:pointer}
+
+  /* 筛选标签 */
+  .filter-tag{padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;transition:all 0.2s ease;border:1px solid transparent;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+  .filter-tag:hover{background:var(--color-background-tertiary)}
+  .filter-tag.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .filter-tag .count{margin-left:4px;opacity:0.8;font-weight:500}
+
+  /* 分页 */
+  .pagination{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+  .page-btn{min-width:28px;height:28px;padding:0 8px;border-radius:6px;border:1px solid #d1d5db;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all 0.2s ease}
+  .page-btn:hover:not(:disabled){background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .page-btn.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .page-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* 步骤向导 */
+  .wizard-steps{display:flex;align-items:center;gap:8px;margin-bottom:24px}
+  .step-item{display:flex;align-items:center;gap:6px;flex:1;position:relative}
+  .step-num{width:28px;height:28px;border-radius:50%;background:var(--color-background-tertiary);color:var(--color-text-secondary);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:500;flex-shrink:0;transition:all 0.3s ease}
+  .step-item.done .step-num{background:#1D9E75;color:white}
+  .step-item.active .step-num{background:#378ADD;color:white;box-shadow:0 0 0 4px rgba(55,138,221,0.15)}
+  .step-label{font-size:12px;color:var(--color-text-secondary);white-space:nowrap}
+  .step-item.active .step-label{color:var(--color-text-primary);font-weight:500}
+  .step-item.done .step-label{color:#1D9E75}
+  .step-line{flex:1;height:2px;background:var(--color-background-tertiary);margin:0 4px;transition:all 0.3s ease}
+  .step-item.done .step-line{background:#1D9E75}
+
+  /* 步骤内容卡片 */
+  .wizard-panel{border:1px solid #d1d5db;border-radius:12px;padding:24px;background:var(--color-background-primary)}
+  .wizard-footer{display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:16px;border-top:1px solid #e5e7eb}
+  .wizard-progress{font-size:11px;color:var(--color-text-tertiary)}
+
+  /* 表单 */
+  .form-group{margin-bottom:18px}
+  .form-label{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px;display:block}
+  .form-label .required{color:#D85A30;margin-left:2px}
+  .form-input{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:var(--color-text-primary);background:var(--color-background-primary);transition:all 0.2s ease;box-sizing:border-box}
+  .form-input:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .form-textarea{resize:vertical;min-height:80px;font-family:inherit}
+  .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+  .form-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+  /* 选项卡片 */
+  .option-card{border:1.5px solid #d1d5db;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-primary)}
+  .option-card:hover{border-color:#378ADD;background:rgba(55,138,221,0.03)}
+  .option-card.selected{border-color:#378ADD;background:rgba(55,138,221,0.06);box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .option-card-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .option-card-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;flex-shrink:0}
+  .option-card-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+  .option-card-desc{font-size:11px;color:var(--color-text-secondary);margin:0}
+
+  /* 模板预览 */
+  .template-card{border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-primary)}
+  .template-card:hover{border-color:#378ADD;box-shadow:0 2px 8px rgba(55,138,221,0.1)}
+  .template-card.selected{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.15)}
+  .template-preview{height:100px;background:linear-gradient(135deg,#f3f4f6 0%,#e5e7eb 100%);display:flex;align-items:center;justify-content:center;padding:12px;position:relative}
+  .template-meta{padding:10px}
+  .template-name{font-size:12px;font-weight:500;color:var(--color-text-primary);margin:0 0 4px 0}
+  .template-tag{font-size:10px;color:var(--color-text-secondary);background:var(--color-background-secondary);padding:2px 6px;border-radius:4px}
+
+  /* 时间轴 */
+  .timeline{position:relative;padding-left:24px}
+  .timeline::before{content:'';position:absolute;left:7px;top:4px;bottom:4px;width:2px;background:#e5e7eb}
+  .timeline-item{position:relative;padding-bottom:16px}
+  .timeline-item::before{content:'';position:absolute;left:-21px;top:4px;width:12px;height:12px;border-radius:50%;background:#378ADD;border:2px solid white;box-shadow:0 0 0 2px #378ADD33}
+  .timeline-item.click::before{background:#D85A30;box-shadow:0 0 0 2px rgba(216,90,48,0.2)}
+  .timeline-item.report::before{background:#1D9E75;box-shadow:0 0 0 2px rgba(29,158,117,0.2)}
+  .timeline-time{font-size:11px;color:var(--color-text-tertiary);margin-bottom:2px}
+  .timeline-user{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px}
+  .timeline-action{font-size:11px;color:var(--color-text-secondary)}
+  .timeline-meta{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+  .timeline-meta-item{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--color-text-tertiary);background:var(--color-background-secondary);padding:1px 6px;border-radius:4px}
+  .timeline-meta-item .meta-label{color:var(--color-text-tertiary);opacity:0.8}
+  .timeline-meta-item .meta-value{color:var(--color-text-secondary);font-weight:500;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* 监控卡片 */
+  .monitor-kpi{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:16px;text-align:center;border-radius:8px;background:var(--color-background-secondary)}
+  .monitor-kpi-num{font-size:28px;font-weight:600;color:var(--color-text-primary);margin:0;line-height:1}
+  .monitor-kpi-label{font-size:11px;color:var(--color-text-secondary);margin-top:6px}
+  .monitor-kpi-sub{font-size:10px;color:var(--color-text-tertiary);margin-top:2px}
+
+  /* 漏斗图 */
+  .funnel-item{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .funnel-bar{height:28px;border-radius:4px 14px 14px 4px;display:flex;align-items:center;padding:0 12px;color:white;font-size:11px;font-weight:500;transition:width 0.6s ease}
+  .funnel-label{font-size:11px;color:var(--color-text-secondary);width:70px;flex-shrink:0}
+  .funnel-value{font-size:12px;font-weight:500;color:var(--color-text-primary);width:80px;text-align:right;flex-shrink:0}
+  .funnel-rate{font-size:11px;color:var(--color-text-tertiary);width:60px;text-align:right;flex-shrink:0}
+
+  /* 预警条目 */
+  .alert-item{display:flex;align-items:flex-start;gap:10px;padding:10px;border-radius:8px;background:rgba(216,90,48,0.06);border-left:3px solid #D85A30;margin-bottom:8px}
+  .alert-icon{width:20px;height:20px;border-radius:4px;background:#D85A30;color:white;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:11px;font-weight:600}
+  .alert-content{flex:1;min-width:0}
+  .alert-title{font-size:12px;font-weight:500;color:var(--color-text-primary);margin:0 0 2px 0}
+  .alert-time{font-size:10px;color:var(--color-text-tertiary)}
+
+  /* 模态框 */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;animation:fadeIn 0.2s ease}
+  .modal{background:var(--color-background-primary);border-radius:12px;max-width:1100px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:modalIn 0.25s ease}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;flex-shrink:0}
+  .modal-title{font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0}
+  .modal-close{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary);transition:all 0.2s ease}
+  .modal-close:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .modal-body{padding:20px;overflow-y:auto;flex:1}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e5e7eb;background:var(--color-background-secondary);flex-shrink:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes modalIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+
+  /* Toast提示 */
+  .toast-container{position:fixed;top:70px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:8px;font-size:12px;color:white;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn 0.3s ease}
+  .toast-success{background:#1D9E75}
+  .toast-error{background:#D85A30}
+  .toast-info{background:#378ADD}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+
+  @keyframes fadeIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+/* ===== Copilot 侧边栏 ===== */
+.copilot-fab{position:fixed;right:24px;bottom:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(55,138,221,0.35);z-index:9998;transition:all .3s ease}
+.copilot-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(55,138,221,0.45)}
+.copilot-fab svg{width:22px;height:22px}
+.copilot-fab .fab-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid #378ADD;animation:copilotPulse 2s ease-out infinite;opacity:0}
+@keyframes copilotPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.copilot-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9998;opacity:0;visibility:hidden;transition:all .3s}
+.copilot-overlay.show{opacity:1;visibility:visible}
+.copilot-drawer{position:fixed;top:0;right:-420px;width:400px;height:100vh;background:var(--color-background-primary,#fff);box-shadow:-4px 0 24px rgba(0,0,0,0.1);z-index:9999;display:flex;flex-direction:column;transition:right .35s cubic-bezier(.4,0,.2,1)}
+.copilot-drawer.open{right:0}
+.copilot-header{padding:14px 18px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.copilot-header-left{display:flex;align-items:center;gap:10px}
+.copilot-header-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center}
+.copilot-header-icon svg{width:18px;height:18px}
+.copilot-header-title{font-size:15px;font-weight:600}
+.copilot-header-sub{font-size:11px;opacity:.85;margin-top:2px}
+.copilot-close{background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;transition:opacity .2s}
+.copilot-close:hover{opacity:1}
+.copilot-close svg{width:18px;height:18px}
+.copilot-sessions{padding:8px 12px;border-bottom:1px solid #e8e8e8;display:flex;gap:6px;align-items:center;flex-shrink:0;overflow-x:auto}
+.copilot-session-btn{padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;transition:all .2s}
+.copilot-session-btn:hover{border-color:#378ADD;color:#378ADD}
+.copilot-session-btn.active{background:rgba(55,138,221,0.1);border-color:#378ADD;color:#378ADD}
+.copilot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.copilot-msg{display:flex;gap:10px;max-width:92%}
+.copilot-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.copilot-msg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+.copilot-msg.ai .copilot-msg-avatar{background:linear-gradient(135deg,#378ADD,#7F77DD)}
+.copilot-msg.user .copilot-msg-avatar{background:#8c8c8c}
+.copilot-msg-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word}
+.copilot-msg.ai .copilot-msg-bubble{background:#f5f5f5;color:#1a1a1a;border-top-left-radius:4px}
+.copilot-msg.user .copilot-msg-bubble{background:#378ADD;color:#fff;border-top-right-radius:4px}
+.copilot-msg-bubble h4{margin:8px 0 4px;font-size:13px}
+.copilot-msg-bubble ul,.copilot-msg-bubble ol{margin:4px 0;padding-left:18px}
+.copilot-msg-bubble li{margin:2px 0}
+.copilot-msg-bubble table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.copilot-msg-bubble th,.copilot-msg-bubble td{border:1px solid #d8d8d8;padding:4px 8px;text-align:left}
+.copilot-msg-bubble th{background:#e8e8e8}
+.copilot-msg-bubble strong{font-weight:600}
+.copilot-msg-bubble code{background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:12px}
+.copilot-msg-actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.copilot-action-btn{padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #378ADD;background:rgba(55,138,221,0.06);color:#378ADD;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.copilot-action-btn:hover{background:#378ADD;color:#fff}
+.copilot-action-btn svg{width:12px;height:12px}
+.copilot-typing{display:inline-flex;gap:3px;align-items:center;padding:4px 0}
+.copilot-typing span{width:6px;height:6px;border-radius:50%;background:#8c8c8c;animation:copilotTyping 1.4s infinite}
+.copilot-typing span:nth-child(2){animation-delay:.2s}
+.copilot-typing span:nth-child(3){animation-delay:.4s}
+@keyframes copilotTyping{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.copilot-context-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.15);font-size:11px;margin-top:4px}
+.copilot-context-badge svg{width:10px;height:10px}
+.copilot-input-area{padding:12px 16px;border-top:1px solid #e8e8e8;flex-shrink:0}
+.copilot-quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.copilot-quick-tag{padding:3px 8px;border-radius:12px;font-size:11px;background:#f0f5ff;color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.copilot-quick-tag:hover{background:#378ADD;color:#fff}
+.copilot-input-wrap{display:flex;gap:8px;align-items:flex-end}
+.copilot-input{flex:1;border:1px solid #d8d8d8;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;max-height:100px;min-height:38px;outline:none;transition:border-color .2s;line-height:1.5}
+.copilot-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.copilot-send{width:38px;height:38px;border-radius:10px;background:#378ADD;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.copilot-send:hover{background:#2979c9}
+.copilot-send:disabled{background:#ccc;cursor:not-allowed}
+.copilot-send svg{width:16px;height:16px}
+.copilot-draft-banner{padding:6px 12px;background:rgba(239,159,39,0.1);border-top:1px solid rgba(239,159,39,0.3);font-size:11px;color:#9a6800;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.copilot-draft-banner svg{width:12px;height:12px;flex-shrink:0}
+.copilot-empty{text-align:center;padding:40px 20px;color:#8c8c8c}
+.copilot-empty svg{width:40px;height:40px;margin-bottom:12px;opacity:.4}
+.copilot-empty h4{font-size:14px;margin-bottom:6px;color:#595959}
+.copilot-empty p{font-size:12px;line-height:1.6}
+.copilot-review-card{border:1px solid #e8e8e8;border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copilot-review-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.copilot-review-card-title{font-size:12px;font-weight:600;color:#1a1a1a}
+.copilot-review-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.copilot-review-badge.draft{background:rgba(239,159,39,0.15);color:#9a6800}
+.copilot-review-badge.confirmed{background:rgba(29,158,117,0.15);color:#1D9E75}
+.copilot-review-content{font-size:12px;color:#595959;line-height:1.6;padding:8px;background:#f9f9f9;border-radius:6px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+.copilot-review-actions{display:flex;gap:6px}
+.copilot-review-btn{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;transition:all .2s}
+.copilot-review-btn.preview{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.06)}
+.copilot-review-btn.preview:hover{background:#378ADD;color:#fff}
+.copilot-review-btn.confirm{border-color:#1D9E75;color:#1D9E75;background:rgba(29,158,117,0.06)}
+.copilot-review-btn.confirm:hover{background:#1D9E75;color:#fff}
+.copilot-review-btn.discard{border-color:#8c8c8c;color:#8c8c8c;background:transparent}
+.copilot-review-btn.discard:hover{background:#8c8c8c;color:#fff}
+.copilot-error{padding:8px 12px;background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:8px;font-size:12px;color:#A32D2D;display:flex;align-items:center;gap:8px}
+.copilot-error-retry{margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;border:1px solid #A32D2D;color:#A32D2D;cursor:pointer;background:transparent}
+.copilot-error-retry:hover{background:#A32D2D;color:#fff}
+</style>
+
+<div style="display:flex;flex-direction:column;font-family:var(--font-sans);min-height:560px;">
+  <!-- 顶部栏 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <div class="logo-icon">鱼</div>
+      <span class="logo-text">钓鱼演练平台</span>
+    </div>
+    <div class="user-area">
+      <div class="notification-icon" style="color:var(--color-text-secondary)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notification-badge">3</div>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar">张</div>
+        <span class="user-name">张管理</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;">
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+        </svg>
+        <span class="sidebar-title">导航菜单</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        数据概览
+      </div>
+      <div class="nav-item active">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        演练管理
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+        </div>
+        素材模板
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        用户和组
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </div>
+        发送配置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        </div>
+        安全培训
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </div>
+        数据报表
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+        </div>
+        邮件举报
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        系统设置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"></path>
+          </svg>
+        </div>
+        智能助手
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        API开放平台
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div style="flex:1;padding:14px 18px;min-width:0;overflow-y:auto;">
+      <!-- 面包屑 + 操作按钮 -->
+      <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-size:12px;color:var(--color-text-tertiary);">工作台 / 演练管理</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-default" id="btn-batch">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            批量导出
+          </button>
+          <button class="btn btn-primary" id="btn-create">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            发起演练
+          </button>
+        </div>
+      </div>
+
+      <!-- 顶部统计卡片 -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px;">
+        <div class="stat-card" data-stat="all">
+          <p class="stat-label">演练总数</p>
+          <p class="stat-value">128</p>
+          <p class="stat-delta" style="color:var(--color-text-success);">↑ 12 本月</p>
+        </div>
+        <div class="stat-card active" data-stat="running">
+          <p class="stat-label">进行中 <span class="dot live-dot" style="background:var(--color-text-success);margin-left:4px;"></span></p>
+          <p class="stat-value" style="color:#1D9E75;">3</p>
+          <p class="stat-delta" style="color:var(--color-text-secondary);">覆盖 4,200 人</p>
+        </div>
+        <div class="stat-card" data-stat="pending">
+          <p class="stat-label">待开始</p>
+          <p class="stat-value" style="color:#378ADD;">5</p>
+          <p class="stat-delta" style="color:var(--color-text-secondary);">计划本周 3 场</p>
+        </div>
+        <div class="stat-card" data-stat="finished">
+          <p class="stat-label">已完成</p>
+          <p class="stat-value" style="color:#6b7280;">115</p>
+          <p class="stat-delta" style="color:var(--color-text-success);">平均中招率 17.8%</p>
+        </div>
+        <div class="stat-card" data-stat="aborted">
+          <p class="stat-label">已终止</p>
+          <p class="stat-value" style="color:#A32D2D;">5</p>
+          <p class="stat-delta" style="color:var(--color-text-tertiary);">异常终止 2 场</p>
+        </div>
+      </div>
+
+      <!-- 筛选+搜索工具栏 -->
+      <div class="card" style="padding:12px 16px;margin-bottom:16px;border-top:none;">
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+          <!-- 状态筛选 -->
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span class="filter-tag active" data-status="all">全部<span class="count">128</span></span>
+            <span class="filter-tag" data-status="running">进行中<span class="count">3</span></span>
+            <span class="filter-tag" data-status="pending">待开始<span class="count">5</span></span>
+            <span class="filter-tag" data-status="finished">已完成<span class="count">115</span></span>
+            <span class="filter-tag" data-status="aborted">已终止<span class="count">5</span></span>
+          </div>
+
+          <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+            <!-- 类型筛选 -->
+            <select class="form-input" style="width:140px;" id="filter-type">
+              <option value="">全部类型</option>
+              <option>邮件钓鱼</option>
+              <option>短信钓鱼</option>
+              <option>社交媒体钓鱼</option>
+              <option>USB实物钓鱼</option>
+            </select>
+
+            <!-- 日期范围 -->
+            <input type="text" class="form-input" style="width:180px;" placeholder="选择日期范围..." id="filter-date" value="2026-01-01 ~ 2026-08-15">
+
+            <!-- 搜索框 -->
+            <div class="search-box" style="width:220px;padding:5px 10px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input type="text" class="search-input" placeholder="搜索演练名称..." id="filter-search">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 演练列表表格 -->
+      <div class="card" style="padding:0;border-top:3px solid #378ADD;overflow:hidden;">
+        <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb;">
+          <div style="display:flex;align-items:center;gap:12px;">
+            <input type="checkbox" class="row-check" id="check-all">
+            <span style="font-size:12px;color:var(--color-text-secondary);" id="selected-info">共 128 条</span>
+          </div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span style="font-size:11px;color:var(--color-text-tertiary);">每页</span>
+            <select class="form-input" style="width:70px;padding:4px 8px;" id="page-size">
+              <option>10</option><option selected>20</option><option>50</option><option>100</option>
+            </select>
+            <span style="font-size:11px;color:var(--color-text-tertiary);">条</span>
+          </div>
+        </div>
+
+        <table class="data-table" id="drill-table">
+          <thead>
+            <tr>
+              <th style="width:40px;"><input type="checkbox" class="row-check"></th>
+              <th style="width:28px;"></th>
+              <th style="width:22%;">演练名称</th>
+              <th style="width:10%;">类型</th>
+              <th style="width:14%;">时间范围</th>
+              <th style="width:10%;">目标规模</th>
+              <th style="width:18%;">进度 (投递→阅读→点击→中招)</th>
+              <th style="width:8%;">状态</th>
+              <th style="width:15%;text-align:right;">操作</th>
+            </tr>
+          </thead>
+          <tbody id="drill-tbody">
+          </tbody>
+        </table>
+
+        <!-- 分页 -->
+        <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e5e7eb;">
+          <span style="font-size:11px;color:var(--color-text-tertiary);">显示 1 - 20 条，共 128 条记录</span>
+          <div class="pagination" id="pagination"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 发起演练向导模态框 -->
+<div class="modal-overlay" id="wizard-modal" style="display:none;">
+  <div class="modal" style="max-width:880px;">
+    <div class="modal-header">
+      <h3 class="modal-title">发起新演练</h3>
+      <button class="modal-close" id="wizard-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- 步骤条 -->
+      <div class="wizard-steps" id="wizard-steps">
+        <div class="step-item active" data-step="1"><span class="step-num">1</span><span class="step-label">基础设置</span></div>
+        <div style="flex:1;height:2px;background:var(--color-background-tertiary);margin:0 4px;"></div>
+        <div class="step-item" data-step="2"><span class="step-num">2</span><span class="step-label">选择目标</span></div>
+        <div style="flex:1;height:2px;background:var(--color-background-tertiary);margin:0 4px;"></div>
+        <div class="step-item" data-step="3"><span class="step-num">3</span><span class="step-label">选择模板</span></div>
+        <div style="flex:1;height:2px;background:var(--color-background-tertiary);margin:0 4px;"></div>
+        <div class="step-item" data-step="4"><span class="step-num">4</span><span class="step-label">落地页</span></div>
+        <div style="flex:1;height:2px;background:var(--color-background-tertiary);margin:0 4px;"></div>
+        <div class="step-item" data-step="5"><span class="step-num">5</span><span class="step-label">发送配置</span></div>
+        <div style="flex:1;height:2px;background:var(--color-background-tertiary);margin:0 4px;"></div>
+        <div class="step-item" data-step="6"><span class="step-num">6</span><span class="step-label">触发机制</span></div>
+        <div style="flex:1;height:2px;background:var(--color-background-tertiary);margin:0 4px;"></div>
+        <div class="step-item" data-step="7"><span class="step-num">7</span><span class="step-label">培训跳转</span></div>
+      </div>
+
+      <!-- Step 1 -->
+      <div class="wizard-panel" id="step-1">
+        <div class="form-group">
+          <label class="form-label">演练名称<span class="required">*</span></label>
+          <input type="text" class="form-input" placeholder="如：Q3全员防钓鱼演练" value="Q3全员防钓鱼演练">
+        </div>
+        <div class="form-group">
+          <label class="form-label">演练描述</label>
+          <textarea class="form-input form-textarea" placeholder="简要描述本次演练的背景和目标...">针对Q3全员安全意识提升计划，开展全公司范围的邮件钓鱼演练，重点考察员工对财务类钓鱼邮件的识别能力。</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">演练类型<span class="required">*</span></label>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+            <div class="option-card selected" data-type="email">
+              <div class="option-card-header">
+                <div class="option-card-icon" style="background:#378ADD;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                </div>
+                <div class="option-card-title">邮件钓鱼</div>
+              </div>
+              <p class="option-card-desc">最常用，覆盖率高</p>
+            </div>
+            <div class="option-card" data-type="sms">
+              <div class="option-card-header">
+                <div class="option-card-icon" style="background:#1D9E75;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                </div>
+                <div class="option-card-title">短信钓鱼</div>
+              </div>
+              <p class="option-card-desc">移动端场景</p>
+            </div>
+            <div class="option-card" data-type="social">
+              <div class="option-card-header">
+                <div class="option-card-icon" style="background:#EF9F27;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                </div>
+                <div class="option-card-title">社交媒体</div>
+              </div>
+              <p class="option-card-desc">微信/企微场景</p>
+            </div>
+            <div class="option-card" data-type="usb">
+              <div class="option-card-header">
+                <div class="option-card-icon" style="background:#7F77DD;">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+                </div>
+                <div class="option-card-title">USB实物</div>
+              </div>
+              <p class="option-card-desc">实地投放测试</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="wizard-panel" id="step-2" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">目标选择方式<span class="required">*</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+            <div class="option-card selected">
+              <div class="option-card-header"><div class="option-card-icon" style="background:#378ADD;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+              </div><div class="option-card-title">按部门选择</div></div>
+              <p class="option-card-desc">从组织架构中选择</p>
+            </div>
+            <div class="option-card">
+              <div class="option-card-header"><div class="option-card-icon" style="background:#1D9E75;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path><line x1="7" y1="7" x2="7.01" y2="7"></line></svg>
+              </div><div class="option-card-title">按标签/分组</div></div>
+              <p class="option-card-desc">如新员工组、高管组</p>
+            </div>
+            <div class="option-card">
+              <div class="option-card-header"><div class="option-card-icon" style="background:#7F77DD;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              </div><div class="option-card-title">导入CSV</div></div>
+              <p class="option-card-desc">上传人员名单文件</p>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">已选目标 <span class="badge" style="background:var(--color-background-info);color:var(--color-text-info);margin-left:8px;">共 3,580 人</span></label>
+          <div style="border:1px solid #d1d5db;border-radius:8px;padding:12px;max-height:160px;overflow-y:auto;background:var(--color-background-secondary);">
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+              <span class="badge" style="background:#378ADD22;color:#378ADD;">全公司 (3,580) ✕</span>
+              <span class="badge" style="background:#1D9E7522;color:#1D9E75;">研发部 (420) ✕</span>
+              <span class="badge" style="background:#EF9F2722;color:#EF9F27;">新员工组 (30) ✕</span>
+              <span class="badge" style="background:var(--color-background-primary);color:var(--color-text-secondary);border:1px dashed #d1d5db;cursor:pointer;">+ 添加部门</span>
+            </div>
+          </div>
+          <p class="form-hint">⚠️ 请确认已获得充分授权对上述人员开展钓鱼演练，相关数据将严格保密</p>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="wizard-panel" id="step-3" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">邮件模板<span class="required">*</span></label>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+            <div class="template-card selected">
+              <div class="template-preview"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#378ADD" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg></div>
+              <div class="template-meta"><p class="template-name">财务报销通知</p><span class="template-tag">系统类</span></div>
+            </div>
+            <div class="template-card">
+              <div class="template-preview"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="1.5"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg></div>
+              <div class="template-meta"><p class="template-name">OA密码重置</p><span class="template-tag">系统类</span></div>
+            </div>
+            <div class="template-card">
+              <div class="template-preview"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#EF9F27" stroke-width="1.5"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"></path></svg></div>
+              <div class="template-meta"><p class="template-name">中秋福利领取</p><span class="template-tag">节假日</span></div>
+            </div>
+            <div class="template-card">
+              <div class="template-preview"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#7F77DD" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></div>
+              <div class="template-meta"><p class="template-name">HR入职材料提交</p><span class="template-tag">HR类</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">发件人伪装名称<span class="required">*</span></label>
+            <input type="text" class="form-input" value="财务部-报销系统通知">
+            <p class="form-hint">员工邮箱中显示的发件人名称</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">欺骗性域名<span class="required">*</span></label>
+            <select class="form-input form-select">
+              <option selected>finance-company-notice.com</option>
+              <option>oa-system-update.cn</option>
+              <option>hr-benefits-claim.com</option>
+            </select>
+            <p class="form-hint">SPF/DKIM已配置 ✓</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 4 -->
+      <div class="wizard-panel" id="step-4" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">钓鱼落地页<span class="required">*</span></label>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;">
+            <div class="template-card selected">
+              <div class="template-preview" style="background:linear-gradient(135deg,#378ADD22,#1D9E7522);"><span style="font-size:11px;color:#378ADD;font-weight:500;">企业邮箱登录页</span></div>
+              <div class="template-meta"><p class="template-name">邮箱登录页</p><span class="template-tag">已适配品牌</span></div>
+            </div>
+            <div class="template-card">
+              <div class="template-preview" style="background:linear-gradient(135deg,#EF9F2722,#D85A3022);"><span style="font-size:11px;color:#D85A30;font-weight:500;">OA系统</span></div>
+              <div class="template-meta"><p class="template-name">OA登录页</p><span class="template-tag">已适配品牌</span></div>
+            </div>
+            <div class="template-card">
+              <div class="template-preview" style="background:linear-gradient(135deg,#7F77DD22,#378ADD22);"><span style="font-size:11px;color:#7F77DD;font-weight:500;">网盘认证</span></div>
+              <div class="template-meta"><p class="template-name">企业网盘认证</p><span class="template-tag">通用版</span></div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">数据收集表单配置</label>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid #d1d5db;border-radius:8px;background:var(--color-background-secondary);">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check" checked> 收集用户名/邮箱</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check" checked> 收集登录密码（不存储明文）</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check"> 收集手机验证码输入行为</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check"> 触发附件下载（可选载荷）</label>
+          </div>
+          <p class="form-hint">💡 教育弹窗提示一旦用户输入密码后立即显示："这是一次演练，您刚才差点泄露了密码！"</p>
+        </div>
+      </div>
+
+      <!-- Step 5: 发送配置 -->
+      <div class="wizard-panel" id="step-5" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">选择发送配置方案<span class="required">*</span></label>
+          <p class="form-hint" style="margin-bottom:12px;">从已配置的发送方案中选择，如需新增或修改请前往「素材模板 → 发件配置管理」</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+            <!-- 方案1 -->
+            <div class="option-card selected">
+              <div class="option-card-header">
+                <div class="option-card-icon" style="background:#378ADD;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+                </div>
+                <div class="option-card-title">平台默认SMTP</div>
+                <span class="badge" style="background:rgba(55,138,221,0.15);color:#378ADD;margin-left:auto;">默认</span>
+              </div>
+              <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.8;margin-top:6px;">
+                <div>📧 发件域名：<span style="color:var(--color-text-primary);font-weight:500;">finance-company-notice.com</span></div>
+                <div>🖥️ SMTP：<span style="color:var(--color-text-primary);">smtp.phish-platform.com:587</span></div>
+                <div>📦 每日上限：<span style="color:var(--color-text-primary);">5,000 封</span></div>
+                <div style="display:flex;gap:6px;margin-top:4px;">
+                  <span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;padding:1px 6px;">SPF ✓</span>
+                  <span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;padding:1px 6px;">DKIM ✓</span>
+                  <span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;padding:1px 6px;">DMARC ✓</span>
+                </div>
+              </div>
+            </div>
+            <!-- 方案2 -->
+            <div class="option-card">
+              <div class="option-card-header">
+                <div class="option-card-icon" style="background:#7F77DD;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+                </div>
+                <div class="option-card-title">企业自建SMTP</div>
+              </div>
+              <div style="font-size:11px;color:var(--color-text-secondary);line-height:1.8;margin-top:6px;">
+                <div>📧 发件域名：<span style="color:var(--color-text-primary);font-weight:500;">oa-system-update.cn</span></div>
+                <div>🖥️ SMTP：<span style="color:var(--color-text-primary);">mail.company.com:465</span></div>
+                <div>📦 每日上限：<span style="color:var(--color-text-primary);">10,000 封</span></div>
+                <div style="display:flex;gap:6px;margin-top:4px;">
+                  <span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;padding:1px 6px;">SPF ✓</span>
+                  <span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;padding:1px 6px;">DKIM ✓</span>
+                  <span class="badge" style="background:rgba(239,159,39,0.15);color:#EF9F27;padding:1px 6px;">DMARC ✗</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">送达率预估</label>
+          <div style="display:flex;align-items:center;gap:12px;padding:12px;border:1px solid #d1d5db;border-radius:8px;background:var(--color-background-secondary);">
+            <div style="width:48px;height:48px;border-radius:50%;background:conic-gradient(#1D9E75 0% 98%, #e5e7eb 98% 100%);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              <div style="width:38px;height:38px;border-radius:50%;background:var(--color-background-secondary);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;color:#1D9E75;">98%</div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:12px;font-weight:500;color:var(--color-text-primary);">邮件送达率：98%</div>
+              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;">DNS三项记录均已配置，不易被网关拦截</div>
+            </div>
+            <span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;">优秀</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">发送测试（可选）</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="text" class="form-input" style="flex:1;" placeholder="输入测试接收邮箱...">
+            <button class="btn btn-default" id="btn-test-send">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+              发送测试
+            </button>
+          </div>
+        </div>
+        <div style="margin-top:8px;padding:10px 12px;border-radius:8px;background:rgba(55,138,221,0.06);border:1px dashed rgba(55,138,221,0.3);display:flex;align-items:center;gap:8px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#378ADD" stroke-width="2" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <span style="font-size:11px;color:var(--color-text-secondary);">如需配置新的SMTP服务器、域名或DNS记录，请前往</span>
+          <button class="btn-link" style="font-size:11px;">素材模板 → 发件配置管理</button>
+        </div>
+      </div>
+
+      <!-- Step 6: 触发机制 -->
+      <div class="wizard-panel" id="step-6" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">发送时机<span class="required">*</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="option-card selected">
+              <div class="option-card-header"><div class="option-card-icon" style="background:#378ADD;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+              </div><div class="option-card-title">定时发送</div></div>
+              <p class="option-card-desc">在指定时间统一发送</p>
+            </div>
+            <div class="option-card">
+              <div class="option-card-header"><div class="option-card-icon" style="background:#1D9E75;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polyline></svg>
+              </div><div class="option-card-title">立即发送</div></div>
+              <p class="option-card-desc">启动后立即开始</p>
+            </div>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">发送开始时间</label>
+            <input type="text" class="form-input" value="2026-08-20 09:30">
+          </div>
+          <div class="form-group">
+            <label class="form-label">分批次策略</label>
+            <select class="form-input form-select">
+              <option selected>分 3 批间隔 30 分钟</option>
+              <option>分 5 批间隔 15 分钟</option>
+              <option>不分批，统一发送</option>
+            </select>
+            <p class="form-hint">分批次可防拥堵、防网关识别</p>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">高级防识别设置</label>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid #d1d5db;border-radius:8px;background:var(--color-background-secondary);">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check" checked> 邮件内容随机化（防止垃圾网关识别）</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check" checked> 随机发件时间抖动（±5分钟）</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check"> 开启追踪像素降级模式（图片替代）</label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 7: 培训跳转 -->
+      <div class="wizard-panel" id="step-7" style="display:none;">
+        <div class="form-group">
+          <label class="form-label">中招后处理方式<span class="required">*</span></label>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+            <div class="option-card selected">
+              <div class="option-card-header"><div class="option-card-icon" style="background:#1D9E75;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              </div><div class="option-card-title">立即跳转培训</div></div>
+              <p class="option-card-desc">推荐：中招即学，印象深刻</p>
+            </div>
+            <div class="option-card">
+              <div class="option-card-header"><div class="option-card-icon" style="background:#EF9F27;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              </div><div class="option-card-title">仅显示教育弹窗</div></div>
+              <p class="option-card-desc">显示警示信息后关闭</p>
+            </div>
+            <div class="option-card">
+              <div class="option-card-header"><div class="option-card-icon" style="background:#8c8c8c;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>
+              </div><div class="option-card-title">不强制处理</div></div>
+              <p class="option-card-desc">仅记录数据，不做任何提示</p>
+            </div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">关联培训课程</label>
+          <select class="form-input form-select">
+            <option selected>《钓鱼邮件识别与防范》(15分钟)</option>
+            <option>《全员信息安全意识》(30分钟)</option>
+            <option>《财务人员专项安全课》(25分钟)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">强制培训触发条件</label>
+          <div style="display:flex;flex-direction:column;gap:8px;padding:12px;border:1px solid #d1d5db;border-radius:8px;background:var(--color-background-secondary);">
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check" checked> 点击链接 → 自动下发培训任务</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check" checked> 输入密码 → 自动下发培训 + 考试</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--color-text-primary);cursor:pointer;"><input type="checkbox" class="row-check"> 3 次以上中招者 → 升级至高管组通知</label>
+          </div>
+        </div>
+
+        <!-- 配置汇总预览 -->
+        <div style="margin-top:20px;padding:16px;border-radius:8px;background:#1D9E7511;border:1px dashed #1D9E7566;">
+          <p style="font-size:13px;font-weight:500;color:#1D9E75;margin:0 0 12px;">📋 配置确认清单</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;color:var(--color-text-secondary);">
+            <div>演练名称：<span style="color:var(--color-text-primary);">Q3全员防钓鱼演练</span></div>
+            <div>演练类型：<span style="color:var(--color-text-primary);">邮件钓鱼</span></div>
+            <div>目标人数：<span style="color:var(--color-text-primary);">3,580 人</span></div>
+            <div>邮件模板：<span style="color:var(--color-text-primary);">财务报销通知</span></div>
+            <div>落地页：<span style="color:var(--color-text-primary);">企业邮箱登录页</span></div>
+            <div>发送配置：<span style="color:var(--color-text-primary);">内置SMTP · SPF/DKIM/DMARC ✓</span></div>
+            <div>发送时间：<span style="color:var(--color-text-primary);">2026-08-20 09:30（分3批）</span></div>
+            <div>培训设置：<span style="color:var(--color-text-primary);">立即跳转《钓鱼识别与防范》</span></div>
+            <div>合规状态：<span style="color:#1D9E75;">✓ 已勾选授权</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="wizard-footer">
+        <span class="wizard-progress" id="wizard-progress">第 1 步 / 共 7 步</span>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-default" id="wizard-prev" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            上一步
+          </button>
+          <button class="btn btn-primary" id="wizard-next">
+            下一步
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 演练详情监控模态框 -->
+<div class="modal-overlay" id="detail-modal" style="display:none;">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 class="modal-title" style="display:flex;align-items:center;gap:10px;">
+        Q3全员防钓鱼演练
+        <span class="badge" style="background:rgba(29,158,117,0.15);color:#1D9E75;">
+          <span class="dot live-dot" style="background:#1D9E75;"></span> 进行中
+        </span>
+      </h3>
+      <button class="modal-close" id="detail-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- 实时数据大屏 -->
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:20px;">
+        <div class="monitor-kpi" style="background:rgba(55,138,221,0.08);">
+          <p class="monitor-kpi-num" style="color:#378ADD;">1,200</p>
+          <p class="monitor-kpi-label">发送成功</p>
+          <p class="monitor-kpi-sub">成功率 100%</p>
+        </div>
+        <div class="monitor-kpi" style="background:rgba(55,138,221,0.06);">
+          <p class="monitor-kpi-num" style="color:#378ADD;">856</p>
+          <p class="monitor-kpi-label">已打开</p>
+          <p class="monitor-kpi-sub">打开率 71.3%</p>
+        </div>
+        <div class="monitor-kpi" style="background:rgba(216,90,48,0.08);">
+          <p class="monitor-kpi-num" style="color:#D85A30;">324</p>
+          <p class="monitor-kpi-label">已点击</p>
+          <p class="monitor-kpi-sub">点击率 27.0%</p>
+        </div>
+        <div class="monitor-kpi" style="background:rgba(163,45,45,0.10);">
+          <p class="monitor-kpi-num" style="color:#A32D2D;">187</p>
+          <p class="monitor-kpi-label">中招人数</p>
+          <p class="monitor-kpi-sub">中招率 15.6%</p>
+        </div>
+        <div class="monitor-kpi" style="background:rgba(29,158,117,0.08);">
+          <p class="monitor-kpi-num" style="color:#1D9E75;">268</p>
+          <p class="monitor-kpi-label">已举报</p>
+          <p class="monitor-kpi-sub">举报率 22.3%</p>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1.3fr 1fr;gap:16px;margin-bottom:20px;">
+        <!-- 漏斗图 -->
+        <div class="card card-blue" style="margin:0;border-top:none;padding:14px;">
+          <p class="card-title" style="margin-bottom:14px;">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">漏</span>转化漏斗</span>
+          </p>
+          <div style="padding:4px;">
+            <div class="funnel-item">
+              <span class="funnel-label">发送成功</span>
+              <div class="funnel-bar" style="width:100%;background:#378ADD;">1,200</div>
+              <span class="funnel-value">1,200 人</span>
+              <span class="funnel-rate">100%</span>
+            </div>
+            <div class="funnel-item">
+              <span class="funnel-label">已打开</span>
+              <div class="funnel-bar" style="width:71%;background:#7F77DD;">856</div>
+              <span class="funnel-value">856 人</span>
+              <span class="funnel-rate">71.3%</span>
+            </div>
+            <div class="funnel-item">
+              <span class="funnel-label">已点击</span>
+              <div class="funnel-bar" style="width:27%;background:#D85A30;">324</div>
+              <span class="funnel-value">324 人</span>
+              <span class="funnel-rate">→37.8%</span>
+            </div>
+            <div class="funnel-item">
+              <span class="funnel-label">输入数据</span>
+              <div class="funnel-bar" style="width:15%;background:#A32D2D;">187</div>
+              <span class="funnel-value">187 人</span>
+              <span class="funnel-rate">→57.7%</span>
+            </div>
+            <div class="funnel-item">
+              <span class="funnel-label">主动举报</span>
+              <div class="funnel-bar" style="width:22%;background:#1D9E75;">268</div>
+              <span class="funnel-value">268 人</span>
+              <span class="funnel-rate">31.3%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 实时预警 -->
+        <div class="card card-red" style="margin:0;border-top:none;padding:14px;">
+          <p class="card-title" style="margin-bottom:14px;">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#A32D2D;">警</span>高危中招预警</span>
+            <span class="badge" style="background:rgba(163,45,45,0.15);color:#A32D2D;">3 条新</span>
+          </p>
+          <div style="max-height:200px;overflow-y:auto;">
+            <div class="alert-item">
+              <div class="alert-icon">!</div>
+              <div class="alert-content">
+                <p class="alert-title">张某某（研发部）连续3次输入密码</p>
+                <div class="alert-time">2 分钟前 · 建议下发专项培训</div>
+              </div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-icon" style="background:#EF9F27;">!</div>
+              <div class="alert-content">
+                <p class="alert-title">财务部整体中招率达到 32%</p>
+                <div class="alert-time">15 分钟前 · 超阈值5个百分点</div>
+              </div>
+            </div>
+            <div class="alert-item">
+              <div class="alert-icon">!</div>
+              <div class="alert-content">
+                <p class="alert-title">李某某（高管办）点击后10秒内提交</p>
+                <div class="alert-time">38 分钟前 · 已自动推送培训</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 用户行为时间轴 -->
+      <div class="card card-teal" style="margin:0;border-top:none;padding:14px;">
+        <p class="card-title" style="margin-bottom:14px;">
+          <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#0D9488;">时</span>实时用户行为时间轴</span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--color-text-success);font-weight:400;">
+            <span class="dot live-dot" style="background:var(--color-text-success);"></span>实时更新
+          </span>
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;max-height:220px;overflow-y:auto;">
+          <div class="timeline">
+            <div class="timeline-item">
+              <div class="timeline-time">2026-08-15 14:32:18</div>
+              <div class="timeline-user">王某某 · 市场部</div>
+              <div class="timeline-action">📧 打开了邮件「财务报销通知」</div>
+              <div class="timeline-meta">
+                <span class="timeline-meta-item"><span class="meta-label">IP</span><span class="meta-value">10.12.34.56</span></span>
+                <span class="timeline-meta-item"><span class="meta-label">浏览器</span><span class="meta-value">Chrome 125 · Win10</span></span>
+              </div>
+            </div>
+            <div class="timeline-item click">
+              <div class="timeline-time">2026-08-15 14:32:42</div>
+              <div class="timeline-user">王某某 · 市场部</div>
+              <div class="timeline-action">🔗 点击了邮件中的链接「立即报销」</div>
+              <div class="timeline-meta">
+                <span class="timeline-meta-item"><span class="meta-label">IP</span><span class="meta-value">10.12.34.56</span></span>
+                <span class="timeline-meta-item"><span class="meta-label">浏览器</span><span class="meta-value">Chrome 125 · Win10</span></span>
+              </div>
+            </div>
+            <div class="timeline-item click">
+              <div class="timeline-time">2026-08-15 14:33:05</div>
+              <div class="timeline-user">王某某 · 市场部</div>
+              <div class="timeline-action">⚠️ 在登录页输入了密码（中招！）</div>
+              <div class="timeline-meta">
+                <span class="timeline-meta-item"><span class="meta-label">IP</span><span class="meta-value">10.12.34.56</span></span>
+                <span class="timeline-meta-item"><span class="meta-label">浏览器</span><span class="meta-value">Chrome 125 · Win10</span></span>
+                <span class="timeline-meta-item" style="background:rgba(163,45,45,0.1);"><span class="meta-label" style="color:#A32D2D;">指纹</span><span class="meta-value" style="color:#A32D2D;">a3f8b2c1...</span></span>
+              </div>
+            </div>
+            <div class="timeline-item report">
+              <div class="timeline-time">2026-08-15 14:31:55</div>
+              <div class="timeline-user">陈某某 · 法务部</div>
+              <div class="timeline-action">🛡️ 举报了可疑邮件（表现优秀！）</div>
+              <div class="timeline-meta">
+                <span class="timeline-meta-item"><span class="meta-label">IP</span><span class="meta-value">10.12.78.90</span></span>
+                <span class="timeline-meta-item"><span class="meta-label">浏览器</span><span class="meta-value">Edge 125 · macOS</span></span>
+              </div>
+            </div>
+          </div>
+          <div class="timeline">
+            <div class="timeline-item">
+              <div class="timeline-time">2026-08-15 14:30:40</div>
+              <div class="timeline-user">刘某某 · 研发部</div>
+              <div class="timeline-action">📧 打开了邮件「财务报销通知」</div>
+              <div class="timeline-meta">
+                <span class="timeline-meta-item"><span class="meta-label">IP</span><span class="meta-value">10.12.22.18</span></span>
+                <span class="timeline-meta-item"><span class="meta-label">浏览器</span><span class="meta-value">Firefox 127 · Ubuntu</span></span>
+              </div>
+            </div>
+            <div class="timeline-item report">
+              <div class="timeline-time">2026-08-15 14:30:58</div>
+              <div class="timeline-user">刘某某 · 研发部</div>
+              <div class="timeline-action">🛡️ 举报了可疑邮件（用时18秒）</div>
+              <div class="timeline-meta">
+                <span class="timeline-meta-item"><span class="meta-label">IP</span><span class="meta-value">10.12.22.18</span></span>
+                <span class="timeline-meta-item"><span class="meta-label">浏览器</span><span class="meta-value">Firefox 127 · Ubuntu</span></span>
+              </div>
+            </div>
+            <div class="timeline-item click">
+              <div class="timeline-time">2026-08-15 14:29:15</div>
+              <div class="timeline-user">张某某 · 研发部</div>
+              <div class="timeline-action">⚠️ 在登录页输入了密码（中招！）</div>
+              <div class="timeline-meta">
+                <span class="timeline-meta-item"><span class="meta-label">IP</span><span class="meta-value">10.12.22.31</span></span>
+                <span class="timeline-meta-item"><span class="meta-label">浏览器</span><span class="meta-value">Chrome 124 · Win11</span></span>
+                <span class="timeline-meta-item" style="background:rgba(163,45,45,0.1);"><span class="meta-label" style="color:#A32D2D;">指纹</span><span class="meta-value" style="color:#A32D2D;">d7e9f4a2...</span></span>
+              </div>
+            </div>
+            <div class="timeline-item">
+              <div class="timeline-time">2026-08-15 14:28:30</div>
+              <div class="timeline-user">赵某某 · 财务部</div>
+              <div class="timeline-action">📧 打开了邮件「财务报销通知」</div>
+              <div class="timeline-meta">
+                <span class="timeline-meta-item"><span class="meta-label">IP</span><span class="meta-value">10.12.45.67</span></span>
+                <span class="timeline-meta-item"><span class="meta-label">浏览器</span><span class="meta-value">Edge 124 · Win10</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <span style="font-size:11px;color:var(--color-text-tertiary);margin-right:auto;">最后更新：14:32:50 · 每 5 秒自动刷新</span>
+      <button class="btn btn-default">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        导出报表
+      </button>
+      <button class="btn btn-warning">暂停演练</button>
+      <button class="btn btn-danger">终止演练</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast容器 -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+(function(){
+  // ========== 模拟数据 ==========
+  var statusMap = {
+    running: { label:'进行中', cls:'background:rgba(29,158,117,0.15);color:#1D9E75;', dot:true },
+    pending: { label:'待开始', cls:'background:rgba(55,138,221,0.15);color:#378ADD;', dot:false },
+    finished:{ label:'已完成', cls:'background:rgba(107,114,128,0.15);color:#6b7280;', dot:false },
+    aborted: { label:'已终止', cls:'background:rgba(163,45,45,0.15);color:#A32D2D;', dot:false }
+  };
+  var typeColor = { '邮件钓鱼':'#378ADD', '短信钓鱼':'#1D9E75', '社交媒体钓鱼':'#EF9F27', 'USB实物钓鱼':'#7F77DD' };
+
+  var drillData = [
+    {id:1,name:'Q3全员防钓鱼演练',type:'邮件钓鱼',time:'08-15 ~ 08-20',scale:'3,580 人',delivered:1200,read:856,clicked:324,submitted:187,total:3580,status:'running',statusText:'进行中第4天'},
+    {id:2,name:'研发部定向演练',type:'短信钓鱼',time:'08-18 ~ 08-19',scale:'420 人',delivered:120,read:92,clicked:35,submitted:18,total:420,status:'running',statusText:'进行中第1天'},
+    {id:3,name:'新员工安全意识测试',type:'邮件钓鱼',time:'08-14 ~ 08-16',scale:'30 人',delivered:30,read:26,clicked:14,submitted:6,total:30,status:'running',statusText:'进行中第2天'},
+    {id:4,name:'财务部专项演练',type:'邮件钓鱼',time:'08-20 ~ 08-22',scale:'56 人',delivered:0,read:0,clicked:0,submitted:0,total:56,status:'pending',statusText:'筹备中'},
+    {id:5,name:'高管办安全测试',type:'社交媒体钓鱼',time:'08-25 ~ 08-25',scale:'28 人',delivered:0,read:0,clicked:0,submitted:0,total:28,status:'pending',statusText:'待开始'},
+    {id:6,name:'市场部钓鱼实战',type:'邮件钓鱼',time:'09-01 ~ 09-05',scale:'320 人',delivered:0,read:0,clicked:0,submitted:0,total:320,status:'pending',statusText:'待开始'},
+    {id:7,name:'USB实物投放测试',type:'USB实物钓鱼',time:'09-08 ~ 09-10',scale:'- 3个楼层',delivered:0,read:0,clicked:0,submitted:0,total:0,status:'pending',statusText:'待开始'},
+    {id:8,name:'全公司二维码钓鱼',type:'短信钓鱼',time:'09-15 ~ 09-17',scale:'3,580 人',delivered:0,read:0,clicked:0,submitted:0,total:3580,status:'pending',statusText:'待开始'},
+    {id:9,name:'Q2全员钓鱼演练',type:'邮件钓鱼',time:'06-10 ~ 06-15',scale:'3,450 人',delivered:3450,read:2480,clicked:720,submitted:420,total:3450,status:'finished',statusText:'中招率 12.2%'},
+    {id:10,name:'5月HR邮件演练',type:'邮件钓鱼',time:'05-20 ~ 05-22',scale:'2,800 人',delivered:2800,read:1950,clicked:620,submitted:380,total:2800,status:'finished',statusText:'中招率 13.6%'},
+    {id:11,name:'4月财务部专项',type:'邮件钓鱼',time:'04-12 ~ 04-16',scale:'56 人',delivered:56,read:48,clicked:22,submitted:16,total:56,status:'finished',statusText:'中招率 28.6%'},
+    {id:12,name:'春节复工钓鱼演练',type:'短信钓鱼',time:'02-20 ~ 02-25',scale:'3,200 人',delivered:3200,read:2100,clicked:850,submitted:520,total:3200,status:'finished',statusText:'中招率 16.3%'},
+    {id:13,name:'元旦诈骗场景演练',type:'社交媒体钓鱼',time:'01-02 ~ 01-05',scale:'1,500 人',delivered:1500,read:1120,clicked:480,submitted:290,total:1500,status:'finished',statusText:'中招率 19.3%'},
+    {id:14,name:'高管办专项演练(2月)',type:'邮件钓鱼',time:'02-10 ~ 02-12',scale:'28 人',delivered:28,read:24,clicked:6,submitted:2,total:28,status:'finished',statusText:'中招率 7.1%'},
+    {id:15,name:'Q1全公司防钓鱼',type:'邮件钓鱼',time:'03-10 ~ 03-15',scale:'3,100 人',delivered:3100,read:2200,clicked:720,submitted:440,total:3100,status:'finished',statusText:'中招率 14.2%'},
+    {id:16,name:'2月研发部定向',type:'短信钓鱼',time:'02-18 ~ 02-20',scale:'380 人',delivered:380,read:250,clicked:85,submitted:48,total:380,status:'finished',statusText:'中招率 12.6%'},
+    {id:17,name:'OA系统升级钓鱼演练',type:'邮件钓鱼',time:'03-25 ~ 03-27',scale:'2,000 人',delivered:2000,read:1450,clicked:520,submitted:320,total:2000,status:'finished',statusText:'中招率 16.0%'},
+    {id:18,name:'HR入职材料场景',type:'邮件钓鱼',time:'04-28 ~ 04-30',scale:'400 人',delivered:400,read:310,clicked:110,submitted:65,total:400,status:'finished',statusText:'中招率 16.3%'},
+    {id:19,name:'3月密码重置演练',type:'邮件钓鱼',time:'03-18 ~ 03-20',scale:'2,600 人',delivered:2600,read:1800,clicked:580,submitted:360,total:2600,status:'finished',statusText:'中招率 13.8%'},
+    {id:20,name:'财务专项演练(1月)',type:'邮件钓鱼',time:'01-15 ~ 01-18',scale:'56 人',delivered:56,read:44,clicked:18,submitted:12,total:56,status:'aborted',statusText:'因真实攻击终止'}
+  ];
+
+  // ========== Toast 提示 ==========
+  function showToast(msg, type){
+    var container = document.getElementById('toast-container');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type || 'info');
+    t.innerHTML = (type==='success'?'✓':(type==='error'?'✕':'ⓘ')) + ' <span>' + msg + '</span>';
+    container.appendChild(t);
+    setTimeout(function(){
+      t.style.transition = 'opacity 0.3s, transform 0.3s';
+      t.style.opacity = '0'; t.style.transform = 'translateX(30px)';
+      setTimeout(function(){ t.remove(); }, 300);
+    }, 2600);
+  }
+
+  // ========== 渲染列表 ==========
+  var currentStatus = 'all';
+  var currentPage = 1;
+  var pageSize = 20;
+
+  function getFilteredData(){
+    return drillData.filter(function(d){
+      if(currentStatus === 'all') return true;
+      return d.status === currentStatus;
+    });
+  }
+
+  function renderTable(){
+    var tbody = document.getElementById('drill-tbody');
+    var data = getFilteredData();
+    var total = data.length;
+    var totalPages = Math.ceil(total / pageSize);
+    if(currentPage > totalPages) currentPage = Math.max(1, totalPages);
+    var start = (currentPage - 1) * pageSize;
+    var pageData = data.slice(start, start + pageSize);
+
+    var html = '';
+    pageData.forEach(function(d){
+      var st = statusMap[d.status];
+      var typeBg = typeColor[d.type] || '#378ADD';
+      var delPct = d.total ? Math.round(d.delivered/d.total*100) : 0;
+      var readPct = d.delivered ? Math.round(d.read/d.delivered*100) : 0;
+      var clickPct = d.delivered ? Math.round(d.clicked/d.delivered*100) : 0;
+      var subPct = d.delivered ? Math.round(d.submitted/d.delivered*100) : 0;
+
+      // 操作按钮
+      var actions = '';
+      actions += '<button class="btn-link" data-action="detail">详情</button>';
+      if(d.status === 'pending'){
+        actions += '<button class="btn-link" style="color:#1D9E75;" data-action="start">启动</button>';
+        actions += '<button class="btn-link" data-action="edit">编辑</button>';
+      }
+      if(d.status === 'running'){
+        actions += '<button class="btn-link" style="color:#EF9F27;" data-action="pause">暂停</button>';
+        actions += '<button class="btn-link" style="color:#A32D2D;" data-action="stop">终止</button>';
+      }
+      if(d.status === 'finished'){
+        actions += '<button class="btn-link" data-action="copy">复制</button>';
+        actions += '<button class="btn-link" data-action="report">报表</button>';
+      }
+      if(d.status === 'aborted'){
+        actions += '<button class="btn-link" data-action="copy">复制</button>';
+      }
+
+      html += '<tr data-id="'+d.id+'">'+
+        '<td><input type="checkbox" class="row-check" onclick="event.stopPropagation()"></td>'+
+        '<td><div class="dot" style="background:'+typeBg+';"></div></td>'+
+        '<td><div style="font-weight:500;">'+d.name+'</div><div style="font-size:10px;color:var(--color-text-tertiary);margin-top:2px;">'+d.statusText+'</div></td>'+
+        '<td><span class="badge" style="background:'+typeBg+'15;color:'+typeBg+';">'+d.type+'</span></td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+d.time+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-primary);font-weight:500;">'+d.scale+'</td>'+
+        '<td>'+
+          '<div style="display:flex;align-items:center;gap:4px;margin-bottom:3px;">'+
+            '<span style="font-size:10px;color:var(--color-text-tertiary);width:32px;">投递</span>'+
+            '<div class="bar-track"><div class="bar-fill" style="width:'+delPct+'%;background:#378ADD;"></div></div>'+
+            '<span style="font-size:10px;color:var(--color-text-primary);width:30px;text-align:right;">'+delPct+'%</span>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:4px;">'+
+            '<span style="font-size:10px;color:var(--color-text-tertiary);width:32px;">点击</span>'+
+            '<div class="bar-track"><div class="bar-fill" style="width:'+clickPct+'%;background:#D85A30;"></div></div>'+
+            '<span style="font-size:10px;color:var(--color-text-primary);width:30px;text-align:right;">'+clickPct+'%</span>'+
+          '</div>'+
+        '</td>'+
+        '<td><span class="badge" style="'+st.cls+'">'+(st.dot?'<span class="dot live-dot" style="background:currentColor;margin-right:4px;"></span>':'')+st.label+'</span></td>'+
+        '<td style="text-align:right;">'+actions+'</td>'+
+      '</tr>';
+    });
+    if(pageData.length === 0){
+      html = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--color-text-tertiary);font-size:12px;">暂无数据</td></tr>';
+    }
+    tbody.innerHTML = html;
+
+    // 更新统计信息
+    document.getElementById('selected-info').textContent = '共 ' + total + ' 条';
+
+    // 绑定行点击
+    tbody.querySelectorAll('tr').forEach(function(tr){
+      tr.addEventListener('click', function(e){
+        if(e.target.closest('.btn-link') || e.target.type === 'checkbox') return;
+        openDetailModal();
+      });
+    });
+
+    tbody.querySelectorAll('[data-action]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var action = btn.getAttribute('data-action');
+        var id = btn.closest('tr').getAttribute('data-id');
+        if(action === 'detail'){ openDetailModal(); }
+        else if(action === 'start'){ showToast('演练已启动', 'success'); }
+        else if(action === 'pause'){ showToast('演练已暂停', 'info'); }
+        else if(action === 'stop'){ if(confirm('确认终止该演练？此操作不可撤销')) showToast('演练已终止', 'error'); }
+        else if(action === 'edit'){ showToast('跳转到编辑页面...', 'info'); }
+        else if(action === 'copy'){ showToast('已复制为新演练', 'success'); }
+        else if(action === 'report'){ showToast('正在导出报表...', 'info'); }
+      });
+    });
+
+    // 渲染分页
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages){
+    var pg = document.getElementById('pagination');
+    if(!pg) return;
+    var html = '';
+    html += '<button class="page-btn" '+(currentPage===1?'disabled':'')+' onclick="window._pg('+(currentPage-1)+')">‹</button>';
+    var s = Math.max(1, currentPage - 2);
+    var e = Math.min(totalPages, s + 4);
+    if(s > 1){ html += '<button class="page-btn" onclick="window._pg(1)">1</button>'; if(s>2) html += '<button class="page-btn" disabled>...</button>'; }
+    for(var i=s;i<=e;i++){
+      html += '<button class="page-btn '+(i===currentPage?'active':'')+'" onclick="window._pg('+i+')">'+i+'</button>';
+    }
+    if(e < totalPages){ if(e<totalPages-1) html += '<button class="page-btn" disabled>...</button>'; html += '<button class="page-btn" onclick="window._pg('+totalPages+')">'+totalPages+'</button>'; }
+    html += '<button class="page-btn" '+(currentPage===totalPages?'disabled':'')+' onclick="window._pg('+(currentPage+1)+')">›</button>';
+    pg.innerHTML = html;
+  }
+  window._pg = function(p){ currentPage = p; renderTable(); };
+
+  // ========== 筛选标签 ==========
+  document.querySelectorAll('.filter-tag').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('.filter-tag').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      currentStatus = tag.getAttribute('data-status');
+      currentPage = 1;
+      renderTable();
+
+      // 同步高亮顶部统计卡
+      document.querySelectorAll('.stat-card').forEach(function(c){ c.classList.remove('active'); });
+      var statMap = {'all':0,'running':1,'pending':2,'finished':3,'aborted':4};
+      var idx = statMap[currentStatus];
+      if(idx >= 0){
+        var cards = document.querySelectorAll('.stat-card');
+        if(cards[idx]) cards[idx].classList.add('active');
+      }
+    });
+  });
+
+  // 顶部统计卡点击
+  document.querySelectorAll('.stat-card').forEach(function(card){
+    card.addEventListener('click', function(){
+      var s = card.getAttribute('data-stat');
+      document.querySelectorAll('.filter-tag').forEach(function(t){
+        t.classList.toggle('active', t.getAttribute('data-status') === s);
+      });
+      currentStatus = s; currentPage = 1; renderTable();
+      document.querySelectorAll('.stat-card').forEach(function(c){ c.classList.remove('active'); });
+      card.classList.add('active');
+    });
+  });
+
+  // ========== 发起演练向导 ==========
+  var currentStep = 1;
+  var totalSteps = 7;
+
+  function openWizard(){
+    document.getElementById('wizard-modal').style.display = 'flex';
+    currentStep = 1; refreshWizard();
+  }
+  function closeWizard(){ document.getElementById('wizard-modal').style.display = 'none'; }
+
+  function refreshWizard(){
+    document.querySelectorAll('#wizard-steps .step-item').forEach(function(s){
+      var n = parseInt(s.getAttribute('data-step'));
+      s.classList.toggle('active', n === currentStep);
+      s.classList.toggle('done', n < currentStep);
+    });
+    for(var i=1;i<=totalSteps;i++){
+      var el = document.getElementById('step-'+i);
+      if(el) el.style.display = (i === currentStep) ? 'block' : 'none';
+    }
+    document.getElementById('wizard-progress').textContent = '第 ' + currentStep + ' 步 / 共 ' + totalSteps + ' 步';
+    document.getElementById('wizard-prev').disabled = currentStep === 1;
+    var nextBtn = document.getElementById('wizard-next');
+    if(currentStep === totalSteps){
+      nextBtn.innerHTML = '✓ 确认发起演练';
+    } else {
+      nextBtn.innerHTML = '下一步 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"></polyline></svg>';
+    }
+  }
+
+  document.getElementById('btn-create').addEventListener('click', openWizard);
+  document.getElementById('wizard-close').addEventListener('click', closeWizard);
+  document.getElementById('wizard-prev').addEventListener('click', function(){ if(currentStep>1){ currentStep--; refreshWizard(); } });
+  document.getElementById('wizard-next').addEventListener('click', function(){
+    if(currentStep < totalSteps){ currentStep++; refreshWizard(); }
+    else {
+      closeWizard();
+      showToast('演练「Q3全员防钓鱼演练」已成功提交！定时发送时间：2026-08-20 09:30', 'success');
+    }
+  });
+
+  // 类型卡片选择
+  document.querySelectorAll('#step-1 .option-card').forEach(function(c){
+    c.addEventListener('click', function(){
+      document.querySelectorAll('#step-1 .option-card').forEach(function(x){ x.classList.remove('selected'); });
+      c.classList.add('selected');
+    });
+  });
+  document.querySelectorAll('#step-1 .option-card, #step-2 .option-card, #step-3 .template-card, #step-4 .template-card, #step-5 .option-card, #step-6 .option-card, #step-7 .option-card').forEach(function(c){
+    c.addEventListener('click', function(){
+      var siblings = c.parentElement.children;
+      for(var i=0;i<siblings.length;i++){ siblings[i].classList.remove('selected'); }
+      c.classList.add('selected');
+    });
+  });
+
+  // ========== 详情监控弹窗 ==========
+  function openDetailModal(){ document.getElementById('detail-modal').style.display = 'flex'; }
+  function closeDetailModal(){ document.getElementById('detail-modal').style.display = 'none'; }
+  document.getElementById('detail-close').addEventListener('click', closeDetailModal);
+  document.querySelectorAll('#detail-modal .modal-footer .btn-warning')[0].addEventListener('click', function(){
+    closeDetailModal(); showToast('演练已暂停', 'info');
+  });
+  document.querySelectorAll('#detail-modal .modal-footer .btn-danger')[0].addEventListener('click', function(){
+    if(confirm('确认终止该演练？此操作不可撤销')){ closeDetailModal(); showToast('演练已终止', 'error'); }
+  });
+  document.querySelectorAll('#detail-modal .modal-footer .btn-default')[0].addEventListener('click', function(){
+    showToast('报表导出中，完成后将自动下载', 'success');
+  });
+
+  // 点击遮罩关闭
+  [document.getElementById('wizard-modal'), document.getElementById('detail-modal')].forEach(function(m){
+    if(m) m.addEventListener('click', function(e){ if(e.target === m) m.style.display = 'none'; });
+  });
+
+  // 全选
+  document.getElementById('check-all').addEventListener('change', function(e){
+    var checked = e.target.checked;
+    document.querySelectorAll('#drill-table thead .row-check, .row-check').forEach(function(c){ c.checked = checked; });
+  });
+  document.querySelectorAll('#drill-table thead .row-check').forEach(function(c){
+    c.addEventListener('change', function(e){
+      var checked = e.target.checked;
+      document.querySelectorAll('#drill-tbody .row-check').forEach(function(cb){ cb.checked = checked; });
+    });
+  });
+
+  // 批量导出
+  document.getElementById('btn-batch').addEventListener('click', function(){
+    showToast('正在导出 128 条演练数据，请稍候...', 'info');
+  });
+
+  // 搜索
+  var searchTimer = null;
+  document.getElementById('filter-search').addEventListener('input', function(e){
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function(){
+      renderTable();
+    }, 300);
+  });
+  document.getElementById('filter-type').addEventListener('change', renderTable);
+
+  // 初始渲染
+  renderTable();
+})();
+</script>
+
+<!-- Copilot FAB -->
+<div class="copilot-fab" id="copilotFab" onclick="Copilot.open()">
+  <span class="fab-pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg>
+</div>
+<!-- Copilot Drawer -->
+<div class="copilot-overlay" id="copilotOverlay" onclick="Copilot.close()"></div>
+<div class="copilot-drawer" id="copilotDrawer" data-page="演练管理">
+  <div class="copilot-header">
+    <div class="copilot-header-left">
+      <div class="copilot-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg></div>
+      <div>
+        <div class="copilot-header-title">AI Copilot</div>
+        <div class="copilot-header-sub" id="copilotContext">当前上下文：演练管理</div>
+      </div>
+    </div>
+    <button class="copilot-close" onclick="Copilot.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="copilot-sessions">
+    <div class="copilot-session-btn active" onclick="Copilot.switchSession(this,'current')">当前会话</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s1')">演练分析</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s2')">模板生成</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s3')">风险报告</div>
+    <div class="copilot-session-btn" onclick="Copilot.newSession()">+ 新建</div>
+  </div>
+  <div class="copilot-messages" id="copilotMessages">
+    <div class="copilot-empty" id="copilotEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h4>AI Copilot 智能助手</h4>
+      <p>我是您的安全演练AI助手，可以帮您分析演练数据、生成模板、撰写报告等。<br/>下方快捷问题可直接点击使用。</p>
+    </div>
+  </div>
+  <div class="copilot-draft-banner" id="copilotDraftBanner" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span>AI生成内容处于草稿态，需人工确认后生效。审核记录将进入审计日志。</span>
+  </div>
+  <div class="copilot-input-area">
+    <div class="copilot-quick-tags" id="copilotQuickTags">
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">分析演练效果</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">生成演练报告</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">高危人员预警</span>
+    </div>
+    <div class="copilot-input-wrap">
+      <textarea class="copilot-input" id="copilotInput" placeholder="输入您的问题..." rows="1" onkeydown="Copilot.onKeydown(event)" oninput="Copilot.autoResize(this)"></textarea>
+      <button class="copilot-send" id="copilotSend" onclick="Copilot.send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+if(typeof showToast!=='function'){function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}}
+
+// ===== Copilot 全局AI助手 =====
+var Copilot=(function(){
+  var drawer=document.getElementById('copilotDrawer');
+  var overlay=document.getElementById('copilotOverlay');
+  var messagesEl=document.getElementById('copilotMessages');
+  var inputEl=document.getElementById('copilotInput');
+  var sendBtn=document.getElementById('copilotSend');
+  var emptyEl=document.getElementById('copilotEmpty');
+  var draftBanner=document.getElementById('copilotDraftBanner');
+  var pageContext=drawer?drawer.getAttribute('data-page'):'';
+  var isGenerating=false;
+  var messages=[];
+
+  function open(){if(!drawer)return;drawer.classList.add('open');overlay.classList.add('show');setTimeout(function(){inputEl&&inputEl.focus();},350);}
+  function close(){if(!drawer)return;drawer.classList.remove('open');overlay.classList.remove('show');}
+  function switchSession(btn,key){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');btn.classList.add('active');showToast('已切换到会话：'+btn.textContent,'info');}
+  function newSession(){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');messages=[];if(emptyEl)emptyEl.style.display='block';messagesEl.innerHTML='';messagesEl.appendChild(emptyEl);showToast('已创建新会话','info');}
+  function quickAsk(text){if(!inputEl)return;inputEl.value=text;autoResize(inputEl);send();}
+  function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+  function autoResize(el){el.style.height='38px';el.style.height=Math.min(el.scrollHeight,100)+'px';}
+  function addMessage(role,content,opts){
+    opts=opts||{};
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');msg.className='copilot-msg '+role;
+    var avatar=document.createElement('div');avatar.className='copilot-msg-avatar';avatar.textContent=role==='ai'?'AI':'我';
+    var bubble=document.createElement('div');bubble.className='copilot-msg-bubble';
+    if(role==='ai'){bubble.innerHTML=renderMarkdown(content);}else{bubble.textContent=content;}
+    msg.appendChild(avatar);msg.appendChild(bubble);
+    if(role==='ai'&&opts.showContext){var badge=document.createElement('div');badge.className='copilot-context-badge';badge.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>上下文：'+pageContext;bubble.appendChild(badge);}
+    if(role==='ai'&&opts.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';opts.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}
+    if(role==='ai'&&opts.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+opts.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+opts.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}
+    messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;return bubble;
+  }
+  function showTyping(){if(emptyEl)emptyEl.style.display='none';var msg=document.createElement('div');msg.className='copilot-msg ai';msg.id='copilotTypingMsg';msg.innerHTML='<div class="copilot-msg-avatar">AI</div><div class="copilot-msg-bubble"><div class="copilot-typing"><span></span><span></span><span></span></div></div>';messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;}
+  function hideTyping(){var t=document.getElementById('copilotTypingMsg');if(t)t.remove();}
+  function typewriter(el,text,opts){opts=opts||{};var i=0;var speed=15;el.innerHTML='';function type(){if(i<text.length){el.innerHTML=renderMarkdown(text.substring(0,i+1));i++;messagesEl.scrollTop=messagesEl.scrollHeight;setTimeout(type,speed);}else{isGenerating=false;sendBtn.disabled=false;if(opts.onComplete)opts.onComplete();}}type();}
+  function renderMarkdown(text){var html=text;html=html.replace(/```([\s\S]*?)```/g,function(m,c){return '<pre style="background:#1a1a1a;color:#0f0;padding:8px 12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:8px 0"><code>'+c.replace(/</g,'&lt;')+'</code></pre>';});html=html.replace(/`([^`]+)`/g,'<code>$1</code>');html=html.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');html=html.replace(/^### (.+)$/gm,'<h4>$1</h4>');html=html.replace(/^- (.+)$/gm,'<li>$1</li>');html=html.replace(/(<li>.*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';});html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');html=html.replace(/\n/g,'<br>');return html;}
+  function send(){if(isGenerating)return;var text=inputEl.value.trim();if(!text)return;addMessage('user',text);inputEl.value='';inputEl.style.height='38px';isGenerating=true;sendBtn.disabled=true;showTyping();setTimeout(function(){hideTyping();var response=generateResponse(text);var bubble=addMessage('ai','',{showContext:messages.length<=1});typewriter(bubble,response.text,{onComplete:function(){if(response.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';response.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}if(response.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+response.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+response.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}messagesEl.scrollTop=messagesEl.scrollHeight;}});},800);}
+  function generateResponse(text){
+    var pageResponses={
+      '数据概览':{text:'**当前页面：数据概览**\n\n根据最新数据分析：\n\n- 本月中招率 **18.5%**，较上月下降3.2%，趋势向好\n- **财务部**中招率最高（32.1%），建议优先安排培训\n- 举报率22.3%，员工安全意识在提升\n- 培训通过率86.2%，仍有提升空间\n\n### 建议措施\n1. 针对财务部开展专项钓鱼演练\n2. 推送财务类钓鱼识别培训课程\n3. 对连续中招人员启动一对一辅导',actions:[{label:'一键生成报告'},{label:'创建财务部演练'},{label:'推荐培训课程'}]},
+      '演练管理':{text:'**当前页面：演练管理**\n\n最近一次演练「Q3财务钓鱼演练」分析：\n\n| 指标 | 数值 | 评价 |\n|------|------|------|\n| 发送数 | 580 | - |\n| 打开率 | 72.3% | 偏高 |\n| 点击率 | 28.1% | 风险高 |\n| 中招率 | 18.6% | 需关注 |\n| 举报率 | 15.2% | 正常 |\n\n### 关键发现\n- **邮件主题**「紧急：财务报销确认」点击率异常高\n- 发送后2小时内集中中招，说明员工缺乏犹豫期\n- 3人重复中招（已标记为高风险）',actions:[{label:'查看详情'},{label:'生成演练报告'},{label:'标记高危人员'}]},
+      '素材模板':{text:'**当前页面：素材模板**\n\n根据历史演练数据，为您推荐模板生成方案：\n\n### 高效模板特征\n- **场景**：节假日福利领取（点击率平均34.2%）\n- **语气**：紧急+友好混合（打开率提升25%）\n- **发件人**：伪装HR部门（信任度高）\n\n已为您生成草稿模板，请审核确认后入库：',draft:{title:'AI生成模板：节假日福利领取',content:'主题：【福利】2026年中秋礼品领取通知\n发件人：HR-福利管理 <hr-welfare@company.com>\n正文：尊敬的同事，2026年中秋节礼品领取通道已开放，请点击下方链接选择您的礼品...\n预估点击率：32%',actions:true}},
+      '发送配置':{text:'**当前页面：发送配置**\n\n发送通道健康度检查：\n\n- **平台默认SMTP** — 送达率 98.2% ✅\n- **Office365 (EWS)** — 送达率 95.7% ✅\n- **阿里云短信** — 送达率 99.1% ✅\n\n### DNS记录状态\n- SPF ✅ 已配置\n- DKIM ✅ 已配置\n- DMARC ⚠️ 建议添加`p=quarantine`策略\n\n建议：为提升送达率可信度，请完善DMARC记录。',actions:[{label:'查看DMARC配置指引'}]},
+      '用户和组':{text:'**当前页面：用户和组**\n\n高风险人员分析（共86人）：\n\n### 风险分布\n- **极高危险**（风险值>80）：12人\n- **高危险**（风险值60-80）：28人\n- **中危险**（风险值40-60）：46人\n\n### Top 3 高危人员\n1. **王某某**（财务部）— 3次中招，风险值92\n2. **李某**（市场部）— 2次中招+1次误报，风险值87\n3. **张某**（行政部）— 2次中招，风险值85\n\n建议立即安排专项培训。',actions:[{label:'查看风险画像'},{label:'分配培训计划'},{label:'创建针对演练'}]},
+      '安全培训':{text:'**当前页面：安全培训**\n\n培训效果分析：\n\n- 课程完成率：**86.2%**\n- 考试通过率：**78.5%**\n- 培训后中招率下降：**42.3%**\n\n### 薄弱知识点\n1. 邮件头信息识别（错误率61%）\n2. 短链接安全判断（错误率48%）\n3. 附件安全检查（错误率35%）\n\n已为您生成针对性题库草稿，请审核：',draft:{title:'AI生成题库：邮件头识别专项',content:'1. 以下哪项邮件头字段可用于验证发件人身份？\nA. Subject  B. X-Powered-By  C. Received-SPF  D. Date\n答案：C\n\n2. DKIM签名验证失败说明什么？\nA. 邮件被篡改  B. 发件人未认证  C. 服务器宕机  D. 以上都对\n答案：A',actions:true}},
+      '数据报表':{text:'**当前页面：数据报表**\n\n跨演练趋势分析：\n\n### 中招率变化趋势\n- 2026 Q1平均中招率：**24.5%**\n- 2026 Q2平均中招率：**21.2%**\n- 2026 Q3平均中招率：**18.5%**\n\n**整体下降趋势明显**，季度环比下降约14%。\n\n### 最有效改进场景\n- 系统升级类：中招率从31%→18%（下降42%）\n- 财务类：中招率从28%→22%（下降21%）\n\n### 仍需关注\n- 节假日类中招率仅下降8%，建议加强场景化培训',actions:[{label:'导出分析报告'},{label:'生成趋势图表'},{label:'生成改进方案'}]},
+      '邮件举报':{text:'**当前页面：邮件举报**\n\n举报数据分析：\n\n- 本月举报总数：**186次**\n- 演练邮件举报：**142次**（76.3%）\n- 真实钓鱼举报：**32次**（17.2%）\n- 误报：**12次**（6.5%）\n\n### 举报响应时间\n- 平均响应：**4.2分钟**（优秀）\n- 最快：**47秒**\n- 最慢：**23分钟**\n\n举报率持续提升，说明员工安全意识在增强。建议对Top举报者给予积分奖励。',actions:[{label:'查看积分排行'},{label:'生成举报报告'}]},
+      '系统设置':{text:'**当前页面：系统设置**\n\n系统安全配置检查：\n\n### 检查结果\n- 两步验证：✅ 已启用\n- 密码策略：✅ 满足复杂度要求\n- IP白名单：✅ 已配置12个IP\n- 数据加密：✅ 已启用\n- 审计模式：✅ 已启用\n\n### 建议优化\n- ⚠️ 会话超时设置为60分钟，建议缩短至30分钟\n- ⚠️ 数据留存期限为1年，建议根据合规要求调整为2年\n- 💡 建议启用SIEM推送，实现实时告警',actions:[{label:'应用安全建议'}]},
+      '智能助手':{text:'**当前页面：智能助手**\n\nAI能力使用统计：\n\n- 本月API调用：**3,420次**\n- Token消耗：**2.1M**\n- 费用预估：**¥186**\n\n### 各功能使用占比\n1. AI对话助手：48%\n2. 智能分析报告：28%\n3. AI模板生成：18%\n4. 培训推荐：6%\n\n所有AI生成内容均已进入审核队列，确保安全合规。',actions:[{label:'查看审核队列'},{label:'优化AI配置'}]},
+      'API开放平台':{text:'**当前页面：API开放平台**\n\nAPI调用分析：\n\n- 本月总调用：**12,580次**\n- 成功率：**99.2%**\n- 平均响应：**128ms**\n\n### Top 3 调用API\n1. `POST /api/v1/drills` — 4,200次\n2. `GET /api/v1/reports/drills/{id}` — 3,150次\n3. `GET /api/v1/users/risk` — 2,830次\n\n### 异常调用\n- ⚠️ AppID `app_xxxx` 在凌晨3点有异常高频调用，建议检查\n- ⚠️ 2次401认证失败来自IP `10.12.34.56`',actions:[{label:'查看异常日志'},{label:'设置调用限制'}]}
+    };
+    if(text.indexOf('报告')>-1||text.indexOf('分析')>-1){return pageResponses[pageContext]||pageResponses['数据概览'];}
+    if(text.indexOf('生成')>-1||text.indexOf('模板')>-1||text.indexOf('创建')>-1){return pageResponses[pageContext]||pageResponses['素材模板'];}
+    if(text.indexOf('风险')>-1||text.indexOf('高危')>-1){return pageResponses[pageContext]||pageResponses['用户和组'];}
+    return pageResponses[pageContext]||{text:'我是您的AI Copilot助手。当前页面上下文：**'+pageContext+'**。\n\n我可以帮您：\n- 分析当前页面数据\n- 生成报告和建议\n- 创建模板和课程\n- 风险评估和预警\n\n请问有什么可以帮您的？',actions:[]};
+  }
+  function confirmDraft(btn){var card=btn.closest('.copilot-review-card');var badge=card.querySelector('.copilot-review-badge');badge.className='copilot-review-badge confirmed';badge.textContent='已确认入库';var actions=card.querySelector('.copilot-review-actions');actions.innerHTML='<span style="font-size:11px;color:#1D9E75">✓ 审核通过 · 操作人：张管理 · '+new Date().toLocaleString()+'</span>';showToast('草稿已确认入库，审核记录已写入审计日志','success');draftBanner.style.display='none';}
+  function discardDraft(btn){var card=btn.closest('.copilot-review-card');card.style.opacity='0.5';card.querySelector('.copilot-review-actions').innerHTML='<span style="font-size:11px;color:#8c8c8c">已丢弃</span>';showToast('草稿已丢弃','info');}
+  return{open:open,close:close,switchSession:switchSession,newSession:newSession,quickAsk:quickAsk,onKeydown:onKeydown,autoResize:autoResize,send:send,confirmDraft:confirmDraft,discardDraft:discardDraft};
+})();
+</script>

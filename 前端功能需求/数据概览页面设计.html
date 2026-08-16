@@ -1,0 +1,1305 @@
+<h2 class="sr-only">钓鱼演练平台工作台数据概览页面设计图示，包含核心指标、演练分类统计、风险趋势、实时状态、排行榜、浏览器指纹、平台运营数据和近期计划演练</h2>
+<style>
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:12px;padding:14px 16px;transition:all 0.3s ease;border-top:3px solid transparent}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-1px)}
+  .card-blue{border-top-color:#378ADD;background:linear-gradient(180deg,rgba(55,138,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-green{border-top-color:#1D9E75;background:linear-gradient(180deg,rgba(29,158,117,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-orange{border-top-color:#D85A30;background:linear-gradient(180deg,rgba(216,90,48,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-purple{border-top-color:#7F77DD;background:linear-gradient(180deg,rgba(127,119,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-red{border-top-color:#A32D2D;background:linear-gradient(180deg,rgba(163,45,45,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-teal{border-top-color:#0D9488;background:linear-gradient(180deg,rgba(13,148,136,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0 0 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;flex-shrink:0;margin-right:8px}
+  .kpi{background:var(--color-background-secondary);border:1px solid #d1d5db;border-radius:8px;padding:14px;transition:all 0.3s ease;cursor:pointer;position:relative;overflow:hidden}
+  .kpi::before{content:'';position:absolute;top:0;left:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.3s ease}
+  .kpi:hover{background:var(--color-background-tertiary);transform:translateY(-2px)}
+  .kpi:hover::before{transform:scaleY(1)}
+  .kpi-label{font-size:11px;color:var(--color-text-secondary);margin:0 0 6px 0}
+  .kpi-value{font-size:22px;font-weight:500;color:var(--color-text-primary);margin:0;line-height:1.2;transition:all 0.3s ease}
+  .kpi:hover .kpi-value{color:var(--color-text-info)}
+  .tab{padding:3px 10px;font-size:11px;border:0.5px solid var(--color-border-tertiary);border-radius:6px;color:var(--color-text-secondary);background:transparent;cursor:pointer;transition:all 0.2s ease}
+  .tab:hover{background:var(--color-background-secondary)}
+  .tab:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.1)}
+  .tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2);transform:translateY(1px)}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .live-dot{animation:pulse 2s infinite}
+  .bar-track{background:var(--color-background-tertiary);border-radius:4px;height:6px;overflow:hidden;flex:1;position:relative}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+  .bar-track:hover .bar-fill{opacity:0.8}
+  .legend-item{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--color-text-secondary);margin-bottom:6px;transition:all 0.2s ease;cursor:pointer}
+  .legend-item:hover{color:var(--color-text-primary)}
+  .legend-item:hover .dot{transform:scale(1.3)}
+  .badge{padding:2px 8px;border-radius:4px;font-size:11px}
+  @keyframes countUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .kpi-value{animation:countUp 0.5s ease-out}
+  @keyframes fadeIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+  .card{animation:fadeIn 0.4s ease-out}
+
+  /* 顶部栏样式 */
+  .top-bar{height:52px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+  .logo-area{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#1D9E75 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;font-size:12px}
+  .logo-text{font-size:15px;font-weight:600;color:var(--color-text-primary)}
+  .search-box{display:flex;align-items:center;background:var(--color-background-secondary);border-radius:6px;padding:6px 12px;width:280px;transition:all 0.2s ease}
+  .search-box:focus-within{background:var(--color-background-tertiary);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .search-input{border:none;outline:none;background:transparent;font-size:12px;color:var(--color-text-primary);width:100%;margin-left:6px}
+  .user-area{display:flex;align-items:center;gap:16px}
+  .notification-icon{position:relative;cursor:pointer;transition:all 0.2s ease}
+  .notification-icon:hover{color:var(--color-text-info)}
+  .notification-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#D85A30;border-radius:50%;font-size:10px;color:white;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .user-info{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.2s ease}
+  .user-info:hover{background:var(--color-background-secondary)}
+  .user-avatar{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500}
+  .user-name{font-size:12px;color:var(--color-text-primary)}
+
+  /* 侧边栏样式 */
+  .sidebar{width:144px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px 8px;display:flex;flex-direction:column;height:calc(100vh - 52px);position:sticky;top:52px}
+  .sidebar-header{padding:0 8px;margin:0 0 18px 0;display:flex;align-items:center;gap:6px}
+  .sidebar-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer;position:relative;overflow:hidden}
+  .nav-item::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.2s ease}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item:hover::before{transform:scaleY(1)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .nav-item.active::before{transform:scaleY(1)}
+  .nav-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+/* ===== Copilot 侧边栏 ===== */
+.copilot-fab{position:fixed;right:24px;bottom:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(55,138,221,0.35);z-index:9998;transition:all .3s ease}
+.copilot-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(55,138,221,0.45)}
+.copilot-fab svg{width:22px;height:22px}
+.copilot-fab .fab-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid #378ADD;animation:copilotPulse 2s ease-out infinite;opacity:0}
+@keyframes copilotPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.copilot-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9998;opacity:0;visibility:hidden;transition:all .3s}
+.copilot-overlay.show{opacity:1;visibility:visible}
+.copilot-drawer{position:fixed;top:0;right:-420px;width:400px;height:100vh;background:var(--color-background-primary,#fff);box-shadow:-4px 0 24px rgba(0,0,0,0.1);z-index:9999;display:flex;flex-direction:column;transition:right .35s cubic-bezier(.4,0,.2,1)}
+.copilot-drawer.open{right:0}
+.copilot-header{padding:14px 18px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.copilot-header-left{display:flex;align-items:center;gap:10px}
+.copilot-header-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center}
+.copilot-header-icon svg{width:18px;height:18px}
+.copilot-header-title{font-size:15px;font-weight:600}
+.copilot-header-sub{font-size:11px;opacity:.85;margin-top:2px}
+.copilot-close{background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;transition:opacity .2s}
+.copilot-close:hover{opacity:1}
+.copilot-close svg{width:18px;height:18px}
+.copilot-sessions{padding:8px 12px;border-bottom:1px solid #e8e8e8;display:flex;gap:6px;align-items:center;flex-shrink:0;overflow-x:auto}
+.copilot-session-btn{padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;transition:all .2s}
+.copilot-session-btn:hover{border-color:#378ADD;color:#378ADD}
+.copilot-session-btn.active{background:rgba(55,138,221,0.1);border-color:#378ADD;color:#378ADD}
+.copilot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.copilot-msg{display:flex;gap:10px;max-width:92%}
+.copilot-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.copilot-msg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+.copilot-msg.ai .copilot-msg-avatar{background:linear-gradient(135deg,#378ADD,#7F77DD)}
+.copilot-msg.user .copilot-msg-avatar{background:#8c8c8c}
+.copilot-msg-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word}
+.copilot-msg.ai .copilot-msg-bubble{background:#f5f5f5;color:#1a1a1a;border-top-left-radius:4px}
+.copilot-msg.user .copilot-msg-bubble{background:#378ADD;color:#fff;border-top-right-radius:4px}
+.copilot-msg-bubble h4{margin:8px 0 4px;font-size:13px}
+.copilot-msg-bubble ul,.copilot-msg-bubble ol{margin:4px 0;padding-left:18px}
+.copilot-msg-bubble li{margin:2px 0}
+.copilot-msg-bubble table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.copilot-msg-bubble th,.copilot-msg-bubble td{border:1px solid #d8d8d8;padding:4px 8px;text-align:left}
+.copilot-msg-bubble th{background:#e8e8e8}
+.copilot-msg-bubble strong{font-weight:600}
+.copilot-msg-bubble code{background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:12px}
+.copilot-msg-actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.copilot-action-btn{padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #378ADD;background:rgba(55,138,221,0.06);color:#378ADD;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.copilot-action-btn:hover{background:#378ADD;color:#fff}
+.copilot-action-btn svg{width:12px;height:12px}
+.copilot-typing{display:inline-flex;gap:3px;align-items:center;padding:4px 0}
+.copilot-typing span{width:6px;height:6px;border-radius:50%;background:#8c8c8c;animation:copilotTyping 1.4s infinite}
+.copilot-typing span:nth-child(2){animation-delay:.2s}
+.copilot-typing span:nth-child(3){animation-delay:.4s}
+@keyframes copilotTyping{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.copilot-context-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.15);font-size:11px;margin-top:4px}
+.copilot-context-badge svg{width:10px;height:10px}
+.copilot-input-area{padding:12px 16px;border-top:1px solid #e8e8e8;flex-shrink:0}
+.copilot-quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.copilot-quick-tag{padding:3px 8px;border-radius:12px;font-size:11px;background:#f0f5ff;color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.copilot-quick-tag:hover{background:#378ADD;color:#fff}
+.copilot-input-wrap{display:flex;gap:8px;align-items:flex-end}
+.copilot-input{flex:1;border:1px solid #d8d8d8;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;max-height:100px;min-height:38px;outline:none;transition:border-color .2s;line-height:1.5}
+.copilot-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.copilot-send{width:38px;height:38px;border-radius:10px;background:#378ADD;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.copilot-send:hover{background:#2979c9}
+.copilot-send:disabled{background:#ccc;cursor:not-allowed}
+.copilot-send svg{width:16px;height:16px}
+.copilot-draft-banner{padding:6px 12px;background:rgba(239,159,39,0.1);border-top:1px solid rgba(239,159,39,0.3);font-size:11px;color:#9a6800;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.copilot-draft-banner svg{width:12px;height:12px;flex-shrink:0}
+.copilot-empty{text-align:center;padding:40px 20px;color:#8c8c8c}
+.copilot-empty svg{width:40px;height:40px;margin-bottom:12px;opacity:.4}
+.copilot-empty h4{font-size:14px;margin-bottom:6px;color:#595959}
+.copilot-empty p{font-size:12px;line-height:1.6}
+.copilot-review-card{border:1px solid #e8e8e8;border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copilot-review-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.copilot-review-card-title{font-size:12px;font-weight:600;color:#1a1a1a}
+.copilot-review-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.copilot-review-badge.draft{background:rgba(239,159,39,0.15);color:#9a6800}
+.copilot-review-badge.confirmed{background:rgba(29,158,117,0.15);color:#1D9E75}
+.copilot-review-content{font-size:12px;color:#595959;line-height:1.6;padding:8px;background:#f9f9f9;border-radius:6px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+.copilot-review-actions{display:flex;gap:6px}
+.copilot-review-btn{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;transition:all .2s}
+.copilot-review-btn.preview{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.06)}
+.copilot-review-btn.preview:hover{background:#378ADD;color:#fff}
+.copilot-review-btn.confirm{border-color:#1D9E75;color:#1D9E75;background:rgba(29,158,117,0.06)}
+.copilot-review-btn.confirm:hover{background:#1D9E75;color:#fff}
+.copilot-review-btn.discard{border-color:#8c8c8c;color:#8c8c8c;background:transparent}
+.copilot-review-btn.discard:hover{background:#8c8c8c;color:#fff}
+.copilot-error{padding:8px 12px;background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:8px;font-size:12px;color:#A32D2D;display:flex;align-items:center;gap:8px}
+.copilot-error-retry{margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;border:1px solid #A32D2D;color:#A32D2D;cursor:pointer;background:transparent}
+.copilot-error-retry:hover{background:#A32D2D;color:#fff}
+/* ===== ChatBI 自然语言问数 ===== */
+.chatbi-bar{background:linear-gradient(135deg,rgba(55,138,221,0.06),rgba(127,119,221,0.06));border:1px solid rgba(55,138,221,0.2);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px}
+.chatbi-icon{width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#378ADD,#7F77DD);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chatbi-icon svg{width:20px;height:20px;color:#fff}
+.chatbi-body{flex:1}
+.chatbi-title{font-size:13px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px}
+.chatbi-title .chatbi-badge{padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;background:rgba(55,138,221,0.15);color:#378ADD}
+.chatbi-input-wrap{display:flex;gap:8px;margin-top:6px}
+.chatbi-input{flex:1;border:1px solid #d8d8d8;border-radius:8px;padding:7px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .2s;background:#fff}
+.chatbi-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.chatbi-btn{padding:7px 16px;border-radius:8px;background:#378ADD;color:#fff;border:none;font-size:13px;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:4px;transition:background .2s;white-space:nowrap}
+.chatbi-btn:hover{background:#2979c9}
+.chatbi-btn svg{width:14px;height:14px}
+.chatbi-suggestions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.chatbi-suggestion{padding:3px 10px;border-radius:12px;font-size:11px;background:rgba(255,255,255,0.8);color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.chatbi-suggestion:hover{background:#378ADD;color:#fff}
+.chatbi-result{background:#fff;border:1px solid rgba(55,138,221,0.2);border-radius:10px;padding:16px;margin-bottom:14px;display:none}
+.chatbi-result.show{display:block;animation:chatbiFadeIn .4s ease}
+@keyframes chatbiFadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.chatbi-result-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e8e8e8}
+.chatbi-result-title{font-size:13px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px}
+.chatbi-result-title svg{width:14px;height:14px;color:#378ADD}
+.chatbi-result-actions{display:flex;gap:6px}
+.chatbi-result-action{padding:3px 10px;border-radius:6px;font-size:11px;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;cursor:pointer;transition:all .2s}
+.chatbi-result-action:hover{border-color:#378ADD;color:#378ADD}
+.chatbi-query-log{font-size:11px;color:#8c8c8c;background:#f9f9f9;padding:6px 10px;border-radius:6px;margin-bottom:10px;font-family:monospace}
+.chatbi-query-log strong{color:#595959}
+.chatbi-conclusion{font-size:13px;color:#1a1a1a;line-height:1.7;padding:10px 12px;background:rgba(55,138,221,0.04);border-radius:8px;margin-top:10px}
+.chatbi-conclusion strong{color:#378ADD}
+.chatbi-chart{margin:10px 0;padding:10px;background:#f9f9f9;border-radius:8px}
+.chatbi-loading{display:flex;align-items:center;gap:8px;padding:12px;color:#8c8c8c;font-size:13px}
+.chatbi-loading .copilot-typing span{background:#378ADD}
+</style>
+
+<div style="display:flex;flex-direction:column;font-family:var(--font-sans);min-height:560px;">
+  <!-- 顶部栏 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <div class="logo-icon">鱼</div>
+      <span class="logo-text">钓鱼演练平台</span>
+    </div>
+
+    <div class="user-area">
+      <div class="notification-icon" style="color:var(--color-text-secondary)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notification-badge">3</div>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar">张</div>
+        <span class="user-name">张管理</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;">
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+        </svg>
+        <span class="sidebar-title">导航菜单</span>
+      </div>
+
+      <div class="nav-item active">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect>
+            <rect x="14" y="3" width="7" height="7"></rect>
+            <rect x="14" y="14" width="7" height="7"></rect>
+            <rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        数据概览
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        演练管理
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line>
+            <line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+        </div>
+        素材模板
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </div>
+        发送配置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        用户和组
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+            <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        </div>
+        安全培训
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+            <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </div>
+        数据报表
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+        </div>
+        邮件举报
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        系统设置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"></path>
+          </svg>
+        </div>
+        智能助手
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        API开放平台
+      </div>
+    </div>
+
+    <div style="flex:1;padding:14px 18px;min-width:0;overflow-y:auto;">
+    <!-- ChatBI 自然语言问数 -->
+    <div class="chatbi-bar">
+      <div class="chatbi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="13" y2="14"/></svg></div>
+      <div class="chatbi-body">
+        <div class="chatbi-title">ChatBI 智能问数 <span class="chatbi-badge">AI</span></div>
+        <div class="chatbi-input-wrap">
+          <input class="chatbi-input" id="chatbiInput" placeholder="输入自然语言查询，如：本月财务部中招率趋势" onkeydown="if(event.key==='Enter')ChatBI.ask()">
+          <button class="chatbi-btn" onclick="ChatBI.ask()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>查询</button>
+        </div>
+        <div class="chatbi-suggestions">
+          <span class="chatbi-suggestion" onclick="ChatBI.quickAsk(this.textContent)">本月各部门中招率对比</span>
+          <span class="chatbi-suggestion" onclick="ChatBI.quickAsk(this.textContent)">近7天举报趋势</span>
+          <span class="chatbi-suggestion" onclick="ChatBI.quickAsk(this.textContent)">高风险人员名单</span>
+          <span class="chatbi-suggestion" onclick="ChatBI.quickAsk(this.textContent)">培训通过率最低的部门</span>
+        </div>
+      </div>
+    </div>
+    <!-- ChatBI 结果区 -->
+    <div class="chatbi-result" id="chatbiResult">
+      <div class="chatbi-result-header">
+        <div class="chatbi-result-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg><span>查询结果</span></div>
+        <div class="chatbi-result-actions">
+          <span class="chatbi-result-action" onclick="ChatBI.export()">导出</span>
+          <span class="chatbi-result-action" onclick="ChatBI.close()">关闭</span>
+        </div>
+      </div>
+      <div class="chatbi-query-log" id="chatbiQueryLog"></div>
+      <div class="chatbi-chart" id="chatbiChart"></div>
+      <div class="chatbi-conclusion" id="chatbiConclusion"></div>
+    </div>
+
+    <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:12px;color:var(--color-text-tertiary);">工作台 / 数据概览</span>
+      <div style="display:flex;gap:4px;" id="period-filter">
+        <button class="tab" data-period="7天" data-drill="5" data-people="820" data-rate="16.2%" data-rate-delta="↓ 1.8%" data-report="19.5%" data-report-delta="↑ 0.9%" data-train="82.1%" data-train-delta="↑ 2.3%">近7天</button>
+        <button class="tab active" data-period="本月" data-drill="12" data-people="3,580" data-rate="18.5%" data-rate-delta="↓ 3.2%" data-report="22.3%" data-report-delta="↑ 1.8%" data-train="86.2%" data-train-delta="↑ 4.5%">本月</button>
+        <button class="tab" data-period="本季度" data-drill="35" data-people="10,240" data-rate="20.1%" data-rate-delta="↓ 5.6%" data-report="24.8%" data-report-delta="↑ 3.2%" data-train="88.5%" data-train-delta="↑ 6.1%">本季度</button>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px;">
+      <div class="kpi" style="position:relative;">
+        <div style="position:absolute;top:8px;right:8px;width:4px;height:4px;background:var(--color-text-info);border-radius:50%;"></div>
+        <p class="kpi-label" id="kpi-label-drill">本月演练次数</p>
+        <p class="kpi-value" style="font-size:24px;" id="kpi-drill">12</p>
+        <p style="font-size:11px;margin:6px 0 0 0;color:var(--color-text-success);font-weight:500;" id="kpi-drill-delta">↑ 2 较上月</p>
+      </div>
+      <div class="kpi" style="position:relative;">
+        <div style="position:absolute;top:8px;right:8px;width:4px;height:4px;background:var(--color-text-success);border-radius:50%;"></div>
+        <p class="kpi-label">演练人次</p>
+        <p class="kpi-value" style="font-size:24px;" id="kpi-people">3,580</p>
+        <p style="font-size:11px;margin:6px 0 0 0;color:var(--color-text-success);font-weight:500;" id="kpi-people-delta">↑ 420 较上月</p>
+      </div>
+      <div class="kpi" style="position:relative;background:linear-gradient(135deg,var(--color-background-secondary)0%,rgba(216,90,48,0.05)100%);">
+        <div style="position:absolute;top:8px;right:8px;width:4px;height:4px;background:#D85A30;border-radius:50%;"></div>
+        <p class="kpi-label">平均中招率</p>
+        <p class="kpi-value" style="font-size:24px;color:#D85A30;" id="kpi-rate">18.5%</p>
+        <p style="font-size:11px;margin:6px 0 0 0;color:var(--color-text-success);font-weight:500;" id="kpi-rate-delta">↓ 3.2% 较上月</p>
+      </div>
+      <div class="kpi" style="position:relative;">
+        <div style="position:absolute;top:8px;right:8px;width:4px;height:4px;background:var(--color-text-success);border-radius:50%;"></div>
+        <p class="kpi-label">平均举报率</p>
+        <p class="kpi-value" style="font-size:24px;" id="kpi-report">22.3%</p>
+        <p style="font-size:11px;margin:6px 0 0 0;color:var(--color-text-success);font-weight:500;" id="kpi-report-delta">↑ 1.8% 较上月</p>
+      </div>
+      <div class="kpi" style="position:relative;">
+        <div style="position:absolute;top:8px;right:8px;width:4px;height:4px;background:var(--color-text-success);border-radius:50%;"></div>
+        <p class="kpi-label">培训通过率</p>
+        <p class="kpi-value" style="font-size:24px;" id="kpi-train">86.2%</p>
+        <p style="font-size:11px;margin:6px 0 0 0;color:var(--color-text-success);font-weight:500;" id="kpi-train-delta">↑ 4.5% 较上月</p>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px;">
+      <div class="card card-blue">
+        <p class="card-title">
+          <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">分</span>演练活动方式分类统计</span>
+          <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;" id="category-period-label">本月数据</span>
+        </p>
+        <div style="display:flex;align-items:center;gap:20px;">
+          <svg width="110" height="110" viewBox="0 0 110 110" style="transform:rotate(-90deg);flex-shrink:0;">
+            <circle cx="55" cy="55" r="40" fill="none" stroke="var(--color-background-tertiary)" stroke-width="12"/>
+            <circle id="pie-email" cx="55" cy="55" r="40" fill="none" stroke="#378ADD" stroke-width="12" stroke-dasharray="170.90 80.43" stroke-dashoffset="0"/>
+            <circle id="pie-sms" cx="55" cy="55" r="40" fill="none" stroke="#1D9E75" stroke-width="12" stroke-dasharray="55.29 196.04" stroke-dashoffset="-170.90"/>
+            <circle id="pie-social" cx="55" cy="55" r="40" fill="none" stroke="#D85A30" stroke-width="12" stroke-dasharray="25.13 226.19" stroke-dashoffset="-226.19"/>
+          </svg>
+          <div style="flex:1;">
+            <div class="legend-item"><span class="dot" style="background:#378ADD;"></span>邮件钓鱼演练<span id="legend-email" style="margin-left:auto;font-weight:500;color:var(--color-text-primary);">68%</span></div>
+            <div class="legend-item"><span class="dot" style="background:#1D9E75;"></span>短信钓鱼演练<span id="legend-sms" style="margin-left:auto;font-weight:500;color:var(--color-text-primary);">22%</span></div>
+            <div class="legend-item"><span class="dot" style="background:#D85A30;"></span>社交媒体钓鱼<span id="legend-social" style="margin-left:auto;font-weight:500;color:var(--color-text-primary);">10%</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="card card-green">
+        <p class="card-title">
+          <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#1D9E75;">实</span>进行中的演练实时状态</span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--color-text-success);font-weight:400;">
+            <span class="dot live-dot" style="background:var(--color-text-success);"></span>实时
+          </span>
+        </p>
+        <div style="display:flex;flex-direction:column;gap:8px;" id="live-status">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--color-text-secondary);width:48px;">已投递</span>
+            <div class="bar-track"><div class="bar-fill" id="live-delivered-bar" style="width:100%;background:#378ADD;"></div></div>
+            <span style="font-size:12px;font-weight:500;width:44px;text-align:right;color:var(--color-text-primary);" id="live-delivered">1,200</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--color-text-secondary);width:48px;">已阅读</span>
+            <div class="bar-track"><div class="bar-fill" id="live-read-bar" style="width:71%;background:#378ADD;"></div></div>
+            <span style="font-size:12px;font-weight:500;width:44px;text-align:right;color:var(--color-text-primary);" id="live-read">856</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--color-text-secondary);width:48px;">已点击</span>
+            <div class="bar-track"><div class="bar-fill" id="live-clicked-bar" style="width:27%;background:#D85A30;"></div></div>
+            <span style="font-size:12px;font-weight:500;width:44px;text-align:right;color:var(--color-text-primary);" id="live-clicked">324</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--color-text-secondary);width:48px;">已提交</span>
+            <div class="bar-track"><div class="bar-fill" id="live-submitted-bar" style="width:16%;background:#A32D2D;"></div></div>
+            <span style="font-size:12px;font-weight:500;width:44px;text-align:right;color:var(--color-text-primary);" id="live-submitted">187</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:11px;color:var(--color-text-secondary);width:48px;">已举报</span>
+            <div class="bar-track"><div class="bar-fill" id="live-reported-bar" style="width:22%;background:#1D9E75;"></div></div>
+            <span style="font-size:12px;font-weight:500;width:44px;text-align:right;color:var(--color-text-primary);" id="live-reported">268</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px;">
+      <div class="card card-orange">
+        <p class="card-title">
+          <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#D85A30;">趋</span>风险趋势图表</span>
+          <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;" id="trend-period-label">本月趋势</span>
+        </p>
+        <div id="trend-chart" style="position:relative;height:140px;">
+          <svg width="100%" height="140" viewBox="0 0 420 140" preserveAspectRatio="none" id="trend-svg">
+            <!-- 网格线 -->
+            <line x1="30" y1="20" x2="410" y2="20" stroke="#e5e7eb" stroke-width="0.5" stroke-dasharray="3,3"/>
+            <line x1="30" y1="55" x2="410" y2="55" stroke="#e5e7eb" stroke-width="0.5" stroke-dasharray="3,3"/>
+            <line x1="30" y1="90" x2="410" y2="90" stroke="#e5e7eb" stroke-width="0.5" stroke-dasharray="3,3"/>
+            <line x1="30" y1="120" x2="410" y2="120" stroke="#d1d5db" stroke-width="1"/>
+            <!-- Y轴左标签 -->
+            <text x="25" y="24" text-anchor="end" font-size="9" fill="#9ca3af">800</text>
+            <text x="25" y="59" text-anchor="end" font-size="9" fill="#9ca3af">400</text>
+            <text x="25" y="94" text-anchor="end" font-size="9" fill="#9ca3af">0</text>
+            <!-- Y轴右标签 -->
+            <text x="415" y="24" text-anchor="start" font-size="9" fill="#D85A30">30%</text>
+            <text x="415" y="59" text-anchor="start" font-size="9" fill="#D85A30">15%</text>
+            <text x="415" y="94" text-anchor="start" font-size="9" fill="#D85A30">0%</text>
+            <!-- 柱状图（中招人数） -->
+            <g id="trend-bars"></g>
+            <!-- 折线图（中招率%） -->
+            <polyline id="trend-line" fill="none" stroke="#D85A30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" points=""/>
+            <g id="trend-dots"></g>
+            <!-- X轴标签 -->
+            <g id="trend-labels"></g>
+          </svg>
+        </div>
+        <div style="display:flex;gap:16px;margin-top:8px;padding-top:8px;border-top:0.5px solid #e5e7eb;">
+          <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--color-text-secondary);">
+            <span style="width:10px;height:10px;background:#378ADD;border-radius:2px;display:inline-block;"></span>中招人数
+          </span>
+          <span style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--color-text-secondary);">
+            <span style="width:14px;height:2px;background:#D85A30;border-radius:1px;display:inline-block;"></span>中招率
+          </span>
+        </div>
+      </div>
+      <div class="card card-purple">
+        <p class="card-title"><span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#7F77DD;">指</span>浏览器指纹分布</span></p>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <svg width="100" height="100" viewBox="0 0 100 100" style="transform:rotate(-90deg);flex-shrink:0;">
+            <circle cx="50" cy="50" r="36" fill="none" stroke="var(--color-background-tertiary)" stroke-width="10"/>
+            <circle id="fp-chrome" cx="50" cy="50" r="36" fill="none" stroke="#378ADD" stroke-width="10" stroke-dasharray="117.62 108.58" stroke-dashoffset="0"/>
+            <circle id="fp-edge" cx="50" cy="50" r="36" fill="none" stroke="#1D9E75" stroke-width="10" stroke-dasharray="56.55 169.65" stroke-dashoffset="-117.62"/>
+            <circle id="fp-firefox" cx="50" cy="50" r="36" fill="none" stroke="#EF9F27" stroke-width="10" stroke-dasharray="27.14 199.06" stroke-dashoffset="-174.17"/>
+            <circle id="fp-safari" cx="50" cy="50" r="36" fill="none" stroke="#7F77DD" stroke-width="10" stroke-dasharray="18.10 208.10" stroke-dashoffset="-201.31"/>
+            <circle id="fp-other" cx="50" cy="50" r="36" fill="none" stroke="#888780" stroke-width="10" stroke-dasharray="6.79 219.41" stroke-dashoffset="-219.41"/>
+          </svg>
+          <div style="flex:1;min-width:0;">
+            <div class="legend-item" style="margin-bottom:4px;"><span class="dot" style="background:#378ADD;"></span>Chrome<span id="fp-chrome-val" style="margin-left:auto;font-weight:500;color:var(--color-text-primary);">52%</span></div>
+            <div class="legend-item" style="margin-bottom:4px;"><span class="dot" style="background:#1D9E75;"></span>Edge<span id="fp-edge-val" style="margin-left:auto;font-weight:500;color:var(--color-text-primary);">25%</span></div>
+            <div class="legend-item" style="margin-bottom:4px;"><span class="dot" style="background:#EF9F27;"></span>Firefox<span id="fp-firefox-val" style="margin-left:auto;font-weight:500;color:var(--color-text-primary);">12%</span></div>
+            <div class="legend-item" style="margin-bottom:4px;"><span class="dot" style="background:#7F77DD;"></span>Safari<span id="fp-safari-val" style="margin-left:auto;font-weight:500;color:var(--color-text-primary);">8%</span></div>
+            <div class="legend-item"><span class="dot" style="background:#888780;"></span>其他<span id="fp-other-val" style="margin-left:auto;font-weight:500;color:var(--color-text-primary);">3%</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1.4fr 1fr;gap:16px;margin-bottom:16px;">
+      <div class="card card-red">
+        <p class="card-title">
+          <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#A32D2D;">榜</span>中招高危 TOP5 排行榜</span>
+          <span style="display:flex;gap:4px;">
+            <button class="tab active">人员</button>
+            <button class="tab">部门</button>
+          </span>
+        </p>
+        <div style="display:flex;flex-direction:column;gap:10px;" id="rank-list">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:500;color:#A32D2D;width:18px;">1</span>
+            <span style="font-size:12px;color:var(--color-text-primary);width:48px;" id="rank1-name">张某某</span>
+            <span style="font-size:11px;color:var(--color-text-secondary);width:50px;" id="rank1-dept">研发部</span>
+            <div class="bar-track"><div class="bar-fill" id="rank1-bar" style="width:100%;background:#A32D2D;"></div></div>
+            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);width:32px;text-align:right;" id="rank1-count">4次</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:500;color:#D85A30;width:18px;">2</span>
+            <span style="font-size:12px;color:var(--color-text-primary);width:48px;" id="rank2-name">李某某</span>
+            <span style="font-size:11px;color:var(--color-text-secondary);width:50px;" id="rank2-dept">市场部</span>
+            <div class="bar-track"><div class="bar-fill" id="rank2-bar" style="width:75%;background:#D85A30;"></div></div>
+            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);width:32px;text-align:right;" id="rank2-count">3次</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:500;color:#D85A30;width:18px;">3</span>
+            <span style="font-size:12px;color:var(--color-text-primary);width:48px;" id="rank3-name">王某某</span>
+            <span style="font-size:11px;color:var(--color-text-secondary);width:50px;" id="rank3-dept">行政部</span>
+            <div class="bar-track"><div class="bar-fill" id="rank3-bar" style="width:75%;background:#D85A30;"></div></div>
+            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);width:32px;text-align:right;" id="rank3-count">3次</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:500;color:#EF9F27;width:18px;">4</span>
+            <span style="font-size:12px;color:var(--color-text-primary);width:48px;" id="rank4-name">赵某某</span>
+            <span style="font-size:11px;color:var(--color-text-secondary);width:50px;" id="rank4-dept">财务部</span>
+            <div class="bar-track"><div class="bar-fill" id="rank4-bar" style="width:50%;background:#EF9F27;"></div></div>
+            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);width:32px;text-align:right;" id="rank4-count">2次</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:12px;font-weight:500;color:#EF9F27;width:18px;">5</span>
+            <span style="font-size:12px;color:var(--color-text-primary);width:48px;" id="rank5-name">孙某某</span>
+            <span style="font-size:11px;color:var(--color-text-secondary);width:50px;" id="rank5-dept">运营部</span>
+            <div class="bar-track"><div class="bar-fill" id="rank5-bar" style="width:50%;background:#EF9F27;"></div></div>
+            <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);width:32px;text-align:right;" id="rank5-count">2次</span>
+          </div>
+        </div>
+      </div>
+      <div class="card card-teal">
+        <p class="card-title"><span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#0D9488;">营</span>素材模板运营数据</span></p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <div style="padding:8px 10px;background:var(--color-background-secondary);border-radius:8px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px 0;">邮件钓鱼模板</p>
+            <p style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin:0;">86</p>
+          </div>
+          <div style="padding:8px 10px;background:var(--color-background-secondary);border-radius:8px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px 0;">口令钓鱼模板</p>
+            <p style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin:0;">42</p>
+          </div>
+          <div style="padding:8px 10px;background:var(--color-background-secondary);border-radius:8px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px 0;">二维码钓鱼模板</p>
+            <p style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin:0;">28</p>
+          </div>
+          <div style="padding:8px 10px;background:var(--color-background-secondary);border-radius:8px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px 0;">水坑钓鱼模板</p>
+            <p style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin:0;">15</p>
+          </div>
+          <div style="padding:8px 10px;background:var(--color-background-secondary);border-radius:8px;grid-column:span 2;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 4px 0;">钓鱼话术</p>
+            <p style="font-size:18px;font-weight:500;color:var(--color-text-primary);margin:0;">120</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card card-blue">
+      <p class="card-title">
+        <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">划</span>近期计划演练</span>
+        <span style="font-size:11px;color:var(--color-text-info);font-weight:400;">查看全部</span>
+      </p>
+      <table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;">
+        <thead>
+          <tr style="border-bottom:0.5px solid var(--color-border-tertiary);">
+            <th style="text-align:left;padding:8px 0;font-weight:500;color:var(--color-text-secondary);font-size:11px;width:28%;">活动名称</th>
+            <th style="text-align:left;padding:8px 0;font-weight:500;color:var(--color-text-secondary);font-size:11px;width:16%;">活动日期</th>
+            <th style="text-align:left;padding:8px 0;font-weight:500;color:var(--color-text-secondary);font-size:11px;width:14%;">演练类型</th>
+            <th style="text-align:left;padding:8px 0;font-weight:500;color:var(--color-text-secondary);font-size:11px;width:24%;">目标对象/部门</th>
+            <th style="text-align:right;padding:8px 0;font-weight:500;color:var(--color-text-secondary);font-size:11px;width:18%;">状态</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:0.5px solid var(--color-border-tertiary);">
+            <td style="padding:8px 0;color:var(--color-text-primary);">Q3全员防钓鱼演练</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">2026-08-20</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">邮件钓鱼</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">全公司 (3,580人)</td>
+            <td style="padding:8px 0;text-align:right;"><span class="badge" style="background:var(--color-background-info);color:var(--color-text-info);">待开始</span></td>
+          </tr>
+          <tr style="border-bottom:0.5px solid var(--color-border-tertiary);">
+            <td style="padding:8px 0;color:var(--color-text-primary);">研发部定向演练</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">2026-08-25</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">短信钓鱼</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">研发部 (420人)</td>
+            <td style="padding:8px 0;text-align:right;"><span class="badge" style="background:var(--color-background-info);color:var(--color-text-info);">待开始</span></td>
+          </tr>
+          <tr style="border-bottom:0.5px solid var(--color-border-tertiary);">
+            <td style="padding:8px 0;color:var(--color-text-primary);">新员工安全意识测试</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">2026-09-01</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">邮件钓鱼</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">新入职员工 (30人)</td>
+            <td style="padding:8px 0;text-align:right;"><span class="badge" style="background:var(--color-background-info);color:var(--color-text-info);">待开始</span></td>
+          </tr>
+          <tr>
+            <td style="padding:8px 0;color:var(--color-text-primary);">财务部专项演练</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">2026-09-10</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">邮件钓鱼</td>
+            <td style="padding:8px 0;color:var(--color-text-secondary);">财务部 (56人)</td>
+            <td style="padding:8px 0;text-align:right;"><span class="badge" style="background:var(--color-background-warning);color:var(--color-text-warning);">筹备中</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  // 各周期完整数据
+  var periodData = {
+    '7天': {
+      kpi: { drill:'5', people:'820', rate:'16.2%', rateDelta:'↓ 1.8%', report:'19.5%', reportDelta:'↑ 0.9%', train:'82.1%', trainDelta:'↑ 2.3%' },
+      category: { email:72, sms:18, social:10 },
+      live: { delivered:320, read:210, clicked:58, submitted:32, reported:72 },
+      trend: {
+        labels:['8/9','8/10','8/11','8/12','8/13','8/14','8/15'],
+        counts:[42,58,35,72,48,65,52],
+        rates:[15,19,12,24,16,22,18]
+      },
+      fingerprint: { chrome:54, edge:23, firefox:11, safari:8, other:4 },
+      rank: [
+        {name:'张某某',dept:'研发部',count:'3次',bar:100,color:'#A32D2D'},
+        {name:'李某某',dept:'市场部',count:'2次',bar:67,color:'#D85A30'},
+        {name:'赵某某',dept:'财务部',count:'2次',bar:67,color:'#D85A30'},
+        {name:'王某某',dept:'行政部',count:'1次',bar:33,color:'#EF9F27'},
+        {name:'孙某某',dept:'运营部',count:'1次',bar:33,color:'#EF9F27'}
+      ]
+    },
+    '本月': {
+      kpi: { drill:'12', people:'3,580', rate:'18.5%', rateDelta:'↓ 3.2%', report:'22.3%', reportDelta:'↑ 1.8%', train:'86.2%', trainDelta:'↑ 4.5%' },
+      category: { email:68, sms:22, social:10 },
+      live: { delivered:1200, read:856, clicked:324, submitted:187, reported:268 },
+      trend: {
+        labels:['第1周','第2周','第3周','第4周'],
+        counts:[186,245,198,287],
+        rates:[16,20,17,21]
+      },
+      fingerprint: { chrome:52, edge:25, firefox:12, safari:8, other:3 },
+      rank: [
+        {name:'张某某',dept:'研发部',count:'4次',bar:100,color:'#A32D2D'},
+        {name:'李某某',dept:'市场部',count:'3次',bar:75,color:'#D85A30'},
+        {name:'王某某',dept:'行政部',count:'3次',bar:75,color:'#D85A30'},
+        {name:'赵某某',dept:'财务部',count:'2次',bar:50,color:'#EF9F27'},
+        {name:'孙某某',dept:'运营部',count:'2次',bar:50,color:'#EF9F27'}
+      ]
+    },
+    '本季度': {
+      kpi: { drill:'35', people:'10,240', rate:'20.1%', rateDelta:'↓ 5.6%', report:'24.8%', reportDelta:'↑ 3.2%', train:'88.5%', trainDelta:'↑ 6.1%' },
+      category: { email:65, sms:25, social:10 },
+      live: { delivered:3500, read:2400, clicked:850, submitted:520, reported:780 },
+      trend: {
+        labels:['6月','7月','8月'],
+        counts:[580,720,650],
+        rates:[18,22,20]
+      },
+      fingerprint: { chrome:50, edge:27, firefox:13, safari:7, other:3 },
+      rank: [
+        {name:'张某某',dept:'研发部',count:'8次',bar:100,color:'#A32D2D'},
+        {name:'李某某',dept:'市场部',count:'6次',bar:75,color:'#D85A30'},
+        {name:'王某某',dept:'行政部',count:'5次',bar:63,color:'#D85A30'},
+        {name:'赵某某',dept:'财务部',count:'4次',bar:50,color:'#EF9F27'},
+        {name:'孙某某',dept:'运营部',count:'3次',bar:38,color:'#EF9F27'}
+      ]
+    }
+  };
+
+  // 辅助：更新文本（带淡入动画）
+  function setText(id, value){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.style.transition = 'opacity 0.2s ease';
+    el.style.opacity = '0';
+    setTimeout(function(){ el.textContent = value; el.style.opacity = '1'; }, 200);
+  }
+
+  // 辅助：更新进度条宽度
+  function setBar(id, percent){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.style.transition = 'width 0.4s ease';
+    el.style.width = percent + '%';
+  }
+
+  // 辅助：更新饼图dasharray（r=40, 周长=251.33）
+  var PIE_C = 251.33;
+  function setPie(id, percent, offset){
+    var el = document.getElementById(id);
+    if(!el) return;
+    var len = PIE_C * percent / 100;
+    el.setAttribute('stroke-dasharray', len + ' ' + (PIE_C - len));
+    el.setAttribute('stroke-dashoffset', -offset);
+  }
+
+  // 辅助：更新指纹饼图（r=36, 周长=226.19）
+  var FP_C = 226.19;
+  function setFp(id, percent, offset){
+    var el = document.getElementById(id);
+    if(!el) return;
+    var len = FP_C * percent / 100;
+    el.setAttribute('stroke-dasharray', len + ' ' + (FP_C - len));
+    el.setAttribute('stroke-dashoffset', -offset);
+  }
+
+  // 辅助：渲染混合趋势图（柱状+折线）
+  function renderTrendChart(data){
+    var barsG = document.getElementById('trend-bars');
+    var lineEl = document.getElementById('trend-line');
+    var dotsG = document.getElementById('trend-dots');
+    var labelsG = document.getElementById('trend-labels');
+    if(!barsG) return;
+
+    var n = data.labels.length;
+    var chartW = 380, chartH = 100, chartX = 30, chartY = 20;
+    var slotW = chartW / n;
+    var barW = 18;
+    var maxCount = Math.max.apply(null, data.counts) * 1.15;
+
+    // 渲染柱状图
+    var barsHtml = '';
+    for(var i=0; i<n; i++){
+      var h = (data.counts[i] / maxCount) * chartH;
+      var x = chartX + slotW * i + (slotW - barW) / 2;
+      var y = chartY + chartH - h;
+      barsHtml += '<rect x="'+x+'" y="'+y+'" width="'+barW+'" height="'+h+'" fill="#378ADD" rx="3" ry="3" opacity="0.85"/>';
+      barsHtml += '<text x="'+(x+barW/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="9" fill="#6b7280" font-weight="500">'+data.counts[i]+'</text>';
+    }
+    barsG.innerHTML = barsHtml;
+
+    // 渲染折线（中招率%，右轴0-30%）
+    var maxRate = 30;
+    var points = [];
+    for(var i=0; i<n; i++){
+      var px = chartX + slotW * i + slotW / 2;
+      var py = chartY + chartH - (data.rates[i] / maxRate) * chartH;
+      points.push(px + ',' + py);
+    }
+    lineEl.setAttribute('points', points.join(' '));
+
+    // 渲染折线上的圆点
+    var dotsHtml = '';
+    for(var i=0; i<n; i++){
+      var px = chartX + slotW * i + slotW / 2;
+      var py = chartY + chartH - (data.rates[i] / maxRate) * chartH;
+      dotsHtml += '<circle cx="'+px+'" cy="'+py+'" r="3" fill="#fff" stroke="#D85A30" stroke-width="2"/>';
+      dotsHtml += '<text x="'+px+'" y="'+(py-8)+'" text-anchor="middle" font-size="9" fill="#D85A30" font-weight="500">'+data.rates[i]+'%</text>';
+    }
+    dotsG.innerHTML = dotsHtml;
+
+    // 渲染X轴标签
+    var labelsHtml = '';
+    for(var i=0; i<n; i++){
+      var lx = chartX + slotW * i + slotW / 2;
+      labelsHtml += '<text x="'+lx+'" y="134" text-anchor="middle" font-size="10" fill="#9ca3af">'+data.labels[i]+'</text>';
+    }
+    labelsG.innerHTML = labelsHtml;
+  }
+
+  // 主更新函数
+  function updateAll(period){
+    var d = periodData[period];
+    if(!d) return;
+
+    // KPI
+    setText('kpi-label-drill', period + '演练次数');
+    setText('kpi-drill', d.kpi.drill);
+    setText('kpi-people', d.kpi.people);
+    setText('kpi-rate', d.kpi.rate);
+    setText('kpi-rate-delta', d.kpi.rateDelta + ' 较上期');
+    setText('kpi-report', d.kpi.report);
+    setText('kpi-report-delta', d.kpi.reportDelta + ' 较上期');
+    setText('kpi-train', d.kpi.train);
+    setText('kpi-train-delta', d.kpi.trainDelta + ' 较上期');
+
+    // 分类统计饼图
+    setText('category-period-label', period + '数据');
+    var c = d.category;
+    var off1 = PIE_C * c.email / 100;
+    var off2 = off1 + PIE_C * c.sms / 100;
+    setPie('pie-email', c.email, 0);
+    setPie('pie-sms', c.sms, off1);
+    setPie('pie-social', c.social, off2);
+    setText('legend-email', c.email + '%');
+    setText('legend-sms', c.sms + '%');
+    setText('legend-social', c.social + '%');
+
+    // 实时状态
+    var l = d.live;
+    setText('live-delivered', l.delivered.toLocaleString());
+    setText('live-read', l.read.toLocaleString());
+    setText('live-clicked', l.clicked.toLocaleString());
+    setText('live-submitted', l.submitted.toLocaleString());
+    setText('live-reported', l.reported.toLocaleString());
+    setBar('live-delivered-bar', 100);
+    setBar('live-read-bar', (l.read/l.delivered*100).toFixed(0));
+    setBar('live-clicked-bar', (l.clicked/l.delivered*100).toFixed(0));
+    setBar('live-submitted-bar', (l.submitted/l.delivered*100).toFixed(0));
+    setBar('live-reported-bar', (l.reported/l.delivered*100).toFixed(0));
+
+    // 风险趋势混合图
+    setText('trend-period-label', period + '趋势');
+    renderTrendChart(d.trend);
+
+    // 浏览器指纹
+    var f = d.fingerprint;
+    var fpOff1 = FP_C * f.chrome / 100;
+    var fpOff2 = fpOff1 + FP_C * f.edge / 100;
+    var fpOff3 = fpOff2 + FP_C * f.firefox / 100;
+    var fpOff4 = fpOff3 + FP_C * f.safari / 100;
+    setFp('fp-chrome', f.chrome, 0);
+    setFp('fp-edge', f.edge, fpOff1);
+    setFp('fp-firefox', f.firefox, fpOff2);
+    setFp('fp-safari', f.safari, fpOff3);
+    setFp('fp-other', f.other, fpOff4);
+    setText('fp-chrome-val', f.chrome + '%');
+    setText('fp-edge-val', f.edge + '%');
+    setText('fp-firefox-val', f.firefox + '%');
+    setText('fp-safari-val', f.safari + '%');
+    setText('fp-other-val', f.other + '%');
+
+    // TOP5排行榜
+    var rankColors = ['#A32D2D','#D85A30','#D85A30','#EF9F27','#EF9F27'];
+    for(var i=0; i<5; i++){
+      var r = d.rank[i];
+      setText('rank'+(i+1)+'-name', r.name);
+      setText('rank'+(i+1)+'-dept', r.dept);
+      setText('rank'+(i+1)+'-count', r.count);
+      setBar('rank'+(i+1)+'-bar', r.bar);
+      var barEl = document.getElementById('rank'+(i+1)+'-bar');
+      if(barEl) barEl.style.background = r.color;
+    }
+  }
+
+  // 绑定筛选按钮
+  var filter = document.getElementById('period-filter');
+  if(!filter) return;
+  var tabs = filter.querySelectorAll('.tab');
+  tabs.forEach(function(tab){
+    tab.addEventListener('click', function(){
+      tabs.forEach(function(t){ t.classList.remove('active'); });
+      tab.classList.add('active');
+      var period = tab.getAttribute('data-period');
+      updateAll(period);
+    });
+  });
+
+  // 初始渲染趋势图
+  updateAll('本月');
+})();
+</script>
+
+<!-- Copilot FAB -->
+<div class="copilot-fab" id="copilotFab" onclick="Copilot.open()">
+  <span class="fab-pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg>
+</div>
+<!-- Copilot Drawer -->
+<div class="copilot-overlay" id="copilotOverlay" onclick="Copilot.close()"></div>
+<div class="copilot-drawer" id="copilotDrawer" data-page="数据概览">
+  <div class="copilot-header">
+    <div class="copilot-header-left">
+      <div class="copilot-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg></div>
+      <div>
+        <div class="copilot-header-title">AI Copilot</div>
+        <div class="copilot-header-sub" id="copilotContext">当前上下文：数据概览</div>
+      </div>
+    </div>
+    <button class="copilot-close" onclick="Copilot.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="copilot-sessions">
+    <div class="copilot-session-btn active" onclick="Copilot.switchSession(this,'current')">当前会话</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s1')">演练分析</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s2')">模板生成</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s3')">风险报告</div>
+    <div class="copilot-session-btn" onclick="Copilot.newSession()">+ 新建</div>
+  </div>
+  <div class="copilot-messages" id="copilotMessages">
+    <div class="copilot-empty" id="copilotEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h4>AI Copilot 智能助手</h4>
+      <p>我是您的安全演练AI助手，可以帮您分析演练数据、生成模板、撰写报告等。<br/>下方快捷问题可直接点击使用。</p>
+    </div>
+  </div>
+  <div class="copilot-draft-banner" id="copilotDraftBanner" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span>AI生成内容处于草稿态，需人工确认后生效。审核记录将进入审计日志。</span>
+  </div>
+  <div class="copilot-input-area">
+    <div class="copilot-quick-tags" id="copilotQuickTags">
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">分析当前页面数据</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">本月中招率趋势</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">高危部门预警</span>
+    </div>
+    <div class="copilot-input-wrap">
+      <textarea class="copilot-input" id="copilotInput" placeholder="输入您的问题..." rows="1" onkeydown="Copilot.onKeydown(event)" oninput="Copilot.autoResize(this)"></textarea>
+      <button class="copilot-send" id="copilotSend" onclick="Copilot.send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+if(typeof showToast!=='function'){function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}}
+
+// ===== Copilot 全局AI助手 =====
+var Copilot=(function(){
+  var drawer=document.getElementById('copilotDrawer');
+  var overlay=document.getElementById('copilotOverlay');
+  var messagesEl=document.getElementById('copilotMessages');
+  var inputEl=document.getElementById('copilotInput');
+  var sendBtn=document.getElementById('copilotSend');
+  var emptyEl=document.getElementById('copilotEmpty');
+  var draftBanner=document.getElementById('copilotDraftBanner');
+  var pageContext=drawer?drawer.getAttribute('data-page'):'';
+  var isGenerating=false;
+  var messages=[];
+
+  function open(){
+    if(!drawer)return;
+    drawer.classList.add('open');
+    overlay.classList.add('show');
+    setTimeout(function(){inputEl&&inputEl.focus();},350);
+  }
+  function close(){
+    if(!drawer)return;
+    drawer.classList.remove('open');
+    overlay.classList.remove('show');
+  }
+  function switchSession(btn,key){
+    var btns=document.querySelectorAll('.copilot-session-btn');
+    for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');
+    btn.classList.add('active');
+    showToast('已切换到会话：'+btn.textContent,'info');
+  }
+  function newSession(){
+    var btns=document.querySelectorAll('.copilot-session-btn');
+    for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');
+    messages=[];
+    if(emptyEl)emptyEl.style.display='block';
+    messagesEl.innerHTML='';
+    messagesEl.appendChild(emptyEl);
+    showToast('已创建新会话','info');
+  }
+  function quickAsk(text){
+    if(!inputEl)return;
+    inputEl.value=text;
+    autoResize(inputEl);
+    send();
+  }
+  function onKeydown(e){
+    if(e.key==='Enter'&&!e.shiftKey){
+      e.preventDefault();
+      send();
+    }
+  }
+  function autoResize(el){
+    el.style.height='38px';
+    el.style.height=Math.min(el.scrollHeight,100)+'px';
+  }
+  function addMessage(role,content,opts){
+    opts=opts||{};
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');
+    msg.className='copilot-msg '+role;
+    var avatar=document.createElement('div');
+    avatar.className='copilot-msg-avatar';
+    avatar.textContent=role==='ai'?'AI':'我';
+    var bubble=document.createElement('div');
+    bubble.className='copilot-msg-bubble';
+    if(role==='ai'){
+      bubble.innerHTML=renderMarkdown(content);
+    }else{
+      bubble.textContent=content;
+    }
+    msg.appendChild(avatar);
+    msg.appendChild(bubble);
+    if(role==='ai'&&opts.showContext){
+      var badge=document.createElement('div');
+      badge.className='copilot-context-badge';
+      badge.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>上下文：'+pageContext;
+      bubble.appendChild(badge);
+    }
+    if(role==='ai'&&opts.actions){
+      var actDiv=document.createElement('div');
+      actDiv.className='copilot-msg-actions';
+      opts.actions.forEach(function(act){
+        var btn=document.createElement('button');
+        btn.className='copilot-action-btn';
+        btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;
+        btn.onclick=function(){showToast('执行：'+act.label,'info');};
+        actDiv.appendChild(btn);
+      });
+      bubble.appendChild(actDiv);
+    }
+    if(role==='ai'&&opts.draft){
+      draftBanner.style.display='flex';
+      var reviewCard=document.createElement('div');
+      reviewCard.className='copilot-review-card';
+      reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+opts.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+opts.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';
+      bubble.appendChild(reviewCard);
+    }
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop=messagesEl.scrollHeight;
+    return bubble;
+  }
+  function showTyping(){
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');
+    msg.className='copilot-msg ai';
+    msg.id='copilotTypingMsg';
+    msg.innerHTML='<div class="copilot-msg-avatar">AI</div><div class="copilot-msg-bubble"><div class="copilot-typing"><span></span><span></span><span></span></div></div>';
+    messagesEl.appendChild(msg);
+    messagesEl.scrollTop=messagesEl.scrollHeight;
+  }
+  function hideTyping(){
+    var t=document.getElementById('copilotTypingMsg');
+    if(t)t.remove();
+  }
+  function typewriter(el,text,opts){
+    opts=opts||{};
+    var i=0;
+    var speed=15;
+    el.innerHTML='';
+    function type(){
+      if(i<text.length){
+        el.innerHTML=renderMarkdown(text.substring(0,i+1));
+        i++;
+        messagesEl.scrollTop=messagesEl.scrollHeight;
+        setTimeout(type,speed);
+      }else{
+        isGenerating=false;
+        sendBtn.disabled=false;
+        if(opts.onComplete)opts.onComplete();
+      }
+    }
+    type();
+  }
+  function renderMarkdown(text){
+    var html=text;
+    html=html.replace(/```([\s\S]*?)```/g,function(m,c){return '<pre style="background:#1a1a1a;color:#0f0;padding:8px 12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:8px 0"><code>'+c.replace(/</g,'&lt;')+'</code></pre>';});
+    html=html.replace(/`([^`]+)`/g,'<code>$1</code>');
+    html=html.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');
+    html=html.replace(/^### (.+)$/gm,'<h4>$1</h4>');
+    html=html.replace(/^- (.+)$/gm,'<li>$1</li>');
+    html=html.replace(/(<li>.*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';});
+    html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');
+    html=html.replace(/\n/g,'<br>');
+    return html;
+  }
+  function send(){
+    if(isGenerating)return;
+    var text=inputEl.value.trim();
+    if(!text)return;
+    addMessage('user',text);
+    inputEl.value='';
+    inputEl.style.height='38px';
+    isGenerating=true;
+    sendBtn.disabled=true;
+    showTyping();
+    setTimeout(function(){
+      hideTyping();
+      var response=generateResponse(text);
+      var bubble=addMessage('ai','',{showContext:messages.length<=1});
+      typewriter(bubble,response.text,{
+        onComplete:function(){
+          if(response.actions){
+            var actDiv=document.createElement('div');
+            actDiv.className='copilot-msg-actions';
+            response.actions.forEach(function(act){
+              var btn=document.createElement('button');
+              btn.className='copilot-action-btn';
+              btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;
+              btn.onclick=function(){showToast('执行：'+act.label,'info');};
+              actDiv.appendChild(btn);
+            });
+            bubble.appendChild(actDiv);
+          }
+          if(response.draft){
+            draftBanner.style.display='flex';
+            var reviewCard=document.createElement('div');
+            reviewCard.className='copilot-review-card';
+            reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+response.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+response.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';
+            bubble.appendChild(reviewCard);
+          }
+          messagesEl.scrollTop=messagesEl.scrollHeight;
+        }
+      });
+    },800);
+  }
+  function generateResponse(text){
+    var pageResponses={
+      '数据概览':{
+        text:'**当前页面：数据概览**\n\n根据最新数据分析：\n\n- 本月中招率 **18.5%**，较上月下降3.2%，趋势向好\n- **财务部**中招率最高（32.1%），建议优先安排培训\n- 举报率22.3%，员工安全意识在提升\n- 培训通过率86.2%，仍有提升空间\n\n### 建议措施\n1. 针对财务部开展专项钓鱼演练\n2. 推送财务类钓鱼识别培训课程\n3. 对连续中招人员启动一对一辅导',
+        actions:[{label:'一键生成报告'},{label:'创建财务部演练'},{label:'推荐培训课程'}]
+      },
+      '演练管理':{
+        text:'**当前页面：演练管理**\n\n最近一次演练「Q3财务钓鱼演练」分析：\n\n| 指标 | 数值 | 评价 |\n|------|------|------|\n| 发送数 | 580 | - |\n| 打开率 | 72.3% | 偏高 |\n| 点击率 | 28.1% | 风险高 |\n| 中招率 | 18.6% | 需关注 |\n| 举报率 | 15.2% | 正常 |\n\n### 关键发现\n- **邮件主题**「紧急：财务报销确认」点击率异常高\n- 发送后2小时内集中中招，说明员工缺乏犹豫期\n- 3人重复中招（已标记为高风险）',
+        actions:[{label:'查看详情'},{label:'生成演练报告'},{label:'标记高危人员'}]
+      },
+      '素材模板':{
+        text:'**当前页面：素材模板**\n\n根据历史演练数据，为您推荐模板生成方案：\n\n### 高效模板特征\n- **场景**：节假日福利领取（点击率平均34.2%）\n- **语气**：紧急+友好混合（打开率提升25%）\n- **发件人**：伪装HR部门（信任度高）\n\n已为您生成草稿模板，请审核确认后入库：',
+        draft:{title:'AI生成模板：节假日福利领取',content:'主题：【福利】2026年中秋礼品领取通知\n发件人：HR-福利管理 <hr-welfare@company.com>\n正文：尊敬的同事，2026年中秋节礼品领取通道已开放，请点击下方链接选择您的礼品...\n预估点击率：32%',actions:true}
+      },
+      '发送配置':{
+        text:'**当前页面：发送配置**\n\n发送通道健康度检查：\n\n- **平台默认SMTP** — 送达率 98.2% ✅\n- **Office365 (EWS)** — 送达率 95.7% ✅\n- **阿里云短信** — 送达率 99.1% ✅\n\n### DNS记录状态\n- SPF ✅ 已配置\n- DKIM ✅ 已配置\n- DMARC ⚠️ 建议添加`p=quarantine`策略\n\n建议：为提升送达率可信度，请完善DMARC记录。',
+        actions:[{label:'查看DMARC配置指引'}]
+      },
+      '用户和组':{
+        text:'**当前页面：用户和组**\n\n高风险人员分析（共86人）：\n\n### 风险分布\n- **极高危险**（风险值>80）：12人\n- **高危险**（风险值60-80）：28人\n- **中危险**（风险值40-60）：46人\n\n### Top 3 高危人员\n1. **王某某**（财务部）— 3次中招，风险值92\n2. **李某**（市场部）— 2次中招+1次误报，风险值87\n3. **张某**（行政部）— 2次中招，风险值85\n\n建议立即安排专项培训。',
+        actions:[{label:'查看风险画像'},{label:'分配培训计划'},{label:'创建针对演练'}]
+      },
+      '安全培训':{
+        text:'**当前页面：安全培训**\n\n培训效果分析：\n\n- 课程完成率：**86.2%**\n- 考试通过率：**78.5%**\n- 培训后中招率下降：**42.3%**\n\n### 薄弱知识点\n1. 邮件头信息识别（错误率61%）\n2. 短链接安全判断（错误率48%）\n3. 附件安全检查（错误率35%）\n\n已为您生成针对性题库草稿，请审核：',
+        draft:{title:'AI生成题库：邮件头识别专项',content:'1. 以下哪项邮件头字段可用于验证发件人身份？\nA. Subject  B. X-Powered-By  C. Received-SPF  D. Date\n答案：C\n\n2. DKIM签名验证失败说明什么？\nA. 邮件被篡改  B. 发件人未认证  C. 服务器宕机  D. 以上都对\n答案：A',actions:true}
+      },
+      '数据报表':{
+        text:'**当前页面：数据报表**\n\n跨演练趋势分析：\n\n### 中招率变化趋势\n- 2026 Q1平均中招率：**24.5%**\n- 2026 Q2平均中招率：**21.2%**\n- 2026 Q3平均中招率：**18.5%**\n\n**整体下降趋势明显**，季度环比下降约14%。\n\n### 最有效改进场景\n- 系统升级类：中招率从31%→18%（下降42%）\n- 财务类：中招率从28%→22%（下降21%）\n\n### 仍需关注\n- 节假日类中招率仅下降8%，建议加强场景化培训',
+        actions:[{label:'导出分析报告'},{label:'生成趋势图表'},{label:'生成改进方案'}]
+      },
+      '邮件举报':{
+        text:'**当前页面：邮件举报**\n\n举报数据分析：\n\n- 本月举报总数：**186次**\n- 演练邮件举报：**142次**（76.3%）\n- 真实钓鱼举报：**32次**（17.2%）\n- 误报：**12次**（6.5%）\n\n### 举报响应时间\n- 平均响应：**4.2分钟**（优秀）\n- 最快：**47秒**\n- 最慢：**23分钟**\n\n举报率持续提升，说明员工安全意识在增强。建议对Top举报者给予积分奖励。',
+        actions:[{label:'查看积分排行'},{label:'生成举报报告'}]
+      },
+      '系统设置':{
+        text:'**当前页面：系统设置**\n\n系统安全配置检查：\n\n### 检查结果\n- 两步验证：✅ 已启用\n- 密码策略：✅ 满足复杂度要求\n- IP白名单：✅ 已配置12个IP\n- 数据加密：✅ 已启用\n- 审计模式：✅ 已启用\n\n### 建议优化\n- ⚠️ 会话超时设置为60分钟，建议缩短至30分钟\n- ⚠️ 数据留存期限为1年，建议根据合规要求调整为2年\n- 💡 建议启用SIEM推送，实现实时告警',
+        actions:[{label:'应用安全建议'}]
+      },
+      '智能助手':{
+        text:'**当前页面：智能助手**\n\nAI能力使用统计：\n\n- 本月API调用：**3,420次**\n- Token消耗：**2.1M**\n- 费用预估：**¥186**\n\n### 各功能使用占比\n1. AI对话助手：48%\n2. 智能分析报告：28%\n3. AI模板生成：18%\n4. 培训推荐：6%\n\n所有AI生成内容均已进入审核队列，确保安全合规。',
+        actions:[{label:'查看审核队列'},{label:'优化AI配置'}]
+      },
+      'API开放平台':{
+        text:'**当前页面：API开放平台**\n\nAPI调用分析：\n\n- 本月总调用：**12,580次**\n- 成功率：**99.2%**\n- 平均响应：**128ms**\n\n### Top 3 调用API\n1. `POST /api/v1/drills` — 4,200次\n2. `GET /api/v1/reports/drills/{id}` — 3,150次\n3. `GET /api/v1/users/risk` — 2,830次\n\n### 异常调用\n- ⚠️ AppID `app_xxxx` 在凌晨3点有异常高频调用，建议检查\n- ⚠️ 2次401认证失败来自IP `10.12.34.56`',
+        actions:[{label:'查看异常日志'},{label:'设置调用限制'}]
+      }
+    };
+    if(text.indexOf('报告')>-1||text.indexOf('分析')>-1){
+      return pageResponses[pageContext]||pageResponses['数据概览'];
+    }
+    if(text.indexOf('生成')>-1||text.indexOf('模板')>-1||text.indexOf('创建')>-1){
+      return pageResponses[pageContext]||pageResponses['素材模板'];
+    }
+    if(text.indexOf('风险')>-1||text.indexOf('高危')>-1){
+      return pageResponses[pageContext]||pageResponses['用户和组'];
+    }
+    return pageResponses[pageContext]||{text:'我是您的AI Copilot助手。当前页面上下文：**'+pageContext+'**。\n\n我可以帮您：\n- 分析当前页面数据\n- 生成报告和建议\n- 创建模板和课程\n- 风险评估和预警\n\n请问有什么可以帮您的？',actions:[]};
+  }
+  function confirmDraft(btn){
+    var card=btn.closest('.copilot-review-card');
+    var badge=card.querySelector('.copilot-review-badge');
+    badge.className='copilot-review-badge confirmed';
+    badge.textContent='已确认入库';
+    var actions=card.querySelector('.copilot-review-actions');
+    actions.innerHTML='<span style="font-size:11px;color:#1D9E75">✓ 审核通过 · 操作人：张管理 · '+new Date().toLocaleString()+'</span>';
+    showToast('草稿已确认入库，审核记录已写入审计日志','success');
+    draftBanner.style.display='none';
+  }
+  function discardDraft(btn){
+    var card=btn.closest('.copilot-review-card');
+    card.style.opacity='0.5';
+    card.querySelector('.copilot-review-actions').innerHTML='<span style="font-size:11px;color:#8c8c8c">已丢弃</span>';
+    showToast('草稿已丢弃','info');
+  }
+  return{
+    open:open,close:close,switchSession:switchSession,newSession:newSession,
+    quickAsk:quickAsk,onKeydown:onKeydown,autoResize:autoResize,send:send,
+    confirmDraft:confirmDraft,discardDraft:discardDraft
+  };
+})();
+</script>
+<script>
+// ===== ChatBI 自然语言问数 =====
+var ChatBI=(function(){
+  var resultEl,inputEl,logEl,chartEl,conclusionEl;
+  function init(){
+    resultEl=document.getElementById('chatbiResult');
+    inputEl=document.getElementById('chatbiInput');
+    logEl=document.getElementById('chatbiQueryLog');
+    chartEl=document.getElementById('chatbiChart');
+    conclusionEl=document.getElementById('chatbiConclusion');
+  }
+  function ask(){
+    if(!inputEl){init();}
+    var q=inputEl.value.trim();
+    if(!q){if(typeof showToast==='function')showToast('请输入查询问题','info');return;}
+    // 显示loading
+    resultEl.classList.add('show');
+    logEl.innerHTML='';
+    chartEl.innerHTML='<div class="chatbi-loading"><div class="copilot-typing"><span></span><span></span><span></span></div>正在分析查询意图并生成图表...</div>';
+    conclusionEl.innerHTML='';
+    // 模拟AI查询
+    setTimeout(function(){
+      var result=generateResult(q);
+      // 查询逻辑回显
+      logEl.innerHTML='<strong>SQL等价查询：</strong>'+result.sql;
+      // 图表渲染
+      chartEl.innerHTML=result.chart;
+      // 结论
+      conclusionEl.innerHTML=result.conclusion;
+    },1200);
+  }
+  function quickAsk(text){
+    if(!inputEl){init();}
+    inputEl.value=text;
+    ask();
+  }
+  function close(){
+    if(resultEl)resultEl.classList.remove('show');
+    if(inputEl)inputEl.value='';
+  }
+  function exportResult(){
+    if(typeof showToast==='function')showToast('查询结果已导出为Excel','success');
+  }
+  function generateResult(query){
+    // 根据查询关键词生成不同的模拟结果
+    if(query.indexOf('中招率')>-1&&(query.indexOf('部门')>-1||query.indexOf('对比')>-1||query.indexOf('排名')>-1)){
+      return{
+        sql:'SELECT department, COUNT(*)/SUM(send_count) as hit_rate FROM drill_results GROUP BY department ORDER BY hit_rate DESC',
+        chart:'<div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">'+genBar('财务部','32.1%','#D85A30')+genBar('市场部','24.5%','#EF9F27')+genBar('技术部','18.2%','#378ADD')+genBar('行政部','15.6%','#7F77DD')+genBar('人力资源','12.3%','#1D9E75')+'</div>',
+        conclusion:'<strong>分析结论：</strong>财务部中招率最高（32.1%），是平均水平的1.7倍。建议针对财务部开展<strong>专项钓鱼演练</strong>和<strong>财务类钓鱼识别培训</strong>。市场部次之（24.5%），也需关注。人力资源部表现最好（12.3%），可作为安全标杆部门。'
+      };
+    }
+    if(query.indexOf('举报')>-1||query.indexOf('举报率')>-1){
+      return{
+        sql:'SELECT date, report_count, report_rate FROM daily_stats WHERE date >= DATE_SUB(NOW(), INTERVAL 7 DAY) ORDER BY date',
+        chart:'<div style="display:flex;align-items:end;gap:6px;height:100px;padding:8px 0">'+genCol('8/9','15','#378ADD')+genCol('8/10','22','#378ADD')+genCol('8/11','18','#378ADD')+genCol('8/12','28','#378ADD')+genCol('8/13','25','#378ADD')+genCol('8/14','31','#378ADD')+genCol('8/15','24','#378ADD')+'</div><div style="display:flex;gap:6px;font-size:10px;color:#8c8c8c;margin-top:4px"><span style="flex:1;text-align:center">8/9</span><span style="flex:1;text-align:center">8/10</span><span style="flex:1;text-align:center">8/11</span><span style="flex:1;text-align:center">8/12</span><span style="flex:1;text-align:center">8/13</span><span style="flex:1;text-align:center">8/14</span><span style="flex:1;text-align:center">8/15</span></div>',
+        conclusion:'<strong>分析结论：</strong>近7天举报量整体呈上升趋势，8/14达到峰值（31次）。举报率从15%提升至24%，说明员工<strong>安全举报意识在增强</strong>。建议持续鼓励举报行为，对活跃举报者给予积分奖励。'
+      };
+    }
+    if(query.indexOf('高风险')>-1||query.indexOf('人员')>-1){
+      return{
+        sql:'SELECT name, department, risk_score, hit_count FROM users WHERE risk_score > 60 ORDER BY risk_score DESC LIMIT 10',
+        chart:'<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f0f5ff"><th style="padding:6px;border:1px solid #e8e8e8;text-align:left">姓名</th><th style="padding:6px;border:1px solid #e8e8e8">部门</th><th style="padding:6px;border:1px solid #e8e8e8">风险值</th><th style="padding:6px;border:1px solid #e8e8e8">中招次数</th></tr></thead><tbody>'+genRow('王某某','财务部','92','#A32D2D','3')+genRow('李某','市场部','87','#A32D2D','2')+genRow('张某','行政部','85','#D85A30','2')+genRow('赵某','财务部','78','#D85A30','2')+genRow('陈某','市场部','72','#EF9F27','1')+'</tbody></table>',
+        conclusion:'<strong>分析结论：</strong>共发现<strong>86名</strong>高风险人员（风险值>60），其中12名为极高风险（>80）。财务部占比最高（28%），建议立即安排<strong>一对一安全辅导</strong>和<strong>强制培训</strong>。'
+      };
+    }
+    if(query.indexOf('培训')>-1){
+      return{
+        sql:'SELECT department, AVG(training_score) as avg_score, COUNT(CASE WHEN status="completed" THEN 1 END)/COUNT(*) as completion_rate FROM training_records GROUP BY department',
+        chart:'<div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">'+genBar('人力资源','95.2%','#1D9E75')+genBar('技术部','89.5%','#1D9E75')+genBar('行政部','85.3%','#378ADD')+genBar('市场部','78.6%','#EF9F27')+genBar('财务部','72.1%','#D85A30')+'</div>',
+        conclusion:'<strong>分析结论：</strong>财务部培训通过率最低（72.1%），且中招率最高，存在<strong>培训效果转化不足</strong>的问题。建议优化培训方式，增加实操模拟环节。人力资源部通过率最高（95.2%），建议推广其培训经验。'
+      };
+    }
+    // 默认
+    return{
+      sql:'SELECT * FROM drill_summary WHERE period = "current_month"',
+      chart:'<div style="text-align:center;padding:20px;color:#8c8c8c;font-size:13px"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px;opacity:.4"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg><br>图表已生成<br>请尝试更具体的查询条件</div>',
+      conclusion:'<strong>AI查询逻辑：</strong>系统识别到您的查询意图，已从<strong>演练汇总表</strong>中提取当月数据。建议尝试以下更精确的查询：<br>• "本月各部门中招率对比"<br>• "近7天举报趋势"<br>• "高风险人员名单"'
+    };
+  }
+  function genBar(label,value,color){
+    var w=parseFloat(value);
+    return '<div style="display:flex;align-items:center;gap:8px"><span style="width:60px;font-size:11px;color:#595959;text-align:right">'+label+'</span><div style="flex:1;height:20px;background:#f0f0f0;border-radius:4px;overflow:hidden"><div style="width:'+w+'%;height:100%;background:'+color+';border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;font-size:10px;color:#fff;font-weight:600">'+value+'</div></div></div>';
+  }
+  function genCol(label,value,color){
+    var h=parseInt(value)*2;
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%"><div style="font-size:10px;color:#595959;margin-bottom:2px">'+value+'</div><div style="width:60%;height:'+h+'px;background:'+color+';border-radius:3px 3px 0 0"></div></div>';
+  }
+  function genRow(name,dept,score,color,hits){
+    return '<tr><td style="padding:6px;border:1px solid #e8e8e8">'+name+'</td><td style="padding:6px;border:1px solid #e8e8e8;text-align:center">'+dept+'</td><td style="padding:6px;border:1px solid #e8e8e8;text-align:center"><span style="color:'+color+';font-weight:600">'+score+'</span></td><td style="padding:6px;border:1px solid #e8e8e8;text-align:center">'+hits+'</td></tr>';
+  }
+  return{init:init,ask:ask,quickAsk:quickAsk,close:close,export:exportResult};
+})();
+</script>

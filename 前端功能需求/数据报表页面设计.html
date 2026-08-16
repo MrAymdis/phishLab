@@ -1,0 +1,1296 @@
+<h2 class="sr-only">钓鱼演练平台数据报表页面，包含演练报表、部门报表、综合趋势报表和员工个人报表四个维度的数据分析</h2>
+<style>
+  :root{
+    --color-background-primary:#ffffff;
+    --color-background-secondary:#f5f5f5;
+    --color-background-tertiary:#eeeeee;
+    --color-background-info:rgba(55,138,221,0.1);
+    --color-text-primary:#1a1a1a;
+    --color-text-secondary:#595959;
+    --color-text-tertiary:#8c8c8c;
+    --color-text-info:#378ADD;
+    --color-text-success:#1D9E75;
+    --color-border-tertiary:#e8e8e8;
+    --color-border-info:#378ADD;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  /* 基础组件 */
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer;position:relative;overflow:hidden}
+  .nav-item::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.2s ease}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item:hover::before{transform:scaleY(1)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .nav-item.active::before{transform:scaleY(1)}
+  .nav-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+  .card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:12px;padding:14px 16px;transition:all 0.3s ease;border-top:3px solid transparent}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-1px)}
+  .card-blue{border-top-color:#378ADD;background:linear-gradient(180deg,rgba(55,138,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-green{border-top-color:#1D9E75;background:linear-gradient(180deg,rgba(29,158,117,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-orange{border-top-color:#D85A30;background:linear-gradient(180deg,rgba(216,90,48,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-purple{border-top-color:#7F77DD;background:linear-gradient(180deg,rgba(127,119,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-red{border-top-color:#A32D2D;background:linear-gradient(180deg,rgba(163,45,45,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-teal{border-top-color:#0D9488;background:linear-gradient(180deg,rgba(13,148,136,0.03) 0%,var(--color-background-primary) 30%)}
+
+  .card-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0 0 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;flex-shrink:0;margin-right:8px}
+
+  .tab{padding:3px 10px;font-size:11px;border:0.5px solid #d1d5db;border-radius:6px;color:var(--color-text-secondary);background:transparent;cursor:pointer;transition:all 0.2s ease}
+  .tab:hover{background:var(--color-background-secondary)}
+  .tab:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.1)}
+  .tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2);transform:translateY(1px)}
+
+  .badge{padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;white-space:nowrap}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .live-dot{animation:pulse 2s infinite}
+  .bar-track{background:var(--color-background-tertiary);border-radius:4px;height:6px;overflow:hidden;flex:1;position:relative}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+
+  /* 顶部栏 */
+  .top-bar{height:52px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+  .logo-area{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#1D9E75 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;font-size:12px}
+  .logo-text{font-size:15px;font-weight:600;color:var(--color-text-primary)}
+  .search-box{display:flex;align-items:center;background:var(--color-background-secondary);border-radius:6px;padding:6px 12px;width:280px;transition:all 0.2s ease}
+  .search-box:focus-within{background:var(--color-background-tertiary);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .search-input{border:none;outline:none;background:transparent;font-size:12px;color:var(--color-text-primary);width:100%;margin-left:6px}
+  .user-area{display:flex;align-items:center;gap:16px}
+  .notification-icon{position:relative;cursor:pointer;transition:all 0.2s ease}
+  .notification-icon:hover{color:var(--color-text-info)}
+  .notification-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#D85A30;border-radius:50%;font-size:10px;color:white;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .user-info{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.2s ease}
+  .user-info:hover{background:var(--color-background-secondary)}
+  .user-avatar{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500}
+  .user-name{font-size:12px;color:var(--color-text-primary)}
+
+  /* 侧边栏 */
+  .sidebar{width:144px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px 8px;display:flex;flex-direction:column;height:calc(100vh - 52px);position:sticky;top:52px}
+  .sidebar-header{padding:0 8px;margin:0 0 18px 0;display:flex;align-items:center;gap:6px}
+  .sidebar-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+
+  /* KPI统计卡片 */
+  .stat-card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:8px;padding:14px;transition:all 0.3s ease;cursor:pointer;position:relative;overflow:hidden}
+  .stat-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-2px)}
+  .stat-card.active{border-color:var(--color-text-info);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .stat-label{font-size:11px;color:var(--color-text-secondary);margin:0 0 6px 0}
+  .stat-value{font-size:24px;font-weight:500;color:var(--color-text-primary);margin:0;line-height:1.2}
+  .stat-delta{font-size:11px;margin:6px 0 0 0;font-weight:500}
+
+  /* 按钮 */
+  .btn{padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;transition:all 0.2s ease;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+  .btn-primary{background:#378ADD;color:white}
+  .btn-primary:hover{background:#2d75bf}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-default{background:var(--color-background-secondary);color:var(--color-text-primary);border:1px solid #d1d5db}
+  .btn-default:hover{background:var(--color-background-tertiary)}
+  .btn-success{background:#1D9E75;color:white}
+  .btn-success:hover{background:#177e5e}
+  .btn-warning{background:#EF9F27;color:white}
+  .btn-warning:hover{background:#d48920}
+  .btn-danger{background:#D85A30;color:white}
+  .btn-danger:hover{background:#b94920}
+  .btn-sm{padding:4px 8px;font-size:11px}
+  .btn-link{background:transparent;color:#378ADD;padding:2px 4px;border:none;cursor:pointer;font-size:12px}
+  .btn-link:hover{text-decoration:underline}
+
+  /* 表格 */
+  .data-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  .data-table thead tr{background:var(--color-background-secondary)}
+  .data-table th{text-align:left;padding:10px 12px;font-weight:500;color:var(--color-text-secondary);font-size:11px;border-bottom:1px solid #d1d5db}
+  .data-table td{padding:12px;border-bottom:0.5px solid #e5e7eb;color:var(--color-text-primary);vertical-align:middle}
+  .data-table tbody tr:hover{background:rgba(55,138,221,0.03);cursor:pointer}
+  .data-table tbody tr.selected{background:rgba(55,138,221,0.08)}
+  .row-check{width:16px;height:16px;accent-color:#378ADD;cursor:pointer}
+
+  /* 筛选标签 */
+  .filter-tag{padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;transition:all 0.2s ease;border:1px solid transparent;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+  .filter-tag:hover{background:var(--color-background-tertiary)}
+  .filter-tag.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .filter-tag .count{margin-left:4px;opacity:0.8;font-weight:500}
+
+  /* 表单 */
+  .form-input{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:var(--color-text-primary);background:var(--color-background-primary);transition:all 0.2s ease;box-sizing:border-box}
+  .form-input:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+
+  /* 漏斗图 */
+  .funnel-item{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+  .funnel-bar{height:28px;border-radius:4px 14px 14px 4px;display:flex;align-items:center;padding:0 12px;color:white;font-size:11px;font-weight:500;transition:width 0.6s ease}
+  .funnel-label{font-size:11px;color:var(--color-text-secondary);width:70px;flex-shrink:0}
+  .funnel-value{font-size:12px;font-weight:500;color:var(--color-text-primary);width:80px;text-align:right;flex-shrink:0}
+  .funnel-rate{font-size:11px;color:var(--color-text-tertiary);width:60px;text-align:right;flex-shrink:0}
+
+  /* 报表专属：漏斗居中梯形 */
+  .funnel-tri{display:flex;flex-direction:column;align-items:center;gap:4px}
+  .funnel-row{display:flex;align-items:center;height:42px;color:white;font-size:12px;font-weight:500;justify-content:center;clip-path:polygon(8% 0,92% 0,86% 100%,14% 100%);transition:all 0.4s ease}
+
+  /* 柱状图（横向） */
+  .hbar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+  .hbar-label{font-size:11px;color:var(--color-text-secondary);width:90px;flex-shrink:0;text-align:right}
+  .hbar-track{flex:1;height:22px;background:var(--color-background-tertiary);border-radius:4px;overflow:hidden;position:relative}
+  .hbar-fill{height:100%;border-radius:4px;transition:width 0.6s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;color:white;font-size:11px;font-weight:500}
+  .hbar-value{font-size:11px;color:var(--color-text-primary);width:50px;flex-shrink:0;font-weight:500}
+
+  /* 折线图区域 */
+  .line-chart{position:relative;height:180px;display:flex;align-items:flex-end;gap:0;padding:0 8px;border-left:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb}
+  .line-grid{position:absolute;left:0;right:0;border-top:1px dashed #f0f0f0}
+  .line-legend{display:flex;gap:16px;font-size:11px;color:var(--color-text-secondary)}
+  .legend-dot{width:10px;height:2px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle}
+
+  /* 进度条文本 */
+  .progress-cell{display:flex;align-items:center;gap:8px}
+  .progress-cell .bar-track{max-width:80px}
+
+  /* 风险标签 */
+  .risk-high{background:rgba(163,45,45,0.1);color:#A32D2D}
+  .risk-mid{background:rgba(239,159,39,0.1);color:#B5740F}
+  .risk-low{background:rgba(29,158,117,0.1);color:#1D9E75}
+
+  /* Toast提示 */
+  .toast-container{position:fixed;top:70px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:8px;font-size:12px;color:white;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn 0.3s ease}
+  .toast-success{background:#1D9E75}
+  .toast-error{background:#D85A30}
+  .toast-info{background:#378ADD}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+
+  .tab-panel{display:none}
+  .tab-panel.active{display:block;animation:fadeIn 0.25s ease}
+  @keyframes fadeIn{from{opacity:0;transform:scale(0.99)}to{opacity:1;transform:scale(1)}}
+/* ===== Copilot 侧边栏 ===== */
+.copilot-fab{position:fixed;right:24px;bottom:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(55,138,221,0.35);z-index:9998;transition:all .3s ease}
+.copilot-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(55,138,221,0.45)}
+.copilot-fab svg{width:22px;height:22px}
+.copilot-fab .fab-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid #378ADD;animation:copilotPulse 2s ease-out infinite;opacity:0}
+@keyframes copilotPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.copilot-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9998;opacity:0;visibility:hidden;transition:all .3s}
+.copilot-overlay.show{opacity:1;visibility:visible}
+.copilot-drawer{position:fixed;top:0;right:-420px;width:400px;height:100vh;background:var(--color-background-primary,#fff);box-shadow:-4px 0 24px rgba(0,0,0,0.1);z-index:9999;display:flex;flex-direction:column;transition:right .35s cubic-bezier(.4,0,.2,1)}
+.copilot-drawer.open{right:0}
+.copilot-header{padding:14px 18px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.copilot-header-left{display:flex;align-items:center;gap:10px}
+.copilot-header-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center}
+.copilot-header-icon svg{width:18px;height:18px}
+.copilot-header-title{font-size:15px;font-weight:600}
+.copilot-header-sub{font-size:11px;opacity:.85;margin-top:2px}
+.copilot-close{background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;transition:opacity .2s}
+.copilot-close:hover{opacity:1}
+.copilot-close svg{width:18px;height:18px}
+.copilot-sessions{padding:8px 12px;border-bottom:1px solid #e8e8e8;display:flex;gap:6px;align-items:center;flex-shrink:0;overflow-x:auto}
+.copilot-session-btn{padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;transition:all .2s}
+.copilot-session-btn:hover{border-color:#378ADD;color:#378ADD}
+.copilot-session-btn.active{background:rgba(55,138,221,0.1);border-color:#378ADD;color:#378ADD}
+.copilot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.copilot-msg{display:flex;gap:10px;max-width:92%}
+.copilot-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.copilot-msg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+.copilot-msg.ai .copilot-msg-avatar{background:linear-gradient(135deg,#378ADD,#7F77DD)}
+.copilot-msg.user .copilot-msg-avatar{background:#8c8c8c}
+.copilot-msg-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word}
+.copilot-msg.ai .copilot-msg-bubble{background:#f5f5f5;color:#1a1a1a;border-top-left-radius:4px}
+.copilot-msg.user .copilot-msg-bubble{background:#378ADD;color:#fff;border-top-right-radius:4px}
+.copilot-msg-bubble h4{margin:8px 0 4px;font-size:13px}
+.copilot-msg-bubble ul,.copilot-msg-bubble ol{margin:4px 0;padding-left:18px}
+.copilot-msg-bubble li{margin:2px 0}
+.copilot-msg-bubble table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.copilot-msg-bubble th,.copilot-msg-bubble td{border:1px solid #d8d8d8;padding:4px 8px;text-align:left}
+.copilot-msg-bubble th{background:#e8e8e8}
+.copilot-msg-bubble strong{font-weight:600}
+.copilot-msg-bubble code{background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:12px}
+.copilot-msg-actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.copilot-action-btn{padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #378ADD;background:rgba(55,138,221,0.06);color:#378ADD;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.copilot-action-btn:hover{background:#378ADD;color:#fff}
+.copilot-action-btn svg{width:12px;height:12px}
+.copilot-typing{display:inline-flex;gap:3px;align-items:center;padding:4px 0}
+.copilot-typing span{width:6px;height:6px;border-radius:50%;background:#8c8c8c;animation:copilotTyping 1.4s infinite}
+.copilot-typing span:nth-child(2){animation-delay:.2s}
+.copilot-typing span:nth-child(3){animation-delay:.4s}
+@keyframes copilotTyping{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.copilot-context-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.15);font-size:11px;margin-top:4px}
+.copilot-context-badge svg{width:10px;height:10px}
+.copilot-input-area{padding:12px 16px;border-top:1px solid #e8e8e8;flex-shrink:0}
+.copilot-quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.copilot-quick-tag{padding:3px 8px;border-radius:12px;font-size:11px;background:#f0f5ff;color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.copilot-quick-tag:hover{background:#378ADD;color:#fff}
+.copilot-input-wrap{display:flex;gap:8px;align-items:flex-end}
+.copilot-input{flex:1;border:1px solid #d8d8d8;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;max-height:100px;min-height:38px;outline:none;transition:border-color .2s;line-height:1.5}
+.copilot-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.copilot-send{width:38px;height:38px;border-radius:10px;background:#378ADD;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.copilot-send:hover{background:#2979c9}
+.copilot-send:disabled{background:#ccc;cursor:not-allowed}
+.copilot-send svg{width:16px;height:16px}
+.copilot-draft-banner{padding:6px 12px;background:rgba(239,159,39,0.1);border-top:1px solid rgba(239,159,39,0.3);font-size:11px;color:#9a6800;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.copilot-draft-banner svg{width:12px;height:12px;flex-shrink:0}
+.copilot-empty{text-align:center;padding:40px 20px;color:#8c8c8c}
+.copilot-empty svg{width:40px;height:40px;margin-bottom:12px;opacity:.4}
+.copilot-empty h4{font-size:14px;margin-bottom:6px;color:#595959}
+.copilot-empty p{font-size:12px;line-height:1.6}
+.copilot-review-card{border:1px solid #e8e8e8;border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copilot-review-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.copilot-review-card-title{font-size:12px;font-weight:600;color:#1a1a1a}
+.copilot-review-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.copilot-review-badge.draft{background:rgba(239,159,39,0.15);color:#9a6800}
+.copilot-review-badge.confirmed{background:rgba(29,158,117,0.15);color:#1D9E75}
+.copilot-review-content{font-size:12px;color:#595959;line-height:1.6;padding:8px;background:#f9f9f9;border-radius:6px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+.copilot-review-actions{display:flex;gap:6px}
+.copilot-review-btn{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;transition:all .2s}
+.copilot-review-btn.preview{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.06)}
+.copilot-review-btn.preview:hover{background:#378ADD;color:#fff}
+.copilot-review-btn.confirm{border-color:#1D9E75;color:#1D9E75;background:rgba(29,158,117,0.06)}
+.copilot-review-btn.confirm:hover{background:#1D9E75;color:#fff}
+.copilot-review-btn.discard{border-color:#8c8c8c;color:#8c8c8c;background:transparent}
+.copilot-review-btn.discard:hover{background:#8c8c8c;color:#fff}
+.copilot-error{padding:8px 12px;background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:8px;font-size:12px;color:#A32D2D;display:flex;align-items:center;gap:8px}
+.copilot-error-retry{margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;border:1px solid #A32D2D;color:#A32D2D;cursor:pointer;background:transparent}
+.copilot-error-retry:hover{background:#A32D2D;color:#fff}
+/* ===== ChatBI 自然语言问数 ===== */
+.chatbi-bar{background:linear-gradient(135deg,rgba(55,138,221,0.06),rgba(127,119,221,0.06));border:1px solid rgba(55,138,221,0.2);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px}
+.chatbi-icon{width:36px;height:36px;border-radius:8px;background:linear-gradient(135deg,#378ADD,#7F77DD);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.chatbi-icon svg{width:20px;height:20px;color:#fff}
+.chatbi-body{flex:1}
+.chatbi-title{font-size:13px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px}
+.chatbi-title .chatbi-badge{padding:1px 6px;border-radius:8px;font-size:10px;font-weight:500;background:rgba(55,138,221,0.15);color:#378ADD}
+.chatbi-input-wrap{display:flex;gap:8px;margin-top:6px}
+.chatbi-input{flex:1;border:1px solid #d8d8d8;border-radius:8px;padding:7px 12px;font-size:13px;font-family:inherit;outline:none;transition:border-color .2s;background:#fff}
+.chatbi-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.chatbi-btn{padding:7px 16px;border-radius:8px;background:#378ADD;color:#fff;border:none;font-size:13px;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:4px;transition:background .2s;white-space:nowrap}
+.chatbi-btn:hover{background:#2979c9}
+.chatbi-btn svg{width:14px;height:14px}
+.chatbi-suggestions{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.chatbi-suggestion{padding:3px 10px;border-radius:12px;font-size:11px;background:rgba(255,255,255,0.8);color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.chatbi-suggestion:hover{background:#378ADD;color:#fff}
+.chatbi-result{background:#fff;border:1px solid rgba(55,138,221,0.2);border-radius:10px;padding:16px;margin-bottom:14px;display:none}
+.chatbi-result.show{display:block;animation:chatbiFadeIn .4s ease}
+@keyframes chatbiFadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.chatbi-result-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #e8e8e8}
+.chatbi-result-title{font-size:13px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px}
+.chatbi-result-title svg{width:14px;height:14px;color:#378ADD}
+.chatbi-result-actions{display:flex;gap:6px}
+.chatbi-result-action{padding:3px 10px;border-radius:6px;font-size:11px;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;cursor:pointer;transition:all .2s}
+.chatbi-result-action:hover{border-color:#378ADD;color:#378ADD}
+.chatbi-query-log{font-size:11px;color:#8c8c8c;background:#f9f9f9;padding:6px 10px;border-radius:6px;margin-bottom:10px;font-family:monospace}
+.chatbi-query-log strong{color:#595959}
+.chatbi-conclusion{font-size:13px;color:#1a1a1a;line-height:1.7;padding:10px 12px;background:rgba(55,138,221,0.04);border-radius:8px;margin-top:10px}
+.chatbi-conclusion strong{color:#378ADD}
+.chatbi-chart{margin:10px 0;padding:10px;background:#f9f9f9;border-radius:8px}
+.chatbi-loading{display:flex;align-items:center;gap:8px;padding:12px;color:#8c8c8c;font-size:13px}
+.chatbi-loading .copilot-typing span{background:#378ADD}
+</style>
+
+<div style="display:flex;flex-direction:column;font-family:var(--font-sans);min-height:560px;">
+  <!-- 顶部栏 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <div class="logo-icon">鱼</div>
+      <span class="logo-text">钓鱼演练平台</span>
+    </div>
+    <div class="user-area">
+      <div class="notification-icon" style="color:var(--color-text-secondary)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notification-badge">3</div>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar">张</div>
+        <span class="user-name">张管理</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;">
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+        </svg>
+        <span class="sidebar-title">导航菜单</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        数据概览
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        演练管理
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+        </div>
+        素材模板
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </div>
+        发送配置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        用户和组
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        </div>
+        安全培训
+      </div>
+      <div class="nav-item active">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </div>
+        数据报表
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+        </div>
+        邮件举报
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        系统设置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"></path>
+          </svg>
+        </div>
+        智能助手
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        API开放平台
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div style="flex:1;padding:14px 18px;min-width:0;overflow-y:auto;">
+      <!-- 标题 + Tab -->
+      <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:16px;font-weight:600;color:var(--color-text-primary);">数据报表</span>
+          <span class="badge" style="background:var(--color-background-info);color:var(--color-text-info);">4 维度</span>
+        </div>
+        <div style="display:flex;gap:6px;" id="tab-bar">
+          <button class="tab active" data-tab="drill">演练报表</button>
+          <button class="tab" data-tab="dept">部门报表</button>
+          <button class="tab" data-tab="trend">综合趋势</button>
+          <button class="tab" data-tab="staff">员工个人</button>
+        </div>
+      </div>
+
+      <!-- ============ Tab 1: 演练报表 ============ -->
+      <div class="tab-panel active" id="panel-drill">
+        <!-- ChatBI 自然语言问数 -->
+        <div class="chatbi-bar">
+          <div class="chatbi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="13" y2="14"/></svg></div>
+          <div class="chatbi-body">
+            <div class="chatbi-title">ChatBI 智能问数 <span class="chatbi-badge">AI</span></div>
+            <div class="chatbi-input-wrap">
+              <input class="chatbi-input" id="chatbiInput" placeholder="输入自然语言查询，如：上月财务部中招率趋势" onkeydown="if(event.key==='Enter')ChatBI.ask()">
+              <button class="chatbi-btn" onclick="ChatBI.ask()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>查询</button>
+            </div>
+            <div class="chatbi-suggestions">
+              <span class="chatbi-suggestion" onclick="ChatBI.quickAsk(this.textContent)">上季度演练效果汇总</span>
+              <span class="chatbi-suggestion" onclick="ChatBI.quickAsk(this.textContent)">各部门中招率排名</span>
+              <span class="chatbi-suggestion" onclick="ChatBI.quickAsk(this.textContent)">钓鱼场景点击率趋势</span>
+              <span class="chatbi-suggestion" onclick="ChatBI.quickAsk(this.textContent)">举报率与中招率关联分析</span>
+            </div>
+          </div>
+        </div>
+        <!-- ChatBI 结果区 -->
+        <div class="chatbi-result" id="chatbiResult">
+          <div class="chatbi-result-header">
+            <div class="chatbi-result-title"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg><span>查询结果</span></div>
+            <div class="chatbi-result-actions">
+              <span class="chatbi-result-action" onclick="ChatBI.export()">导出</span>
+              <span class="chatbi-result-action" onclick="ChatBI.close()">关闭</span>
+            </div>
+          </div>
+          <div class="chatbi-query-log" id="chatbiQueryLog"></div>
+          <div class="chatbi-chart" id="chatbiChart"></div>
+          <div class="chatbi-conclusion" id="chatbiConclusion"></div>
+        </div>
+
+        <!-- 面包屑 + 演练选择器 -->
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">数据报表 / 演练报表</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:12px;color:var(--color-text-secondary);">选择演练</span>
+            <select class="form-input form-select" style="width:260px;" id="drill-select">
+              <option value="1">2026年Q2财务钓鱼演练（财务部专项）</option>
+              <option value="2">OA系统升级钓鱼演练</option>
+              <option value="3">HR入职材料场景演练</option>
+              <option value="4">3月密码重置演练</option>
+              <option value="5">五一节假日中奖类演练</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- 概览卡片行 -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px;">
+          <div class="card card-blue" style="padding:12px 14px;">
+            <p class="stat-label">发送数</p>
+            <p class="stat-value">2,000</p>
+            <p class="stat-delta" style="color:var(--color-text-tertiary);">送达 1,986</p>
+          </div>
+          <div class="card card-teal" style="padding:12px 14px;">
+            <p class="stat-label">打开数</p>
+            <p class="stat-value" style="color:#0D9488;">1,450</p>
+            <p class="stat-delta" style="color:#0D9488;">打开率 72.5%</p>
+          </div>
+          <div class="card card-purple" style="padding:12px 14px;">
+            <p class="stat-label">点击数</p>
+            <p class="stat-value" style="color:#7F77DD;">520</p>
+            <p class="stat-delta" style="color:#7F77DD;">点击率 26.0%</p>
+          </div>
+          <div class="card card-red" style="padding:12px 14px;">
+            <p class="stat-label">中招数</p>
+            <p class="stat-value" style="color:#A32D2D;">320</p>
+            <p class="stat-delta" style="color:#A32D2D;">中招率 16.0%</p>
+          </div>
+          <div class="card card-green" style="padding:12px 14px;">
+            <p class="stat-label">举报数</p>
+            <p class="stat-value" style="color:#1D9E75;">186</p>
+            <p class="stat-delta" style="color:#1D9E75;">举报率 9.3%</p>
+          </div>
+        </div>
+
+        <!-- 漏斗分析 + 趋势折线 -->
+        <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:16px;margin-bottom:18px;">
+          <!-- 漏斗分析 -->
+          <div class="card">
+            <h3 class="card-title">
+              <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">漏</span>转化漏斗分析</span>
+              <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">5 层转化</span>
+            </h3>
+            <div style="padding:4px 6px;">
+              <div class="funnel-item">
+                <div class="funnel-label">发送</div>
+                <div class="funnel-bar" style="width:100%;background:linear-gradient(90deg,#378ADD,#5ba3e8);">2,000</div>
+                <div class="funnel-value">2,000</div>
+                <div class="funnel-rate">100%</div>
+              </div>
+              <div class="funnel-item">
+                <div class="funnel-label">打开</div>
+                <div class="funnel-bar" style="width:72.5%;background:linear-gradient(90deg,#0D9488,#14b8a6);">1,450</div>
+                <div class="funnel-value">1,450</div>
+                <div class="funnel-rate">72.5%</div>
+              </div>
+              <div class="funnel-item">
+                <div class="funnel-label">点击</div>
+                <div class="funnel-bar" style="width:26%;background:linear-gradient(90deg,#7F77DD,#9b94e8);">520</div>
+                <div class="funnel-value">520</div>
+                <div class="funnel-rate">26.0%</div>
+              </div>
+              <div class="funnel-item">
+                <div class="funnel-label">输入</div>
+                <div class="funnel-bar" style="width:16%;background:linear-gradient(90deg,#A32D2D,#c94747);">320</div>
+                <div class="funnel-value">320</div>
+                <div class="funnel-rate">16.0%</div>
+              </div>
+              <div class="funnel-item">
+                <div class="funnel-label">举报</div>
+                <div class="funnel-bar" style="width:9.3%;background:linear-gradient(90deg,#1D9E75,#2bb888);">186</div>
+                <div class="funnel-value">186</div>
+                <div class="funnel-rate">9.3%</div>
+              </div>
+            </div>
+            <div style="margin-top:12px;padding:10px;background:var(--color-background-secondary);border-radius:8px;font-size:11px;color:var(--color-text-secondary);">
+              <span style="color:#A32D2D;font-weight:500;">关键流失：</span>点击→输入环节流失率 38.5%，建议加强输入框伪装识别培训。
+            </div>
+          </div>
+
+          <!-- 趋势折线图 -->
+          <div class="card">
+            <h3 class="card-title">
+              <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#1D9E75;">势</span>演练期间每日趋势</span>
+              <div class="line-legend">
+                <span><span class="legend-dot" style="background:#0D9488;"></span>打开</span>
+                <span><span class="legend-dot" style="background:#7F77DD;"></span>点击</span>
+                <span><span class="legend-dot" style="background:#A32D2D;"></span>中招</span>
+              </div>
+            </h3>
+            <div style="position:relative;padding:8px 4px 0 4px;">
+              <!-- Y轴标签 -->
+              <div style="position:absolute;left:0;top:8px;bottom:24px;width:30px;display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--color-text-tertiary);text-align:right;">
+                <span>800</span><span>600</span><span>400</span><span>200</span><span>0</span>
+              </div>
+              <!-- 图表区 -->
+              <div style="margin-left:34px;height:180px;position:relative;border-left:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;">
+                <!-- 网格线 -->
+                <div style="position:absolute;left:0;right:0;top:0;border-top:1px dashed #f0f0f0;"></div>
+                <div style="position:absolute;left:0;right:0;top:25%;border-top:1px dashed #f0f0f0;"></div>
+                <div style="position:absolute;left:0;right:0;top:50%;border-top:1px dashed #f0f0f0;"></div>
+                <div style="position:absolute;left:0;right:0;top:75%;border-top:1px dashed #f0f0f0;"></div>
+                <!-- 折线SVG -->
+                <svg width="100%" height="100%" viewBox="0 0 700 180" preserveAspectRatio="none" style="position:absolute;left:0;top:0;">
+                  <!-- 打开 -->
+                  <polyline points="40,60 140,40 240,55 340,75 440,90 540,100 640,110" fill="none" stroke="#0D9488" stroke-width="2"/>
+                  <circle cx="40" cy="60" r="3" fill="#0D9488"/><circle cx="140" cy="40" r="3" fill="#0D9488"/><circle cx="240" cy="55" r="3" fill="#0D9488"/><circle cx="340" cy="75" r="3" fill="#0D9488"/><circle cx="440" cy="90" r="3" fill="#0D9488"/><circle cx="540" cy="100" r="3" fill="#0D9488"/><circle cx="640" cy="110" r="3" fill="#0D9488"/>
+                  <!-- 点击 -->
+                  <polyline points="40,130 140,110 240,120 340,130 440,140 540,148 640,152" fill="none" stroke="#7F77DD" stroke-width="2"/>
+                  <circle cx="40" cy="130" r="3" fill="#7F77DD"/><circle cx="140" cy="110" r="3" fill="#7F77DD"/><circle cx="240" cy="120" r="3" fill="#7F77DD"/><circle cx="340" cy="130" r="3" fill="#7F77DD"/><circle cx="440" cy="140" r="3" fill="#7F77DD"/><circle cx="540" cy="148" r="3" fill="#7F77DD"/><circle cx="640" cy="152" r="3" fill="#7F77DD"/>
+                  <!-- 中招 -->
+                  <polyline points="40,155 140,148 240,152 340,156 440,160 540,163 640,165" fill="none" stroke="#A32D2D" stroke-width="2"/>
+                  <circle cx="40" cy="155" r="3" fill="#A32D2D"/><circle cx="140" cy="148" r="3" fill="#A32D2D"/><circle cx="240" cy="152" r="3" fill="#A32D2D"/><circle cx="340" cy="156" r="3" fill="#A32D2D"/><circle cx="440" cy="160" r="3" fill="#A32D2D"/><circle cx="540" cy="163" r="3" fill="#A32D2D"/><circle cx="640" cy="165" r="3" fill="#A32D2D"/>
+                </svg>
+              </div>
+              <!-- X轴标签 -->
+              <div style="margin-left:34px;display:flex;justify-content:space-between;font-size:10px;color:var(--color-text-tertiary);margin-top:4px;">
+                <span>D1</span><span>D2</span><span>D3</span><span>D4</span><span>D5</span><span>D6</span><span>D7</span>
+              </div>
+            </div>
+            <div style="margin-top:10px;font-size:11px;color:var(--color-text-tertiary);">演练首日打开量峰值 720 次，第3日中招数最高 96 人，整体呈递减趋势。</div>
+          </div>
+        </div>
+
+        <!-- 部门对比表格 -->
+        <div class="card" style="padding:14px 16px;">
+          <h3 class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#7F77DD;">比</span>部门对比明细</span>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-default btn-sm" id="btn-pdf-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                导出PDF
+              </button>
+              <button class="btn btn-success btn-sm" id="btn-excel-1">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                导出Excel
+              </button>
+            </div>
+          </h3>
+          <div style="overflow-x:auto;">
+            <table class="data-table">
+              <colgroup><col style="width:18%"><col style="width:14%"><col style="width:14%"><col style="width:16%"><col style="width:14%"><col style="width:14%"><col style="width:10%"></colgroup>
+              <thead><tr><th>部门</th><th>发送数</th><th>中招数</th><th>中招率</th><th>举报数</th><th>举报率</th><th>状态</th></tr></thead>
+              <tbody id="drill-dept-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ Tab 2: 部门报表 ============ -->
+      <div class="tab-panel" id="panel-dept">
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">数据报表 / 部门报表</span>
+          <div style="display:flex;gap:6px;" id="dept-range">
+            <span class="filter-tag active" data-range="7">近7天</span>
+            <span class="filter-tag" data-range="month">本月</span>
+            <span class="filter-tag" data-range="quarter">本季度</span>
+          </div>
+        </div>
+
+        <!-- 部门横向对比柱状图 -->
+        <div class="card" style="margin-bottom:18px;">
+          <h3 class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">柱</span>各部门中招率对比</span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">数值越低越安全</span>
+          </h3>
+          <div style="padding:4px 6px;" id="dept-bar-chart"></div>
+        </div>
+
+        <!-- 部门明细表格 -->
+        <div class="card" style="padding:14px 16px;">
+          <h3 class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#7F77DD;">细</span>部门风险明细</span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">共 8 个部门</span>
+          </h3>
+          <div style="overflow-x:auto;">
+            <table class="data-table">
+              <colgroup><col style="width:12%"><col style="width:8%"><col style="width:10%"><col style="width:9%"><col style="width:14%"><col style="width:8%"><col style="width:11%"><col style="width:10%"><col style="width:18%"></colgroup>
+              <thead><tr><th>部门</th><th>总人数</th><th>覆盖次数</th><th>中招次数</th><th>平均中招率</th><th>举报</th><th>培训完成率</th><th>风险评级</th><th>操作</th></tr></thead>
+              <tbody id="dept-detail-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ Tab 3: 综合趋势报表 ============ -->
+      <div class="tab-panel" id="panel-trend">
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">数据报表 / 综合趋势</span>
+          <div style="display:flex;gap:6px;" id="trend-range">
+            <span class="filter-tag active" data-range="7">近7天</span>
+            <span class="filter-tag" data-range="month">本月</span>
+            <span class="filter-tag" data-range="quarter">本季度</span>
+            <span class="filter-tag" data-range="year">本年度</span>
+          </div>
+        </div>
+
+        <!-- 趋势折线图 -->
+        <div class="card" style="margin-bottom:18px;">
+          <h3 class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#1D9E75;">势</span>跨演练中招率下降趋势</span>
+            <div class="line-legend">
+              <span><span class="legend-dot" style="background:#A32D2D;"></span>中招率</span>
+              <span><span class="legend-dot" style="background:#1D9E75;"></span>举报率</span>
+            </div>
+          </h3>
+          <div style="position:relative;padding:8px 4px 0 4px;">
+            <div style="position:absolute;left:0;top:8px;bottom:24px;width:30px;display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--color-text-tertiary);text-align:right;">
+              <span>40%</span><span>30%</span><span>20%</span><span>10%</span><span>0%</span>
+            </div>
+            <div style="margin-left:34px;height:180px;position:relative;border-left:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;">
+              <div style="position:absolute;left:0;right:0;top:0;border-top:1px dashed #f0f0f0;"></div>
+              <div style="position:absolute;left:0;right:0;top:25%;border-top:1px dashed #f0f0f0;"></div>
+              <div style="position:absolute;left:0;right:0;top:50%;border-top:1px dashed #f0f0f0;"></div>
+              <div style="position:absolute;left:0;right:0;top:75%;border-top:1px dashed #f0f0f0;"></div>
+              <!-- 安全线 15% -->
+              <div style="position:absolute;left:0;right:0;top:62.5%;border-top:1px dashed #1D9E75;">
+                <span style="position:absolute;right:4px;top:-14px;font-size:10px;color:#1D9E75;">安全线 15%</span>
+              </div>
+              <svg width="100%" height="100%" viewBox="0 0 700 180" preserveAspectRatio="none" style="position:absolute;left:0;top:0;">
+                <!-- 中招率下降 -->
+                <polyline points="50,40 150,55 250,70 350,82 450,95 550,108 650,120" fill="none" stroke="#A32D2D" stroke-width="2"/>
+                <circle cx="50" cy="40" r="3" fill="#A32D2D"/><circle cx="150" cy="55" r="3" fill="#A32D2D"/><circle cx="250" cy="70" r="3" fill="#A32D2D"/><circle cx="350" cy="82" r="3" fill="#A32D2D"/><circle cx="450" cy="95" r="3" fill="#A32D2D"/><circle cx="550" cy="108" r="3" fill="#A32D2D"/><circle cx="650" cy="120" r="3" fill="#A32D2D"/>
+                <!-- 举报率上升 -->
+                <polyline points="50,165 150,158 250,150 350,142 450,130 550,118 650,108" fill="none" stroke="#1D9E75" stroke-width="2"/>
+                <circle cx="50" cy="165" r="3" fill="#1D9E75"/><circle cx="150" cy="158" r="3" fill="#1D9E75"/><circle cx="250" cy="150" r="3" fill="#1D9E75"/><circle cx="350" cy="142" r="3" fill="#1D9E75"/><circle cx="450" cy="130" r="3" fill="#1D9E75"/><circle cx="550" cy="118" r="3" fill="#1D9E75"/><circle cx="650" cy="108" r="3" fill="#1D9E75"/>
+              </svg>
+            </div>
+            <div style="margin-left:34px;display:flex;justify-content:space-between;font-size:10px;color:var(--color-text-tertiary);margin-top:4px;">
+              <span>1月</span><span>2月</span><span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span>
+            </div>
+          </div>
+          <div style="margin-top:10px;font-size:11px;color:var(--color-text-secondary);">中招率从 <span style="color:#A32D2D;font-weight:500;">36.2%</span> 下降至 <span style="color:#1D9E75;font-weight:500;">14.8%</span>，累计下降 21.4 个百分点。</div>
+        </div>
+
+        <!-- 按场景分析表格 -->
+        <div class="card" style="padding:14px 16px;margin-bottom:18px;">
+          <h3 class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#7F77DD;">景</span>按钓鱼场景分析</span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">共 5 类场景</span>
+          </h3>
+          <div style="overflow-x:auto;">
+            <table class="data-table">
+              <colgroup><col style="width:16%"><col style="width:10%"><col style="width:12%"><col style="width:22%"><col style="width:14%"><col style="width:12%"><col style="width:14%"></colgroup>
+              <thead><tr><th>钓鱼场景</th><th>演练次数</th><th>总发送数</th><th>中招率</th><th>趋势</th><th>防范评级</th><th>场景说明</th></tr></thead>
+              <tbody id="trend-scene-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 总结卡片 -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;">
+          <div class="card card-green" style="text-align:center;padding:18px;">
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px;">整体安全意识提升率</div>
+            <div style="font-size:32px;font-weight:600;color:#1D9E75;line-height:1;">59.1%</div>
+            <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;">较年初提升 21.4 个百分点</div>
+          </div>
+          <div class="card card-red" style="text-align:center;padding:18px;">
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px;">最薄弱场景</div>
+            <div style="font-size:20px;font-weight:600;color:#A32D2D;line-height:1.2;">财务类</div>
+            <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;">中招率 28.5%，需重点加强</div>
+          </div>
+          <div class="card card-blue" style="text-align:center;padding:18px;">
+            <div style="font-size:11px;color:var(--color-text-secondary);margin-bottom:8px;">最佳改进部门</div>
+            <div style="font-size:20px;font-weight:600;color:#378ADD;line-height:1.2;">研发中心</div>
+            <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;">中招率下降 62%，改善最显著</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ Tab 4: 员工个人报表 ============ -->
+      <div class="tab-panel" id="panel-staff">
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">数据报表 / 员工个人报表</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div class="search-box" style="width:280px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input class="search-input" id="staff-search" placeholder="按姓名 / 工号搜索员工" />
+            </div>
+            <button class="btn btn-primary btn-sm" id="btn-search-staff">查询</button>
+          </div>
+        </div>
+
+        <!-- 个人信息卡片 + 风险趋势 -->
+        <div style="display:grid;grid-template-columns:1fr 1.6fr;gap:16px;margin-bottom:18px;">
+          <!-- 个人信息卡片 -->
+          <div class="card card-orange" style="padding:18px;">
+            <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;">
+              <div style="width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,#D85A30 0%,#EF9F27 100%);display:flex;align-items:center;justify-content:center;color:white;font-size:20px;font-weight:600;flex-shrink:0;">李</div>
+              <div>
+                <div style="font-size:16px;font-weight:600;color:var(--color-text-primary);">李明 <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">工号 EMP2048</span></div>
+                <div style="font-size:12px;color:var(--color-text-secondary);margin-top:4px;">财务部 · 财务专员</div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;">
+              <div><span style="color:var(--color-text-tertiary);">风险等级</span><br><span class="badge risk-high" style="margin-top:4px;">高风险</span></div>
+              <div><span style="color:var(--color-text-tertiary);">历史中招</span><br><span style="font-size:18px;font-weight:600;color:#A32D2D;">4 次</span></div>
+              <div><span style="color:var(--color-text-tertiary);">举报次数</span><br><span style="font-size:18px;font-weight:600;color:#1D9E75;">1 次</span></div>
+              <div><span style="color:var(--color-text-tertiary);">培训完成</span><br><span style="font-size:18px;font-weight:600;color:#378ADD;">3 / 5</span></div>
+            </div>
+            <div style="margin-top:14px;padding:10px;background:rgba(216,90,48,0.06);border-radius:8px;font-size:11px;color:var(--color-text-secondary);border-left:3px solid #D85A30;">
+              该员工近半年内多次中招财务类钓鱼，建议安排专项安全意识培训。
+            </div>
+          </div>
+
+          <!-- 风险趋势图 -->
+          <div class="card">
+            <h3 class="card-title">
+              <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#D85A30;">险</span>个人风险值变化趋势</span>
+              <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">满分 100，越高越危险</span>
+            </h3>
+            <div style="position:relative;padding:8px 4px 0 4px;">
+              <div style="position:absolute;left:0;top:8px;bottom:24px;width:30px;display:flex;flex-direction:column;justify-content:space-between;font-size:10px;color:var(--color-text-tertiary);text-align:right;">
+                <span>100</span><span>75</span><span>50</span><span>25</span><span>0</span>
+              </div>
+              <div style="margin-left:34px;height:160px;position:relative;border-left:1px solid #e5e7eb;border-bottom:1px solid #e5e7eb;">
+                <div style="position:absolute;left:0;right:0;top:0;border-top:1px dashed #f0f0f0;"></div>
+                <div style="position:absolute;left:0;right:0;top:33%;border-top:1px dashed #f0f0f0;"></div>
+                <div style="position:absolute;left:0;right:0;top:66%;border-top:1px dashed #f0f0f0;"></div>
+                <svg width="100%" height="100%" viewBox="0 0 600 160" preserveAspectRatio="none" style="position:absolute;left:0;top:0;">
+                  <polyline points="50,40 150,55 250,45 350,70 450,95 550,110" fill="none" stroke="#D85A30" stroke-width="2"/>
+                  <circle cx="50" cy="40" r="4" fill="#D85A30"/><circle cx="150" cy="55" r="4" fill="#D85A30"/><circle cx="250" cy="45" r="4" fill="#D85A30"/><circle cx="350" cy="70" r="4" fill="#D85A30"/><circle cx="450" cy="95" r="4" fill="#D85A30"/><circle cx="550" cy="110" r="4" fill="#D85A30"/>
+                </svg>
+              </div>
+              <div style="margin-left:34px;display:flex;justify-content:space-between;font-size:10px;color:var(--color-text-tertiary);margin-top:4px;">
+                <span>2月</span><span>3月</span><span>4月</span><span>5月</span><span>6月</span><span>7月</span>
+              </div>
+            </div>
+            <div style="margin-top:8px;font-size:11px;color:var(--color-text-secondary);">风险值从 88 降至 64，近期培训后有所改善，仍需持续关注。</div>
+          </div>
+        </div>
+
+        <!-- 历史演练参与记录 -->
+        <div class="card" style="padding:14px 16px;margin-bottom:18px;">
+          <h3 class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#378ADD;">史</span>历史演练参与记录</span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">共 6 次参与</span>
+          </h3>
+          <div style="overflow-x:auto;">
+            <table class="data-table">
+              <colgroup><col style="width:30%"><col style="width:14%"><col style="width:14%"><col style="width:16%"><col style="width:14%"><col style="width:12%"></colgroup>
+              <thead><tr><th>演练名称</th><th>时间</th><th>场景</th><th>结果</th><th>响应时间</th><th>操作</th></tr></thead>
+              <tbody id="staff-drill-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 培训记录 -->
+        <div class="card" style="padding:14px 16px;">
+          <h3 class="card-title">
+            <span style="display:flex;align-items:center;"><span class="card-title-icon" style="background:#1D9E75;">训</span>培训记录</span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">共 5 门课程</span>
+          </h3>
+          <div style="overflow-x:auto;">
+            <table class="data-table">
+              <colgroup><col style="width:36%"><col style="width:18%"><col style="width:14%"><col style="width:14%"><col style="width:18%"></colgroup>
+              <thead><tr><th>课程名称</th><th>完成时间</th><th>成绩</th><th>状态</th><th>操作</th></tr></thead>
+              <tbody id="staff-train-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+  // ========== Toast 提示 ==========
+  function showToast(msg, type){
+    var container = document.getElementById('toast-container');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type || 'info');
+    t.innerHTML = (type==='success'?'✓':(type==='error'?'✕':'ⓘ')) + ' <span>' + msg + '</span>';
+    container.appendChild(t);
+    setTimeout(function(){
+      t.style.transition = 'opacity 0.3s, transform 0.3s';
+      t.style.opacity = '0'; t.style.transform = 'translateX(30px)';
+      setTimeout(function(){ t.remove(); }, 300);
+    }, 2600);
+  }
+
+  // ========== Tab 切换 ==========
+  var tabBar = document.getElementById('tab-bar');
+  tabBar.addEventListener('click', function(e){
+    var btn = e.target.closest('.tab');
+    if(!btn) return;
+    var name = btn.getAttribute('data-tab');
+    document.querySelectorAll('#tab-bar .tab').forEach(function(t){ t.classList.remove('active'); });
+    btn.classList.add('active');
+    document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+    document.getElementById('panel-' + name).classList.add('active');
+  });
+
+  // ========== 演练选择 ==========
+  document.getElementById('drill-select').addEventListener('change', function(e){
+    var txt = e.target.options[e.target.selectedIndex].text;
+    showToast('已切换演练：' + txt, 'info');
+  });
+
+  // ========== Tab1 部门对比数据 ==========
+  var drillDeptData = [
+    {dept:'财务部', sent:280, hit:62, report:18},
+    {dept:'市场部', sent:240, hit:31, report:24},
+    {dept:'研发中心', sent:360, hit:29, report:38},
+    {dept:'人力资源部', sent:180, hit:34, report:15},
+    {dept:'销售部', sent:320, hit:51, report:22},
+    {dept:'运营部', sent:220, hit:28, report:20},
+    {dept:'法务部', sent:140, hit:19, report:16},
+    {dept:'行政部', sent:160, hit:36, report:12},
+    {dept:'客服部', sent:100, hit:30, report:21}
+  ];
+  function renderDrillDept(){
+    var tbody = document.getElementById('drill-dept-tbody');
+    tbody.innerHTML = drillDeptData.map(function(d){
+      var hr = (d.hit/d.sent*100).toFixed(1);
+      var rr = (d.report/d.sent*100).toFixed(1);
+      var hrColor = hr>20?'#A32D2D':(hr>12?'#EF9F27':'#1D9E75');
+      return '<tr>'
+        + '<td>' + d.dept + '</td>'
+        + '<td>' + d.sent.toLocaleString() + '</td>'
+        + '<td style="color:#A32D2D;font-weight:500;">' + d.hit + '</td>'
+        + '<td><div class="progress-cell"><div class="bar-track"><div class="bar-fill" style="width:'+hr+'%;background:'+hrColor+';"></div></div><span style="font-size:11px;color:'+hrColor+';font-weight:500;width:40px;">'+hr+'%</span></div></td>'
+        + '<td style="color:#1D9E75;font-weight:500;">' + d.report + '</td>'
+        + '<td>' + rr + '%</td>'
+        + '<td>' + (hr>20?'<span class="badge risk-high">需关注</span>':(hr>12?'<span class="badge risk-mid">一般</span>':'<span class="badge risk-low">良好</span>')) + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+
+  // ========== Tab2 部门明细数据 ==========
+  var deptData = [
+    {dept:'财务部', total:56, cover:6, hit:62, report:18, train:78, risk:'high'},
+    {dept:'市场部', total:48, cover:5, hit:31, report:24, train:85, risk:'mid'},
+    {dept:'研发中心', total:120, cover:8, hit:29, report:38, train:92, risk:'low'},
+    {dept:'人力资源部', total:36, cover:5, hit:34, report:15, train:72, risk:'mid'},
+    {dept:'销售部', total:64, cover:6, hit:51, report:22, train:68, risk:'high'},
+    {dept:'运营部', total:44, cover:5, hit:28, report:20, train:88, risk:'low'},
+    {dept:'法务部', total:28, cover:4, hit:19, report:16, train:95, risk:'low'},
+    {dept:'行政部', total:32, cover:4, hit:36, report:12, train:74, risk:'high'}
+  ];
+  function avgRate(d){ return (d.hit / (d.total * d.cover) * 100).toFixed(1); }
+  function renderDeptDetail(){
+    var tbody = document.getElementById('dept-detail-tbody');
+    tbody.innerHTML = deptData.map(function(d){
+      var ar = avgRate(d);
+      var arColor = ar>20?'#A32D2D':(ar>12?'#EF9F27':'#1D9E75');
+      var riskBadge = d.risk==='high'?'<span class="badge risk-high">高</span>':(d.risk==='mid'?'<span class="badge risk-mid">中</span>':'<span class="badge risk-low">低</span>');
+      var trainColor = d.train>=85?'#1D9E75':(d.train>=70?'#378ADD':'#D85A30');
+      return '<tr>'
+        + '<td style="font-weight:500;">' + d.dept + '</td>'
+        + '<td>' + d.total + '</td>'
+        + '<td>' + d.cover + '</td>'
+        + '<td style="color:#A32D2D;font-weight:500;">' + d.hit + '</td>'
+        + '<td><div class="progress-cell"><div class="bar-track"><div class="bar-fill" style="width:'+Math.min(ar*3,100)+'%;background:'+arColor+';"></div></div><span style="font-size:11px;color:'+arColor+';font-weight:500;width:40px;">'+ar+'%</span></div></td>'
+        + '<td style="color:#1D9E75;font-weight:500;">' + d.report + '</td>'
+        + '<td><div class="progress-cell"><div class="bar-track"><div class="bar-fill" style="width:'+d.train+'%;background:'+trainColor+';"></div></div><span style="font-size:11px;color:'+trainColor+';font-weight:500;width:36px;">'+d.train+'%</span></div></td>'
+        + '<td>' + riskBadge + '</td>'
+        + '<td><button class="btn-link" data-op="dept-view" data-dept="'+d.dept+'">查看明细</button><button class="btn-link" data-op="dept-export" data-dept="'+d.dept+'">导出</button></td>'
+        + '</tr>';
+    }).join('');
+    bindDeptOps();
+  }
+  function renderDeptBar(){
+    var wrap = document.getElementById('dept-bar-chart');
+    var max = 0;
+    deptData.forEach(function(d){ var r = parseFloat(avgRate(d)); if(r>max) max=r; });
+    wrap.innerHTML = deptData.map(function(d){
+      var ar = parseFloat(avgRate(d));
+      var w = (ar/max*100).toFixed(1);
+      var color = ar>20?'#A32D2D':(ar>12?'#EF9F27':'#1D9E75');
+      return '<div class="hbar-row">'
+        + '<div class="hbar-label">' + d.dept + '</div>'
+        + '<div class="hbar-track"><div class="hbar-fill" style="width:'+w+'%;background:'+color+';">'+ar+'%</div></div>'
+        + '<div class="hbar-value">' + d.hit + '次</div>'
+        + '</div>';
+    }).join('');
+  }
+  function bindDeptOps(){
+    document.querySelectorAll('[data-op="dept-view"]').forEach(function(b){
+      b.addEventListener('click', function(){ showToast('已打开「' + b.getAttribute('data-dept') + '」部门明细', 'info'); });
+    });
+    document.querySelectorAll('[data-op="dept-export"]').forEach(function(b){
+      b.addEventListener('click', function(){ showToast('「' + b.getAttribute('data-dept') + '」报表已导出', 'success'); });
+    });
+  }
+
+  // 时间范围筛选
+  document.getElementById('dept-range').addEventListener('click', function(e){
+    var tag = e.target.closest('.filter-tag');
+    if(!tag) return;
+    document.querySelectorAll('#dept-range .filter-tag').forEach(function(t){ t.classList.remove('active'); });
+    tag.classList.add('active');
+    showToast('时间范围已切换：' + tag.textContent, 'info');
+  });
+
+  // ========== Tab3 场景分析数据 ==========
+  var sceneData = [
+    {scene:'财务类', count:8, sent:4200, rate:28.5, trend:'up', level:'high', desc:'报销/税务类邮件，伪装度高'},
+    {scene:'HR类', count:5, sent:2100, rate:18.2, trend:'down', level:'mid', desc:'入职/薪资调整类场景'},
+    {scene:'系统类', count:12, sent:6800, rate:15.4, trend:'down', level:'mid', desc:'OA/密码重置类系统通知'},
+    {scene:'节假日', count:4, sent:1600, rate:22.1, trend:'up', level:'high', desc:'节日福利/活动中奖类'},
+    {scene:'中奖类', count:3, sent:1200, rate:9.8, trend:'flat', level:'low', desc:'虚假中奖通知，识别度较高'}
+  ];
+  function renderScene(){
+    var tbody = document.getElementById('trend-scene-tbody');
+    tbody.innerHTML = sceneData.map(function(s){
+      var rateColor = s.rate>20?'#A32D2D':(s.rate>12?'#EF9F27':'#1D9E75');
+      var trendIcon = s.trend==='up'?'<span style="color:#A32D2D;">↑↑ 上升</span>':(s.trend==='down'?'<span style="color:#1D9E75;">↓ 下降</span>':'<span style="color:var(--color-text-tertiary);">→ 持平</span>');
+      var levelBadge = s.level==='high'?'<span class="badge risk-high">薄弱</span>':(s.level==='mid'?'<span class="badge risk-mid">中等</span>':'<span class="badge risk-low">良好</span>');
+      return '<tr>'
+        + '<td style="font-weight:500;">' + s.scene + '</td>'
+        + '<td>' + s.count + '</td>'
+        + '<td>' + s.sent.toLocaleString() + '</td>'
+        + '<td><div class="progress-cell"><div class="bar-track"><div class="bar-fill" style="width:'+s.rate*2+'%;background:'+rateColor+';"></div></div><span style="font-size:11px;color:'+rateColor+';font-weight:500;width:42px;">'+s.rate+'%</span></div></td>'
+        + '<td>' + trendIcon + '</td>'
+        + '<td>' + levelBadge + '</td>'
+        + '<td style="font-size:11px;color:var(--color-text-tertiary);">' + s.desc + '</td>'
+        + '</tr>';
+    }).join('');
+  }
+  document.getElementById('trend-range').addEventListener('click', function(e){
+    var tag = e.target.closest('.filter-tag');
+    if(!tag) return;
+    document.querySelectorAll('#trend-range .filter-tag').forEach(function(t){ t.classList.remove('active'); });
+    tag.classList.add('active');
+    showToast('时间范围已切换：' + tag.textContent, 'info');
+  });
+
+  // ========== Tab4 员工数据 ==========
+  var staffData = [
+    {name:'2026年Q2财务钓鱼演练', time:'2026-07-15', scene:'财务类', result:'hit', resp:'2分18秒'},
+    {name:'OA系统升级钓鱼演练', time:'2026-06-20', scene:'系统类', result:'hit', resp:'5分42秒'},
+    {name:'五一节假日中奖类演练', time:'2026-05-02', scene:'节假日', result:'hit', resp:'8分10秒'},
+    {name:'HR入职材料场景演练', time:'2026-04-28', scene:'HR类', result:'report', resp:'1分05秒'},
+    {name:'3月密码重置演练', time:'2026-03-18', scene:'系统类', result:'hit', resp:'3分27秒'},
+    {name:'春节福利钓鱼演练', time:'2026-02-08', scene:'节假日', result:'safe', resp:'未点击'}
+  ];
+  function renderStaffDrill(){
+    var tbody = document.getElementById('staff-drill-tbody');
+    tbody.innerHTML = staffData.map(function(s){
+      var resBadge = s.result==='hit'?'<span class="badge risk-high">中招</span>':(s.result==='report'?'<span class="badge risk-low">已举报</span>':'<span class="badge" style="background:rgba(55,138,221,0.1);color:#378ADD;">未中招</span>');
+      return '<tr>'
+        + '<td style="font-weight:500;">' + s.name + '</td>'
+        + '<td>' + s.time + '</td>'
+        + '<td>' + s.scene + '</td>'
+        + '<td>' + resBadge + '</td>'
+        + '<td style="font-family:ui-monospace,monospace;color:var(--color-text-secondary);">' + s.resp + '</td>'
+        + '<td><button class="btn-link" data-op="staff-detail">查看详情</button></td>'
+        + '</tr>';
+    }).join('');
+    document.querySelectorAll('[data-op="staff-detail"]').forEach(function(b){
+      b.addEventListener('click', function(){ showToast('演练详情记录已打开', 'info'); });
+    });
+  }
+  var trainData = [
+    {name:'钓鱼邮件识别基础', time:'2026-03-10', score:82, status:'passed'},
+    {name:'财务安全意识专项', time:'2026-05-22', score:76, status:'passed'},
+    {name:'密码与账户安全', time:'2026-06-15', score:88, status:'passed'},
+    {name:'社交工程防范', time:'—', score:0, status:'progress'},
+    {name:'数据保护合规', time:'—', score:0, status:'pending'}
+  ];
+  function renderStaffTrain(){
+    var tbody = document.getElementById('staff-train-tbody');
+    tbody.innerHTML = trainData.map(function(t){
+      var statusBadge = t.status==='passed'?'<span class="badge risk-low">已完成</span>':(t.status==='progress'?'<span class="badge risk-mid">学习中</span>':'<span class="badge" style="background:var(--color-background-tertiary);color:var(--color-text-tertiary);">未开始</span>');
+      var scoreTxt = t.score>0?'<span style="font-weight:500;color:'+(t.score>=80?'#1D9E75':'#EF9F27')+';">'+t.score+'分</span>':'—';
+      var op = t.status==='passed'?'<button class="btn-link" data-op="train-cert">查看证书</button>':(t.status==='progress'?'<button class="btn-link" data-op="train-go">继续学习</button>':'<button class="btn-link" data-op="train-start">开始学习</button>');
+      return '<tr>'
+        + '<td style="font-weight:500;">' + t.name + '</td>'
+        + '<td>' + t.time + '</td>'
+        + '<td>' + scoreTxt + '</td>'
+        + '<td>' + statusBadge + '</td>'
+        + '<td>' + op + '</td>'
+        + '</tr>';
+    }).join('');
+    document.querySelectorAll('[data-op="train-cert"]').forEach(function(b){ b.addEventListener('click', function(){ showToast('培训证书已生成', 'success'); }); });
+    document.querySelectorAll('[data-op="train-go"]').forEach(function(b){ b.addEventListener('click', function(){ showToast('正在跳转学习页面…', 'info'); }); });
+    document.querySelectorAll('[data-op="train-start"]').forEach(function(b){ b.addEventListener('click', function(){ showToast('课程已开始，请在7天内完成', 'info'); }); });
+  }
+  // 员工搜索
+  function doStaffSearch(){
+    var kw = document.getElementById('staff-search').value.trim();
+    if(!kw){ showToast('请输入员工姓名或工号', 'error'); return; }
+    showToast('已查询到员工：李明（EMP2048）', 'success');
+  }
+  document.getElementById('btn-search-staff').addEventListener('click', doStaffSearch);
+  document.getElementById('staff-search').addEventListener('keydown', function(e){ if(e.key==='Enter') doStaffSearch(); });
+
+  // 导出按钮
+  document.getElementById('btn-pdf-1').addEventListener('click', function(){ showToast('演练报表 PDF 正在生成…', 'info'); });
+  document.getElementById('btn-excel-1').addEventListener('click', function(){ showToast('演练报表 Excel 已导出', 'success'); });
+
+  // 侧边栏导航
+  document.querySelectorAll('.sidebar .nav-item').forEach(function(item){
+    item.addEventListener('click', function(){
+      if(item.classList.contains('active')) return;
+      showToast('导航至：' + item.textContent.trim(), 'info');
+    });
+  });
+
+  // 初始渲染
+  renderDrillDept();
+  renderDeptDetail();
+  renderDeptBar();
+  renderScene();
+  renderStaffDrill();
+  renderStaffTrain();
+</script>
+
+<!-- Copilot FAB -->
+<div class="copilot-fab" id="copilotFab" onclick="Copilot.open()">
+  <span class="fab-pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg>
+</div>
+<!-- Copilot Drawer -->
+<div class="copilot-overlay" id="copilotOverlay" onclick="Copilot.close()"></div>
+<div class="copilot-drawer" id="copilotDrawer" data-page="数据报表">
+  <div class="copilot-header">
+    <div class="copilot-header-left">
+      <div class="copilot-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg></div>
+      <div>
+        <div class="copilot-header-title">AI Copilot</div>
+        <div class="copilot-header-sub" id="copilotContext">当前上下文：数据报表</div>
+      </div>
+    </div>
+    <button class="copilot-close" onclick="Copilot.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="copilot-sessions">
+    <div class="copilot-session-btn active" onclick="Copilot.switchSession(this,'current')">当前会话</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s1')">演练分析</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s2')">模板生成</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s3')">风险报告</div>
+    <div class="copilot-session-btn" onclick="Copilot.newSession()">+ 新建</div>
+  </div>
+  <div class="copilot-messages" id="copilotMessages">
+    <div class="copilot-empty" id="copilotEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h4>AI Copilot 智能助手</h4>
+      <p>我是您的安全演练AI助手，可以帮您分析演练数据、生成模板、撰写报告等。<br/>下方快捷问题可直接点击使用。</p>
+    </div>
+  </div>
+  <div class="copilot-draft-banner" id="copilotDraftBanner" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span>AI生成内容处于草稿态，需人工确认后生效。审核记录将进入审计日志。</span>
+  </div>
+  <div class="copilot-input-area">
+    <div class="copilot-quick-tags" id="copilotQuickTags">
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">导出分析报告</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">跨演练趋势</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">部门对比分析</span>
+    </div>
+    <div class="copilot-input-wrap">
+      <textarea class="copilot-input" id="copilotInput" placeholder="输入您的问题..." rows="1" onkeydown="Copilot.onKeydown(event)" oninput="Copilot.autoResize(this)"></textarea>
+      <button class="copilot-send" id="copilotSend" onclick="Copilot.send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+if(typeof showToast!=='function'){function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}}
+
+// ===== Copilot 全局AI助手 =====
+var Copilot=(function(){
+  var drawer=document.getElementById('copilotDrawer');
+  var overlay=document.getElementById('copilotOverlay');
+  var messagesEl=document.getElementById('copilotMessages');
+  var inputEl=document.getElementById('copilotInput');
+  var sendBtn=document.getElementById('copilotSend');
+  var emptyEl=document.getElementById('copilotEmpty');
+  var draftBanner=document.getElementById('copilotDraftBanner');
+  var pageContext=drawer?drawer.getAttribute('data-page'):'';
+  var isGenerating=false;
+  var messages=[];
+
+  function open(){if(!drawer)return;drawer.classList.add('open');overlay.classList.add('show');setTimeout(function(){inputEl&&inputEl.focus();},350);}
+  function close(){if(!drawer)return;drawer.classList.remove('open');overlay.classList.remove('show');}
+  function switchSession(btn,key){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');btn.classList.add('active');showToast('已切换到会话：'+btn.textContent,'info');}
+  function newSession(){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');messages=[];if(emptyEl)emptyEl.style.display='block';messagesEl.innerHTML='';messagesEl.appendChild(emptyEl);showToast('已创建新会话','info');}
+  function quickAsk(text){if(!inputEl)return;inputEl.value=text;autoResize(inputEl);send();}
+  function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+  function autoResize(el){el.style.height='38px';el.style.height=Math.min(el.scrollHeight,100)+'px';}
+  function addMessage(role,content,opts){
+    opts=opts||{};
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');msg.className='copilot-msg '+role;
+    var avatar=document.createElement('div');avatar.className='copilot-msg-avatar';avatar.textContent=role==='ai'?'AI':'我';
+    var bubble=document.createElement('div');bubble.className='copilot-msg-bubble';
+    if(role==='ai'){bubble.innerHTML=renderMarkdown(content);}else{bubble.textContent=content;}
+    msg.appendChild(avatar);msg.appendChild(bubble);
+    if(role==='ai'&&opts.showContext){var badge=document.createElement('div');badge.className='copilot-context-badge';badge.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>上下文：'+pageContext;bubble.appendChild(badge);}
+    if(role==='ai'&&opts.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';opts.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}
+    if(role==='ai'&&opts.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+opts.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+opts.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}
+    messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;return bubble;
+  }
+  function showTyping(){if(emptyEl)emptyEl.style.display='none';var msg=document.createElement('div');msg.className='copilot-msg ai';msg.id='copilotTypingMsg';msg.innerHTML='<div class="copilot-msg-avatar">AI</div><div class="copilot-msg-bubble"><div class="copilot-typing"><span></span><span></span><span></span></div></div>';messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;}
+  function hideTyping(){var t=document.getElementById('copilotTypingMsg');if(t)t.remove();}
+  function typewriter(el,text,opts){opts=opts||{};var i=0;var speed=15;el.innerHTML='';function type(){if(i<text.length){el.innerHTML=renderMarkdown(text.substring(0,i+1));i++;messagesEl.scrollTop=messagesEl.scrollHeight;setTimeout(type,speed);}else{isGenerating=false;sendBtn.disabled=false;if(opts.onComplete)opts.onComplete();}}type();}
+  function renderMarkdown(text){var html=text;html=html.replace(/```([\s\S]*?)```/g,function(m,c){return '<pre style="background:#1a1a1a;color:#0f0;padding:8px 12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:8px 0"><code>'+c.replace(/</g,'&lt;')+'</code></pre>';});html=html.replace(/`([^`]+)`/g,'<code>$1</code>');html=html.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');html=html.replace(/^### (.+)$/gm,'<h4>$1</h4>');html=html.replace(/^- (.+)$/gm,'<li>$1</li>');html=html.replace(/(<li>.*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';});html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');html=html.replace(/\n/g,'<br>');return html;}
+  function send(){if(isGenerating)return;var text=inputEl.value.trim();if(!text)return;addMessage('user',text);inputEl.value='';inputEl.style.height='38px';isGenerating=true;sendBtn.disabled=true;showTyping();setTimeout(function(){hideTyping();var response=generateResponse(text);var bubble=addMessage('ai','',{showContext:messages.length<=1});typewriter(bubble,response.text,{onComplete:function(){if(response.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';response.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}if(response.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+response.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+response.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}messagesEl.scrollTop=messagesEl.scrollHeight;}});},800);}
+  function generateResponse(text){
+    var pageResponses={
+      '数据概览':{text:'**当前页面：数据概览**\n\n根据最新数据分析：\n\n- 本月中招率 **18.5%**，较上月下降3.2%，趋势向好\n- **财务部**中招率最高（32.1%），建议优先安排培训\n- 举报率22.3%，员工安全意识在提升\n- 培训通过率86.2%，仍有提升空间\n\n### 建议措施\n1. 针对财务部开展专项钓鱼演练\n2. 推送财务类钓鱼识别培训课程\n3. 对连续中招人员启动一对一辅导',actions:[{label:'一键生成报告'},{label:'创建财务部演练'},{label:'推荐培训课程'}]},
+      '演练管理':{text:'**当前页面：演练管理**\n\n最近一次演练「Q3财务钓鱼演练」分析：\n\n| 指标 | 数值 | 评价 |\n|------|------|------|\n| 发送数 | 580 | - |\n| 打开率 | 72.3% | 偏高 |\n| 点击率 | 28.1% | 风险高 |\n| 中招率 | 18.6% | 需关注 |\n| 举报率 | 15.2% | 正常 |\n\n### 关键发现\n- **邮件主题**「紧急：财务报销确认」点击率异常高\n- 发送后2小时内集中中招，说明员工缺乏犹豫期\n- 3人重复中招（已标记为高风险）',actions:[{label:'查看详情'},{label:'生成演练报告'},{label:'标记高危人员'}]},
+      '素材模板':{text:'**当前页面：素材模板**\n\n根据历史演练数据，为您推荐模板生成方案：\n\n### 高效模板特征\n- **场景**：节假日福利领取（点击率平均34.2%）\n- **语气**：紧急+友好混合（打开率提升25%）\n- **发件人**：伪装HR部门（信任度高）\n\n已为您生成草稿模板，请审核确认后入库：',draft:{title:'AI生成模板：节假日福利领取',content:'主题：【福利】2026年中秋礼品领取通知\n发件人：HR-福利管理 <hr-welfare@company.com>\n正文：尊敬的同事，2026年中秋节礼品领取通道已开放，请点击下方链接选择您的礼品...\n预估点击率：32%',actions:true}},
+      '发送配置':{text:'**当前页面：发送配置**\n\n发送通道健康度检查：\n\n- **平台默认SMTP** — 送达率 98.2% ✅\n- **Office365 (EWS)** — 送达率 95.7% ✅\n- **阿里云短信** — 送达率 99.1% ✅\n\n### DNS记录状态\n- SPF ✅ 已配置\n- DKIM ✅ 已配置\n- DMARC ⚠️ 建议添加`p=quarantine`策略\n\n建议：为提升送达率可信度，请完善DMARC记录。',actions:[{label:'查看DMARC配置指引'}]},
+      '用户和组':{text:'**当前页面：用户和组**\n\n高风险人员分析（共86人）：\n\n### 风险分布\n- **极高危险**（风险值>80）：12人\n- **高危险**（风险值60-80）：28人\n- **中危险**（风险值40-60）：46人\n\n### Top 3 高危人员\n1. **王某某**（财务部）— 3次中招，风险值92\n2. **李某**（市场部）— 2次中招+1次误报，风险值87\n3. **张某**（行政部）— 2次中招，风险值85\n\n建议立即安排专项培训。',actions:[{label:'查看风险画像'},{label:'分配培训计划'},{label:'创建针对演练'}]},
+      '安全培训':{text:'**当前页面：安全培训**\n\n培训效果分析：\n\n- 课程完成率：**86.2%**\n- 考试通过率：**78.5%**\n- 培训后中招率下降：**42.3%**\n\n### 薄弱知识点\n1. 邮件头信息识别（错误率61%）\n2. 短链接安全判断（错误率48%）\n3. 附件安全检查（错误率35%）\n\n已为您生成针对性题库草稿，请审核：',draft:{title:'AI生成题库：邮件头识别专项',content:'1. 以下哪项邮件头字段可用于验证发件人身份？\nA. Subject  B. X-Powered-By  C. Received-SPF  D. Date\n答案：C\n\n2. DKIM签名验证失败说明什么？\nA. 邮件被篡改  B. 发件人未认证  C. 服务器宕机  D. 以上都对\n答案：A',actions:true}},
+      '数据报表':{text:'**当前页面：数据报表**\n\n跨演练趋势分析：\n\n### 中招率变化趋势\n- 2026 Q1平均中招率：**24.5%**\n- 2026 Q2平均中招率：**21.2%**\n- 2026 Q3平均中招率：**18.5%**\n\n**整体下降趋势明显**，季度环比下降约14%。\n\n### 最有效改进场景\n- 系统升级类：中招率从31%→18%（下降42%）\n- 财务类：中招率从28%→22%（下降21%）\n\n### 仍需关注\n- 节假日类中招率仅下降8%，建议加强场景化培训',actions:[{label:'导出分析报告'},{label:'生成趋势图表'},{label:'生成改进方案'}]},
+      '邮件举报':{text:'**当前页面：邮件举报**\n\n举报数据分析：\n\n- 本月举报总数：**186次**\n- 演练邮件举报：**142次**（76.3%）\n- 真实钓鱼举报：**32次**（17.2%）\n- 误报：**12次**（6.5%）\n\n### 举报响应时间\n- 平均响应：**4.2分钟**（优秀）\n- 最快：**47秒**\n- 最慢：**23分钟**\n\n举报率持续提升，说明员工安全意识在增强。建议对Top举报者给予积分奖励。',actions:[{label:'查看积分排行'},{label:'生成举报报告'}]},
+      '系统设置':{text:'**当前页面：系统设置**\n\n系统安全配置检查：\n\n### 检查结果\n- 两步验证：✅ 已启用\n- 密码策略：✅ 满足复杂度要求\n- IP白名单：✅ 已配置12个IP\n- 数据加密：✅ 已启用\n- 审计模式：✅ 已启用\n\n### 建议优化\n- ⚠️ 会话超时设置为60分钟，建议缩短至30分钟\n- ⚠️ 数据留存期限为1年，建议根据合规要求调整为2年\n- 💡 建议启用SIEM推送，实现实时告警',actions:[{label:'应用安全建议'}]},
+      '智能助手':{text:'**当前页面：智能助手**\n\nAI能力使用统计：\n\n- 本月API调用：**3,420次**\n- Token消耗：**2.1M**\n- 费用预估：**¥186**\n\n### 各功能使用占比\n1. AI对话助手：48%\n2. 智能分析报告：28%\n3. AI模板生成：18%\n4. 培训推荐：6%\n\n所有AI生成内容均已进入审核队列，确保安全合规。',actions:[{label:'查看审核队列'},{label:'优化AI配置'}]},
+      'API开放平台':{text:'**当前页面：API开放平台**\n\nAPI调用分析：\n\n- 本月总调用：**12,580次**\n- 成功率：**99.2%**\n- 平均响应：**128ms**\n\n### Top 3 调用API\n1. `POST /api/v1/drills` — 4,200次\n2. `GET /api/v1/reports/drills/{id}` — 3,150次\n3. `GET /api/v1/users/risk` — 2,830次\n\n### 异常调用\n- ⚠️ AppID `app_xxxx` 在凌晨3点有异常高频调用，建议检查\n- ⚠️ 2次401认证失败来自IP `10.12.34.56`',actions:[{label:'查看异常日志'},{label:'设置调用限制'}]}
+    };
+    if(text.indexOf('报告')>-1||text.indexOf('分析')>-1){return pageResponses[pageContext]||pageResponses['数据概览'];}
+    if(text.indexOf('生成')>-1||text.indexOf('模板')>-1||text.indexOf('创建')>-1){return pageResponses[pageContext]||pageResponses['素材模板'];}
+    if(text.indexOf('风险')>-1||text.indexOf('高危')>-1){return pageResponses[pageContext]||pageResponses['用户和组'];}
+    return pageResponses[pageContext]||{text:'我是您的AI Copilot助手。当前页面上下文：**'+pageContext+'**。\n\n我可以帮您：\n- 分析当前页面数据\n- 生成报告和建议\n- 创建模板和课程\n- 风险评估和预警\n\n请问有什么可以帮您的？',actions:[]};
+  }
+  function confirmDraft(btn){var card=btn.closest('.copilot-review-card');var badge=card.querySelector('.copilot-review-badge');badge.className='copilot-review-badge confirmed';badge.textContent='已确认入库';var actions=card.querySelector('.copilot-review-actions');actions.innerHTML='<span style="font-size:11px;color:#1D9E75">✓ 审核通过 · 操作人：张管理 · '+new Date().toLocaleString()+'</span>';showToast('草稿已确认入库，审核记录已写入审计日志','success');draftBanner.style.display='none';}
+  function discardDraft(btn){var card=btn.closest('.copilot-review-card');card.style.opacity='0.5';card.querySelector('.copilot-review-actions').innerHTML='<span style="font-size:11px;color:#8c8c8c">已丢弃</span>';showToast('草稿已丢弃','info');}
+  return{open:open,close:close,switchSession:switchSession,newSession:newSession,quickAsk:quickAsk,onKeydown:onKeydown,autoResize:autoResize,send:send,confirmDraft:confirmDraft,discardDraft:discardDraft};
+})();
+</script>
+<script>
+// ===== ChatBI 自然语言问数 =====
+var ChatBI=(function(){
+  var resultEl,inputEl,logEl,chartEl,conclusionEl;
+  function init(){
+    resultEl=document.getElementById('chatbiResult');
+    inputEl=document.getElementById('chatbiInput');
+    logEl=document.getElementById('chatbiQueryLog');
+    chartEl=document.getElementById('chatbiChart');
+    conclusionEl=document.getElementById('chatbiConclusion');
+  }
+  function ask(){
+    if(!inputEl){init();}
+    var q=inputEl.value.trim();
+    if(!q){if(typeof showToast==='function')showToast('请输入查询问题','info');return;}
+    // 显示loading
+    resultEl.classList.add('show');
+    logEl.innerHTML='';
+    chartEl.innerHTML='<div class="chatbi-loading"><div class="copilot-typing"><span></span><span></span><span></span></div>正在分析查询意图并生成图表...</div>';
+    conclusionEl.innerHTML='';
+    // 模拟AI查询
+    setTimeout(function(){
+      var result=generateResult(q);
+      // 查询逻辑回显
+      logEl.innerHTML='<strong>SQL等价查询：</strong>'+result.sql;
+      // 图表渲染
+      chartEl.innerHTML=result.chart;
+      // 结论
+      conclusionEl.innerHTML=result.conclusion;
+    },1200);
+  }
+  function quickAsk(text){
+    if(!inputEl){init();}
+    inputEl.value=text;
+    ask();
+  }
+  function close(){
+    if(resultEl)resultEl.classList.remove('show');
+    if(inputEl)inputEl.value='';
+  }
+  function exportResult(){
+    if(typeof showToast==='function')showToast('查询结果已导出为Excel','success');
+  }
+  function generateResult(query){
+    // 根据查询关键词生成不同的模拟结果
+    if(query.indexOf('中招率')>-1&&(query.indexOf('部门')>-1||query.indexOf('对比')>-1||query.indexOf('排名')>-1)){
+      return{
+        sql:'SELECT department, COUNT(*)/SUM(send_count) as hit_rate FROM drill_results GROUP BY department ORDER BY hit_rate DESC',
+        chart:'<div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">'+genBar('财务部','32.1%','#D85A30')+genBar('市场部','24.5%','#EF9F27')+genBar('技术部','18.2%','#378ADD')+genBar('行政部','15.6%','#7F77DD')+genBar('人力资源','12.3%','#1D9E75')+'</div>',
+        conclusion:'<strong>分析结论：</strong>财务部中招率最高（32.1%），是平均水平的1.7倍。建议针对财务部开展<strong>专项钓鱼演练</strong>和<strong>财务类钓鱼识别培训</strong>。市场部次之（24.5%），也需关注。人力资源部表现最好（12.3%），可作为安全标杆部门。'
+      };
+    }
+    if(query.indexOf('举报')>-1||query.indexOf('举报率')>-1){
+      return{
+        sql:'SELECT date, report_count, report_rate FROM daily_stats WHERE date >= DATE_SUB(NOW(), INTERVAL 7 DAY) ORDER BY date',
+        chart:'<div style="display:flex;align-items:end;gap:6px;height:100px;padding:8px 0">'+genCol('8/9','15','#378ADD')+genCol('8/10','22','#378ADD')+genCol('8/11','18','#378ADD')+genCol('8/12','28','#378ADD')+genCol('8/13','25','#378ADD')+genCol('8/14','31','#378ADD')+genCol('8/15','24','#378ADD')+'</div><div style="display:flex;gap:6px;font-size:10px;color:#8c8c8c;margin-top:4px"><span style="flex:1;text-align:center">8/9</span><span style="flex:1;text-align:center">8/10</span><span style="flex:1;text-align:center">8/11</span><span style="flex:1;text-align:center">8/12</span><span style="flex:1;text-align:center">8/13</span><span style="flex:1;text-align:center">8/14</span><span style="flex:1;text-align:center">8/15</span></div>',
+        conclusion:'<strong>分析结论：</strong>近7天举报量整体呈上升趋势，8/14达到峰值（31次）。举报率从15%提升至24%，说明员工<strong>安全举报意识在增强</strong>。建议持续鼓励举报行为，对活跃举报者给予积分奖励。'
+      };
+    }
+    if(query.indexOf('高风险')>-1||query.indexOf('人员')>-1){
+      return{
+        sql:'SELECT name, department, risk_score, hit_count FROM users WHERE risk_score > 60 ORDER BY risk_score DESC LIMIT 10',
+        chart:'<table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr style="background:#f0f5ff"><th style="padding:6px;border:1px solid #e8e8e8;text-align:left">姓名</th><th style="padding:6px;border:1px solid #e8e8e8">部门</th><th style="padding:6px;border:1px solid #e8e8e8">风险值</th><th style="padding:6px;border:1px solid #e8e8e8">中招次数</th></tr></thead><tbody>'+genRow('王某某','财务部','92','#A32D2D','3')+genRow('李某','市场部','87','#A32D2D','2')+genRow('张某','行政部','85','#D85A30','2')+genRow('赵某','财务部','78','#D85A30','2')+genRow('陈某','市场部','72','#EF9F27','1')+'</tbody></table>',
+        conclusion:'<strong>分析结论：</strong>共发现<strong>86名</strong>高风险人员（风险值>60），其中12名为极高风险（>80）。财务部占比最高（28%），建议立即安排<strong>一对一安全辅导</strong>和<strong>强制培训</strong>。'
+      };
+    }
+    if(query.indexOf('培训')>-1){
+      return{
+        sql:'SELECT department, AVG(training_score) as avg_score, COUNT(CASE WHEN status="completed" THEN 1 END)/COUNT(*) as completion_rate FROM training_records GROUP BY department',
+        chart:'<div style="display:flex;flex-direction:column;gap:8px;padding:8px 0">'+genBar('人力资源','95.2%','#1D9E75')+genBar('技术部','89.5%','#1D9E75')+genBar('行政部','85.3%','#378ADD')+genBar('市场部','78.6%','#EF9F27')+genBar('财务部','72.1%','#D85A30')+'</div>',
+        conclusion:'<strong>分析结论：</strong>财务部培训通过率最低（72.1%），且中招率最高，存在<strong>培训效果转化不足</strong>的问题。建议优化培训方式，增加实操模拟环节。人力资源部通过率最高（95.2%），建议推广其培训经验。'
+      };
+    }
+    // 默认
+    return{
+      sql:'SELECT * FROM drill_summary WHERE period = "current_month"',
+      chart:'<div style="text-align:center;padding:20px;color:#8c8c8c;font-size:13px"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px;opacity:.4"><path d="M3 3v18h18"/><path d="M18 17V9M13 17V5M8 17v-3"/></svg><br>图表已生成<br>请尝试更具体的查询条件</div>',
+      conclusion:'<strong>AI查询逻辑：</strong>系统识别到您的查询意图，已从<strong>演练汇总表</strong>中提取当月数据。建议尝试以下更精确的查询：<br>• "本月各部门中招率对比"<br>• "近7天举报趋势"<br>• "高风险人员名单"'
+    };
+  }
+  function genBar(label,value,color){
+    var w=parseFloat(value);
+    return '<div style="display:flex;align-items:center;gap:8px"><span style="width:60px;font-size:11px;color:#595959;text-align:right">'+label+'</span><div style="flex:1;height:20px;background:#f0f0f0;border-radius:4px;overflow:hidden"><div style="width:'+w+'%;height:100%;background:'+color+';border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:6px;font-size:10px;color:#fff;font-weight:600">'+value+'</div></div></div>';
+  }
+  function genCol(label,value,color){
+    var h=parseInt(value)*2;
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%"><div style="font-size:10px;color:#595959;margin-bottom:2px">'+value+'</div><div style="width:60%;height:'+h+'px;background:'+color+';border-radius:3px 3px 0 0"></div></div>';
+  }
+  function genRow(name,dept,score,color,hits){
+    return '<tr><td style="padding:6px;border:1px solid #e8e8e8">'+name+'</td><td style="padding:6px;border:1px solid #e8e8e8;text-align:center">'+dept+'</td><td style="padding:6px;border:1px solid #e8e8e8;text-align:center"><span style="color:'+color+';font-weight:600">'+score+'</span></td><td style="padding:6px;border:1px solid #e8e8e8;text-align:center">'+hits+'</td></tr>';
+  }
+  return{init:init,ask:ask,quickAsk:quickAsk,close:close,export:exportResult};
+})();
+</script>

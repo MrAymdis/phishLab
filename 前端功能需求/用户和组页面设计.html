@@ -1,0 +1,1390 @@
+<h2 class="sr-only">钓鱼演练平台用户和组页面，包含部门组织架构树、员工档案列表、风险等级筛选、添加员工与员工档案详情</h2>
+<style>
+  :root{
+    --color-background-primary:#ffffff;
+    --color-background-secondary:#f5f5f5;
+    --color-background-tertiary:#eeeeee;
+    --color-background-info:rgba(55,138,221,0.1);
+    --color-text-primary:#1a1a1a;
+    --color-text-secondary:#595959;
+    --color-text-tertiary:#8c8c8c;
+    --color-text-info:#378ADD;
+    --color-text-success:#1D9E75;
+    --color-border-tertiary:#e8e8e8;
+    --color-border-info:#378ADD;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  /* 基础组件 */
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer;position:relative;overflow:hidden}
+  .nav-item::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.2s ease}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item:hover::before{transform:scaleY(1)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .nav-item.active::before{transform:scaleY(1)}
+  .nav-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+  .card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:12px;padding:14px 16px;transition:all 0.3s ease;border-top:3px solid transparent}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-1px)}
+  .card-blue{border-top-color:#378ADD;background:linear-gradient(180deg,rgba(55,138,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-green{border-top-color:#1D9E75;background:linear-gradient(180deg,rgba(29,158,117,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-orange{border-top-color:#D85A30;background:linear-gradient(180deg,rgba(216,90,48,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-purple{border-top-color:#7F77DD;background:linear-gradient(180deg,rgba(127,119,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-red{border-top-color:#A32D2D;background:linear-gradient(180deg,rgba(163,45,45,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-teal{border-top-color:#0D9488;background:linear-gradient(180deg,rgba(13,148,136,0.03) 0%,var(--color-background-primary) 30%)}
+
+  .card-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0 0 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;flex-shrink:0;margin-right:8px}
+
+  .tab{padding:3px 10px;font-size:11px;border:0.5px solid #d1d5db;border-radius:6px;color:var(--color-text-secondary);background:transparent;cursor:pointer;transition:all 0.2s ease}
+  .tab:hover{background:var(--color-background-secondary)}
+  .tab:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.1)}
+  .tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2);transform:translateY(1px)}
+
+  .badge{padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;white-space:nowrap}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .live-dot{animation:pulse 2s infinite}
+  .bar-track{background:var(--color-background-tertiary);border-radius:4px;height:6px;overflow:hidden;flex:1;position:relative}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+
+  /* 顶部栏 */
+  .top-bar{height:52px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+  .logo-area{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#1D9E75 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;font-size:12px}
+  .logo-text{font-size:15px;font-weight:600;color:var(--color-text-primary)}
+  .search-box{display:flex;align-items:center;background:var(--color-background-secondary);border-radius:6px;padding:6px 12px;width:280px;transition:all 0.2s ease}
+  .search-box:focus-within{background:var(--color-background-tertiary);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .search-input{border:none;outline:none;background:transparent;font-size:12px;color:var(--color-text-primary);width:100%;margin-left:6px}
+  .user-area{display:flex;align-items:center;gap:16px}
+  .notification-icon{position:relative;cursor:pointer;transition:all 0.2s ease}
+  .notification-icon:hover{color:var(--color-text-info)}
+  .notification-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#D85A30;border-radius:50%;font-size:10px;color:white;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .user-info{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.2s ease}
+  .user-info:hover{background:var(--color-background-secondary)}
+  .user-avatar{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500}
+  .user-name{font-size:12px;color:var(--color-text-primary)}
+
+  /* 侧边栏 */
+  .sidebar{width:144px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px 8px;display:flex;flex-direction:column;height:calc(100vh - 52px);position:sticky;top:52px}
+  .sidebar-header{padding:0 8px;margin:0 0 18px 0;display:flex;align-items:center;gap:6px}
+  .sidebar-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+
+  /* KPI统计卡片 */
+  .stat-card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:8px;padding:14px;transition:all 0.3s ease;cursor:pointer;position:relative;overflow:hidden}
+  .stat-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-2px)}
+  .stat-card.active{border-color:var(--color-text-info);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .stat-label{font-size:11px;color:var(--color-text-secondary);margin:0 0 6px 0}
+  .stat-value{font-size:24px;font-weight:500;color:var(--color-text-primary);margin:0;line-height:1.2}
+  .stat-delta{font-size:11px;margin:6px 0 0 0;font-weight:500}
+
+  /* 按钮 */
+  .btn{padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;transition:all 0.2s ease;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+  .btn-primary{background:#378ADD;color:white}
+  .btn-primary:hover{background:#2d75bf}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-default{background:var(--color-background-secondary);color:var(--color-text-primary);border:1px solid #d1d5db}
+  .btn-default:hover{background:var(--color-background-tertiary)}
+  .btn-success{background:#1D9E75;color:white}
+  .btn-success:hover{background:#177e5e}
+  .btn-warning{background:#EF9F27;color:white}
+  .btn-warning:hover{background:#d48920}
+  .btn-danger{background:#D85A30;color:white}
+  .btn-danger:hover{background:#b94920}
+  .btn-sm{padding:4px 8px;font-size:11px}
+  .btn-link{background:transparent;color:#378ADD;padding:2px 4px;border:none;cursor:pointer;font-size:12px}
+  .btn-link:hover{text-decoration:underline}
+
+  /* 表格 */
+  .data-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  .data-table thead tr{background:var(--color-background-secondary)}
+  .data-table th{text-align:left;padding:10px 12px;font-weight:500;color:var(--color-text-secondary);font-size:11px;border-bottom:1px solid #d1d5db}
+  .data-table td{padding:12px;border-bottom:0.5px solid #e5e7eb;color:var(--color-text-primary);vertical-align:middle}
+  .data-table tbody tr:hover{background:rgba(55,138,221,0.03);cursor:pointer}
+  .data-table tbody tr.selected{background:rgba(55,138,221,0.08)}
+  .row-check{width:16px;height:16px;accent-color:#378ADD;cursor:pointer}
+
+  /* 筛选标签 */
+  .filter-tag{padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;transition:all 0.2s ease;border:1px solid transparent;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+  .filter-tag:hover{background:var(--color-background-tertiary)}
+  .filter-tag.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .filter-tag .count{margin-left:4px;opacity:0.8;font-weight:500}
+
+  /* 分页 */
+  .pagination{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+  .page-btn{min-width:28px;height:28px;padding:0 8px;border-radius:6px;border:1px solid #d1d5db;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all 0.2s ease}
+  .page-btn:hover:not(:disabled){background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .page-btn.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .page-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* 表单 */
+  .form-group{margin-bottom:18px}
+  .form-label{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px;display:block}
+  .form-label .required{color:#D85A30;margin-left:2px}
+  .form-input{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:var(--color-text-primary);background:var(--color-background-primary);transition:all 0.2s ease;box-sizing:border-box}
+  .form-input:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .form-textarea{resize:vertical;min-height:80px;font-family:inherit}
+  .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+  .form-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+  /* 选项卡片 */
+  .option-card{border:1.5px solid #d1d5db;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-primary)}
+  .option-card:hover{border-color:#378ADD;background:rgba(55,138,221,0.03)}
+  .option-card.selected{border-color:#378ADD;background:rgba(55,138,221,0.06);box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .option-card-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .option-card-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;flex-shrink:0}
+  .option-card-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+  .option-card-desc{font-size:11px;color:var(--color-text-secondary);margin:0}
+
+  /* 模态框 */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;animation:fadeIn 0.2s ease}
+  .modal{background:var(--color-background-primary);border-radius:12px;max-width:1100px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:modalIn 0.25s ease}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;flex-shrink:0}
+  .modal-title{font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0}
+  .modal-close{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary);transition:all 0.2s ease}
+  .modal-close:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .modal-body{padding:20px;overflow-y:auto;flex:1}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e5e7eb;background:var(--color-background-secondary);flex-shrink:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes modalIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+
+  /* Toast提示 */
+  .toast-container{position:fixed;top:70px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:8px;font-size:12px;color:white;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn 0.3s ease}
+  .toast-success{background:#1D9E75}
+  .toast-error{background:#D85A30}
+  .toast-info{background:#378ADD}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+
+  @keyframes fadeIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+
+  /* 开关 */
+  .switch{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+  .switch input{opacity:0;width:0;height:0}
+  .switch-slider{position:absolute;cursor:pointer;inset:0;background:#d1d5db;border-radius:20px;transition:0.3s}
+  .switch-slider::before{content:'';position:absolute;height:16px;width:16px;left:2px;top:2px;background:white;border-radius:50%;transition:0.3s}
+  .switch input:checked + .switch-slider{background:#1D9E75}
+  .switch input:checked + .switch-slider::before{transform:translateX(16px)}
+
+  /* 部门树 */
+  .dept-panel{width:220px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px;display:flex;flex-direction:column}
+  .dept-panel-title{font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0 0 12px 0;display:flex;align-items:center;gap:6px}
+  .tree-search{margin-bottom:12px}
+  .tree-list{flex:1;overflow-y:auto}
+  .tree-node{display:flex;align-items:center;gap:4px;padding:5px 6px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;cursor:pointer;transition:all 0.2s ease;position:relative}
+  .tree-node:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .tree-node.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .tree-toggle{width:12px;display:inline-flex;justify-content:center;color:var(--color-text-tertiary);font-size:9px;flex-shrink:0;transition:transform 0.2s ease}
+  .tree-toggle.collapsed{transform:rotate(-90deg)}
+  .tree-label{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tree-count{font-size:10px;color:var(--color-text-tertiary);flex-shrink:0;background:var(--color-background-secondary);padding:1px 5px;border-radius:8px}
+  .tree-node.active .tree-count{background:rgba(55,138,221,0.15);color:var(--color-text-info)}
+  .tree-children{margin-left:10px;border-left:1px dashed #e5e7eb;padding-left:8px;overflow:hidden}
+  .tree-children.collapsed{display:none}
+  .dept-panel-footer{display:flex;flex-direction:column;gap:8px;padding-top:12px;border-top:1px solid var(--color-border-tertiary);margin-top:8px}
+
+  /* 时间轴 */
+  .timeline{position:relative;padding-left:24px}
+  .timeline::before{content:'';position:absolute;left:7px;top:4px;bottom:4px;width:2px;background:#e5e7eb}
+  .timeline-item{position:relative;padding-bottom:16px}
+  .timeline-item::before{content:'';position:absolute;left:-21px;top:4px;width:12px;height:12px;border-radius:50%;background:#378ADD;border:2px solid white;box-shadow:0 0 0 2px #378ADD33}
+  .timeline-item.click::before{background:#D85A30;box-shadow:0 0 0 2px rgba(216,90,48,0.2)}
+  .timeline-item.report::before{background:#1D9E75;box-shadow:0 0 0 2px rgba(29,158,117,0.2)}
+  .timeline-item.train::before{background:#7F77DD;box-shadow:0 0 0 2px rgba(127,119,221,0.2)}
+  .timeline-time{font-size:11px;color:var(--color-text-tertiary);margin-bottom:2px}
+  .timeline-user{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:2px}
+  .timeline-action{font-size:11px;color:var(--color-text-secondary)}
+  .timeline-meta{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+  .timeline-meta-item{display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--color-text-tertiary);background:var(--color-background-secondary);padding:1px 6px;border-radius:4px}
+  .timeline-meta-item .meta-label{color:var(--color-text-tertiary);opacity:0.8}
+  .timeline-meta-item .meta-value{color:var(--color-text-secondary);font-weight:500;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* 雷达维度风险条 */
+  .risk-dim{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .risk-dim-label{font-size:11px;color:var(--color-text-secondary);width:80px;flex-shrink:0}
+  .risk-dim-value{font-size:11px;font-weight:500;width:34px;text-align:right;flex-shrink:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+  /* 员工头像（表格内） */
+  .emp-cell{display:flex;align-items:center;gap:8px}
+  .emp-avatar-sm{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500;flex-shrink:0}
+
+  /* 标签多选芯片 */
+  .tag-chip{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;transition:all 0.2s ease;border:1px solid #d1d5db;color:var(--color-text-secondary);background:var(--color-background-primary)}
+  .tag-chip:hover{border-color:#378ADD}
+  .tag-chip.selected{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+/* ===== Copilot 侧边栏 ===== */
+.copilot-fab{position:fixed;right:24px;bottom:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(55,138,221,0.35);z-index:9998;transition:all .3s ease}
+.copilot-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(55,138,221,0.45)}
+.copilot-fab svg{width:22px;height:22px}
+.copilot-fab .fab-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid #378ADD;animation:copilotPulse 2s ease-out infinite;opacity:0}
+@keyframes copilotPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.copilot-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9998;opacity:0;visibility:hidden;transition:all .3s}
+.copilot-overlay.show{opacity:1;visibility:visible}
+.copilot-drawer{position:fixed;top:0;right:-420px;width:400px;height:100vh;background:var(--color-background-primary,#fff);box-shadow:-4px 0 24px rgba(0,0,0,0.1);z-index:9999;display:flex;flex-direction:column;transition:right .35s cubic-bezier(.4,0,.2,1)}
+.copilot-drawer.open{right:0}
+.copilot-header{padding:14px 18px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.copilot-header-left{display:flex;align-items:center;gap:10px}
+.copilot-header-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center}
+.copilot-header-icon svg{width:18px;height:18px}
+.copilot-header-title{font-size:15px;font-weight:600}
+.copilot-header-sub{font-size:11px;opacity:.85;margin-top:2px}
+.copilot-close{background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;transition:opacity .2s}
+.copilot-close:hover{opacity:1}
+.copilot-close svg{width:18px;height:18px}
+.copilot-sessions{padding:8px 12px;border-bottom:1px solid #e8e8e8;display:flex;gap:6px;align-items:center;flex-shrink:0;overflow-x:auto}
+.copilot-session-btn{padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;transition:all .2s}
+.copilot-session-btn:hover{border-color:#378ADD;color:#378ADD}
+.copilot-session-btn.active{background:rgba(55,138,221,0.1);border-color:#378ADD;color:#378ADD}
+.copilot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.copilot-msg{display:flex;gap:10px;max-width:92%}
+.copilot-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.copilot-msg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+.copilot-msg.ai .copilot-msg-avatar{background:linear-gradient(135deg,#378ADD,#7F77DD)}
+.copilot-msg.user .copilot-msg-avatar{background:#8c8c8c}
+.copilot-msg-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word}
+.copilot-msg.ai .copilot-msg-bubble{background:#f5f5f5;color:#1a1a1a;border-top-left-radius:4px}
+.copilot-msg.user .copilot-msg-bubble{background:#378ADD;color:#fff;border-top-right-radius:4px}
+.copilot-msg-bubble h4{margin:8px 0 4px;font-size:13px}
+.copilot-msg-bubble ul,.copilot-msg-bubble ol{margin:4px 0;padding-left:18px}
+.copilot-msg-bubble li{margin:2px 0}
+.copilot-msg-bubble table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.copilot-msg-bubble th,.copilot-msg-bubble td{border:1px solid #d8d8d8;padding:4px 8px;text-align:left}
+.copilot-msg-bubble th{background:#e8e8e8}
+.copilot-msg-bubble strong{font-weight:600}
+.copilot-msg-bubble code{background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:12px}
+.copilot-msg-actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.copilot-action-btn{padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #378ADD;background:rgba(55,138,221,0.06);color:#378ADD;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.copilot-action-btn:hover{background:#378ADD;color:#fff}
+.copilot-action-btn svg{width:12px;height:12px}
+.copilot-typing{display:inline-flex;gap:3px;align-items:center;padding:4px 0}
+.copilot-typing span{width:6px;height:6px;border-radius:50%;background:#8c8c8c;animation:copilotTyping 1.4s infinite}
+.copilot-typing span:nth-child(2){animation-delay:.2s}
+.copilot-typing span:nth-child(3){animation-delay:.4s}
+@keyframes copilotTyping{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.copilot-context-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.15);font-size:11px;margin-top:4px}
+.copilot-context-badge svg{width:10px;height:10px}
+.copilot-input-area{padding:12px 16px;border-top:1px solid #e8e8e8;flex-shrink:0}
+.copilot-quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.copilot-quick-tag{padding:3px 8px;border-radius:12px;font-size:11px;background:#f0f5ff;color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.copilot-quick-tag:hover{background:#378ADD;color:#fff}
+.copilot-input-wrap{display:flex;gap:8px;align-items:flex-end}
+.copilot-input{flex:1;border:1px solid #d8d8d8;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;max-height:100px;min-height:38px;outline:none;transition:border-color .2s;line-height:1.5}
+.copilot-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.copilot-send{width:38px;height:38px;border-radius:10px;background:#378ADD;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.copilot-send:hover{background:#2979c9}
+.copilot-send:disabled{background:#ccc;cursor:not-allowed}
+.copilot-send svg{width:16px;height:16px}
+.copilot-draft-banner{padding:6px 12px;background:rgba(239,159,39,0.1);border-top:1px solid rgba(239,159,39,0.3);font-size:11px;color:#9a6800;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.copilot-draft-banner svg{width:12px;height:12px;flex-shrink:0}
+.copilot-empty{text-align:center;padding:40px 20px;color:#8c8c8c}
+.copilot-empty svg{width:40px;height:40px;margin-bottom:12px;opacity:.4}
+.copilot-empty h4{font-size:14px;margin-bottom:6px;color:#595959}
+.copilot-empty p{font-size:12px;line-height:1.6}
+.copilot-review-card{border:1px solid #e8e8e8;border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copilot-review-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.copilot-review-card-title{font-size:12px;font-weight:600;color:#1a1a1a}
+.copilot-review-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.copilot-review-badge.draft{background:rgba(239,159,39,0.15);color:#9a6800}
+.copilot-review-badge.confirmed{background:rgba(29,158,117,0.15);color:#1D9E75}
+.copilot-review-content{font-size:12px;color:#595959;line-height:1.6;padding:8px;background:#f9f9f9;border-radius:6px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+.copilot-review-actions{display:flex;gap:6px}
+.copilot-review-btn{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;transition:all .2s}
+.copilot-review-btn.preview{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.06)}
+.copilot-review-btn.preview:hover{background:#378ADD;color:#fff}
+.copilot-review-btn.confirm{border-color:#1D9E75;color:#1D9E75;background:rgba(29,158,117,0.06)}
+.copilot-review-btn.confirm:hover{background:#1D9E75;color:#fff}
+.copilot-review-btn.discard{border-color:#8c8c8c;color:#8c8c8c;background:transparent}
+.copilot-review-btn.discard:hover{background:#8c8c8c;color:#fff}
+.copilot-error{padding:8px 12px;background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:8px;font-size:12px;color:#A32D2D;display:flex;align-items:center;gap:8px}
+.copilot-error-retry{margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;border:1px solid #A32D2D;color:#A32D2D;cursor:pointer;background:transparent}
+.copilot-error-retry:hover{background:#A32D2D;color:#fff}
+</style>
+
+<div style="display:flex;flex-direction:column;font-family:var(--font-sans);min-height:560px;">
+  <!-- 顶部栏 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <div class="logo-icon">鱼</div>
+      <span class="logo-text">钓鱼演练平台</span>
+    </div>
+    <div class="user-area">
+      <div class="notification-icon" style="color:var(--color-text-secondary)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notification-badge">3</div>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar">张</div>
+        <span class="user-name">张管理</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;">
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+        </svg>
+        <span class="sidebar-title">导航菜单</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        数据概览
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        演练管理
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+        </div>
+        素材模板
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </div>
+        发送配置
+      </div>
+      <div class="nav-item active">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        用户和组
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        </div>
+        安全培训
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </div>
+        数据报表
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+        </div>
+        邮件举报
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        系统设置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"></path>
+          </svg>
+        </div>
+        智能助手
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        API开放平台
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div style="flex:1;display:flex;min-width:0;">
+      <!-- 左侧部门树面板 -->
+      <div class="dept-panel">
+        <h3 class="dept-panel-title">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+            <path d="M3 9a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <path d="M9 11h4a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2h-2"></path>
+          </svg>
+          组织架构
+        </h3>
+        <div class="search-box tree-search" style="width:auto;padding:5px 10px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+          <input type="text" class="search-input" placeholder="搜索部门..." id="dept-search">
+        </div>
+        <div class="tree-list" id="tree-list">
+          <div class="tree-node active" data-dept="all">
+            <span class="tree-toggle">▾</span>
+            <span class="tree-label">总公司</span>
+            <span class="tree-count">3580</span>
+          </div>
+          <div class="tree-children">
+            <div class="tree-node" data-dept="技术部">
+              <span class="tree-toggle">▾</span>
+              <span class="tree-label">技术部</span>
+              <span class="tree-count">420</span>
+            </div>
+            <div class="tree-children">
+              <div class="tree-node" data-dept="研发组">
+                <span class="tree-toggle"></span>
+                <span class="tree-label">研发组</span>
+                <span class="tree-count">186</span>
+              </div>
+              <div class="tree-node" data-dept="运维组">
+                <span class="tree-toggle"></span>
+                <span class="tree-label">运维组</span>
+                <span class="tree-count">128</span>
+              </div>
+              <div class="tree-node" data-dept="安全组">
+                <span class="tree-toggle"></span>
+                <span class="tree-label">安全组</span>
+                <span class="tree-count">106</span>
+              </div>
+            </div>
+            <div class="tree-node" data-dept="财务部">
+              <span class="tree-toggle">▾</span>
+              <span class="tree-label">财务部</span>
+              <span class="tree-count">56</span>
+            </div>
+            <div class="tree-children">
+              <div class="tree-node" data-dept="会计组">
+                <span class="tree-toggle"></span>
+                <span class="tree-label">会计组</span>
+                <span class="tree-count">32</span>
+              </div>
+              <div class="tree-node" data-dept="出纳组">
+                <span class="tree-toggle"></span>
+                <span class="tree-label">出纳组</span>
+                <span class="tree-count">24</span>
+              </div>
+            </div>
+            <div class="tree-node" data-dept="人力资源部">
+              <span class="tree-toggle"></span>
+              <span class="tree-label">人力资源部</span>
+              <span class="tree-count">86</span>
+            </div>
+            <div class="tree-node" data-dept="市场部">
+              <span class="tree-toggle"></span>
+              <span class="tree-label">市场部</span>
+              <span class="tree-count">320</span>
+            </div>
+            <div class="tree-node" data-dept="行政部">
+              <span class="tree-toggle"></span>
+              <span class="tree-label">行政部</span>
+              <span class="tree-count">48</span>
+            </div>
+          </div>
+        </div>
+        <div class="dept-panel-footer">
+          <button class="btn btn-default btn-sm" id="btn-sync-ad">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+            同步AD/LDAP
+          </button>
+          <button class="btn btn-default btn-sm" id="btn-add-dept">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            添加部门
+          </button>
+        </div>
+      </div>
+
+      <!-- 右侧主区域 -->
+      <div style="flex:1;padding:14px 18px;min-width:0;overflow-y:auto;">
+        <!-- 面包屑 -->
+        <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+          <span style="font-size:12px;color:var(--color-text-tertiary);">用户和组 / <span style="color:var(--color-text-primary);font-weight:500;">员工档案</span></span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-default btn-sm" id="btn-export">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              批量导出
+            </button>
+          </div>
+        </div>
+
+        <!-- 统计卡片 -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+          <div class="card card-blue" style="padding:14px;">
+            <p class="stat-label" style="margin:0 0 6px 0;">总人数</p>
+            <p class="stat-value" style="margin:0;">3,580</p>
+            <p class="stat-delta" style="color:var(--color-text-secondary);margin:6px 0 0 0;">覆盖 8 个部门</p>
+          </div>
+          <div class="card card-green" style="padding:14px;">
+            <p class="stat-label" style="margin:0 0 6px 0;">本月新增</p>
+            <p class="stat-value" style="margin:0;color:#1D9E75;">42</p>
+            <p class="stat-delta" style="color:var(--color-text-success);margin:6px 0 0 0;">↑ 较上月 +18%</p>
+          </div>
+          <div class="card card-red" style="padding:14px;">
+            <p class="stat-label" style="margin:0 0 6px 0;">高风险人员</p>
+            <p class="stat-value" style="margin:0;color:#A32D2D;">86</p>
+            <p class="stat-delta" style="color:var(--color-text-secondary);margin:6px 0 0 0;">需优先培训</p>
+          </div>
+          <div class="card card-teal" style="padding:14px;">
+            <p class="stat-label" style="margin:0 0 6px 0;">已培训完成</p>
+            <p class="stat-value" style="margin:0;color:#0D9488;">2,940</p>
+            <p class="stat-delta" style="color:var(--color-text-success);margin:6px 0 0 0;">完成率 82.1%</p>
+          </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-top:none;">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <!-- 标签筛选 -->
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:11px;color:var(--color-text-tertiary);">标签：</span>
+              <span class="filter-tag active" data-tag="all">全部</span>
+              <span class="filter-tag" data-tag="高管">高管</span>
+              <span class="filter-tag" data-tag="研发">研发</span>
+              <span class="filter-tag" data-tag="运维">运维</span>
+              <span class="filter-tag" data-tag="财务">财务</span>
+              <span class="filter-tag" data-tag="新员工">新员工</span>
+            </div>
+            <div style="width:1px;height:20px;background:var(--color-border-tertiary);"></div>
+            <!-- 风险等级筛选 -->
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span style="font-size:11px;color:var(--color-text-tertiary);">风险：</span>
+              <span class="filter-tag active" data-risk="all">全部</span>
+              <span class="filter-tag" data-risk="high">高</span>
+              <span class="filter-tag" data-risk="mid">中</span>
+              <span class="filter-tag" data-risk="low">低</span>
+            </div>
+            <div style="flex:1;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+              <div class="search-box" style="width:220px;padding:5px 10px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                <input type="text" class="search-input" placeholder="搜索姓名/工号/邮箱..." id="emp-search">
+              </div>
+              <button class="btn btn-default" id="btn-import-csv">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                导入CSV
+              </button>
+              <button class="btn btn-primary" id="btn-add-emp">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                添加员工
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 员工列表表格 -->
+        <div class="card" style="padding:0;border-top:3px solid #378ADD;overflow:hidden;">
+          <div style="padding:12px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e7eb;">
+            <div style="display:flex;align-items:center;gap:12px;">
+              <input type="checkbox" class="row-check" id="check-all">
+              <span style="font-size:12px;color:var(--color-text-secondary);" id="selected-info">共 14 条</span>
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span style="font-size:11px;color:var(--color-text-tertiary);">每页</span>
+              <select class="form-input form-select" style="width:70px;padding:4px 8px;" id="page-size">
+                <option>10</option><option selected>20</option><option>50</option>
+              </select>
+              <span style="font-size:11px;color:var(--color-text-tertiary);">条</span>
+            </div>
+          </div>
+
+          <table class="data-table" id="emp-table">
+            <thead>
+              <tr>
+                <th style="width:40px;"><input type="checkbox" class="row-check"></th>
+                <th style="width:18%;">员工</th>
+                <th style="width:13%;">部门</th>
+                <th style="width:12%;">岗位</th>
+                <th style="width:16%;">邮箱</th>
+                <th style="width:11%;">手机号</th>
+                <th style="width:10%;">风险等级</th>
+                <th style="width:8%;">中招次数</th>
+                <th style="width:8%;">培训状态</th>
+                <th style="width:14%;text-align:right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="emp-tbody">
+            </tbody>
+          </table>
+
+          <!-- 分页 -->
+          <div style="padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #e5e7eb;">
+            <span style="font-size:11px;color:var(--color-text-tertiary);" id="page-info">显示 1 - 14 条，共 14 条记录</span>
+            <div class="pagination" id="pagination"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 添加员工弹窗 -->
+<div class="modal-overlay" id="add-emp-modal" style="display:none;">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h3 class="modal-title">添加员工</h3>
+      <button class="modal-close" id="add-emp-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">姓名<span class="required">*</span></label>
+          <input type="text" class="form-input" placeholder="请输入员工姓名">
+        </div>
+        <div class="form-group">
+          <label class="form-label">工号<span class="required">*</span></label>
+          <input type="text" class="form-input" placeholder="如 EMP015">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">邮箱<span class="required">*</span></label>
+          <input type="text" class="form-input" placeholder="name@jianfa.com">
+        </div>
+        <div class="form-group">
+          <label class="form-label">手机号</label>
+          <input type="text" class="form-input" placeholder="138****0000">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">部门<span class="required">*</span></label>
+          <select class="form-input form-select">
+            <option>请选择部门</option>
+            <option>技术部 / 研发组</option>
+            <option>技术部 / 运维组</option>
+            <option>技术部 / 安全组</option>
+            <option>财务部 / 会计组</option>
+            <option>财务部 / 出纳组</option>
+            <option>人力资源部</option>
+            <option>市场部</option>
+            <option>行政部</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">岗位</label>
+          <input type="text" class="form-input" placeholder="如：研发工程师">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">标签（可多选）</label>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <span class="tag-chip" data-tag="高管">高管</span>
+          <span class="tag-chip" data-tag="研发">研发</span>
+          <span class="tag-chip" data-tag="运维">运维</span>
+          <span class="tag-chip" data-tag="财务">财务</span>
+          <span class="tag-chip" data-tag="新员工">新员工</span>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">初始风险值</label>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <input type="range" min="0" max="100" value="50" id="risk-range" style="flex:1;accent-color:#378ADD;">
+          <span class="badge" id="risk-badge" style="background:rgba(239,159,39,0.15);color:#EF9F27;width:40px;text-align:center;">50</span>
+        </div>
+        <p class="form-hint">0-30 低风险 · 31-70 中风险 · 71-100 高风险</p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" id="add-emp-cancel">取消</button>
+      <button class="btn btn-primary" id="add-emp-save">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- 员工档案详情弹窗 -->
+<div class="modal-overlay" id="profile-modal" style="display:none;">
+  <div class="modal" style="max-width:880px;">
+    <div class="modal-header">
+      <h3 class="modal-title">员工档案</h3>
+      <button class="modal-close" id="profile-close">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- 基本信息卡片 -->
+      <div class="card card-blue" style="margin-bottom:16px;">
+        <div style="display:flex;align-items:center;gap:16px;">
+          <div class="emp-avatar-sm" style="width:56px;height:56px;font-size:20px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);" id="profile-avatar">张</div>
+          <div style="flex:1;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;">
+              <span style="font-size:18px;font-weight:600;color:var(--color-text-primary);" id="profile-name">张伟</span>
+              <span class="badge" style="background:rgba(216,90,48,0.15);color:#D85A30;" id="profile-risk-badge">高风险</span>
+            </div>
+            <div style="display:flex;gap:20px;font-size:12px;color:var(--color-text-secondary);flex-wrap:wrap;">
+              <span>工号：<span id="profile-no" style="color:var(--color-text-primary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">EMP001</span></span>
+              <span>部门：<span id="profile-dept" style="color:var(--color-text-primary);">技术部 / 研发组</span></span>
+              <span>岗位：<span id="profile-pos" style="color:var(--color-text-primary);">高级研发工程师</span></span>
+            </div>
+            <div style="display:flex;gap:20px;font-size:12px;color:var(--color-text-secondary);margin-top:4px;flex-wrap:wrap;">
+              <span>邮箱：<span id="profile-email" style="color:var(--color-text-primary);">zhangwei@jianfa.com</span></span>
+              <span>手机：<span id="profile-phone" style="color:var(--color-text-primary);">138****2856</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;">
+        <!-- 风险画像 -->
+        <div class="card">
+          <h4 class="card-title">
+            <span style="display:flex;align-items:center;">
+              <span class="card-title-icon" style="background:#D85A30;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+              </span>
+              风险画像
+            </span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">综合评分 <span id="profile-risk-score" style="color:#D85A30;font-weight:600;font-size:13px;">82</span>/100</span>
+          </h4>
+          <div id="risk-profile-list">
+            <div class="risk-dim">
+              <span class="risk-dim-label">邮件识别</span>
+              <div class="bar-track"><div class="bar-fill" style="width:75%;background:#D85A30;"></div></div>
+              <span class="risk-dim-value" style="color:#D85A30;">75</span>
+            </div>
+            <div class="risk-dim">
+              <span class="risk-dim-label">链接点击</span>
+              <div class="bar-track"><div class="bar-fill" style="width:88%;background:#D85A30;"></div></div>
+              <span class="risk-dim-value" style="color:#D85A30;">88</span>
+            </div>
+            <div class="risk-dim">
+              <span class="risk-dim-label">密码提交</span>
+              <div class="bar-track"><div class="bar-fill" style="width:70%;background:#D85A30;"></div></div>
+              <span class="risk-dim-value" style="color:#D85A30;">70</span>
+            </div>
+            <div class="risk-dim">
+              <span class="risk-dim-label">附件下载</span>
+              <div class="bar-track"><div class="bar-fill" style="width:65%;background:#EF9F27;"></div></div>
+              <span class="risk-dim-value" style="color:#EF9F27;">65</span>
+            </div>
+            <div class="risk-dim">
+              <span class="risk-dim-label">举报意识</span>
+              <div class="bar-track"><div class="bar-fill" style="width:30%;background:#1D9E75;"></div></div>
+              <span class="risk-dim-value" style="color:#1D9E75;">30</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 培训完成度 -->
+        <div class="card card-teal">
+          <h4 class="card-title">
+            <span style="display:flex;align-items:center;">
+              <span class="card-title-icon" style="background:#0D9488;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>
+              </span>
+              培训完成度
+            </span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;" id="profile-training-pct">100%</span>
+          </h4>
+          <div style="text-align:center;padding:8px 0 12px;">
+            <div style="font-size:32px;font-weight:600;color:#1D9E75;" id="profile-training-status">已完成</div>
+            <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px;">本年度安全培训计划</div>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span style="font-size:12px;color:var(--color-text-secondary);">基础钓鱼防范课程</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span style="font-size:12px;color:var(--color-text-secondary);">密码安全意识培训</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D9E75" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+              <span style="font-size:12px;color:var(--color-text-secondary);">邮件识别专项训练</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8c8c8c" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              <span style="font-size:12px;color:var(--color-text-tertiary);">社会工程学进阶（待完成）</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 历史演练行为轨迹 -->
+      <div class="card">
+        <h4 class="card-title">
+          <span style="display:flex;align-items:center;">
+            <span class="card-title-icon" style="background:#378ADD;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            </span>
+            历史演练行为轨迹
+          </span>
+          <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">历史中招 <span id="profile-clicks" style="color:#D85A30;font-weight:600;">3</span> 次 · 举报 <span style="color:#1D9E75;font-weight:600;">2</span> 次</span>
+        </h4>
+        <div class="timeline">
+          <div class="timeline-item click">
+            <div class="timeline-time">2026-08-15 09:42</div>
+            <div class="timeline-user">Q3全员防钓鱼演练 · 中招</div>
+            <div class="timeline-action">点击钓鱼链接并提交了OA账号密码</div>
+            <div class="timeline-meta">
+              <span class="timeline-meta-item"><span class="meta-label">模板</span><span class="meta-value">财务报销通知</span></span>
+              <span class="timeline-meta-item"><span class="meta-label">耗时</span><span class="meta-value">38s</span></span>
+            </div>
+          </div>
+          <div class="timeline-item report">
+            <div class="timeline-time">2026-08-15 10:15</div>
+            <div class="timeline-user">Q3全员防钓鱼演练 · 举报</div>
+            <div class="timeline-action">事后意识到风险，通过举报按钮上报可疑邮件</div>
+          </div>
+          <div class="timeline-item click">
+            <div class="timeline-time">2026-06-12 14:20</div>
+            <div class="timeline-user">Q2全员钓鱼演练 · 中招</div>
+            <div class="timeline-action">点击伪造的密码重置链接</div>
+            <div class="timeline-meta">
+              <span class="timeline-meta-item"><span class="meta-label">模板</span><span class="meta-value">OA密码重置</span></span>
+              <span class="timeline-meta-item"><span class="meta-label">耗时</span><span class="meta-value">52s</span></span>
+            </div>
+          </div>
+          <div class="timeline-item train">
+            <div class="timeline-time">2026-06-15 16:00</div>
+            <div class="timeline-user">安全培训 · 完成</div>
+            <div class="timeline-action">完成「邮件识别专项训练」课程，考核通过</div>
+          </div>
+          <div class="timeline-item click">
+            <div class="timeline-time">2026-03-11 11:08</div>
+            <div class="timeline-user">Q1全公司防钓鱼 · 中招</div>
+            <div class="timeline-action">下载了钓鱼附件中的可执行文件</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" id="profile-close-btn">关闭</button>
+      <button class="btn btn-default" id="profile-edit">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+        编辑
+      </button>
+      <button class="btn btn-primary" id="profile-send-drill">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+        发送演练
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+(function(){
+  // ========== 模拟数据 ==========
+  var riskMap = {
+    high: { label:'高', cls:'background:rgba(216,90,48,0.15);color:#D85A30;', color:'#D85A30', text:'高风险' },
+    mid:  { label:'中', cls:'background:rgba(239,159,39,0.15);color:#EF9F27;', color:'#EF9F27', text:'中风险' },
+    low:  { label:'低', cls:'background:rgba(29,158,117,0.15);color:#1D9E75;', color:'#1D9E75', text:'低风险' }
+  };
+  var trainingMap = {
+    completed: { label:'已完成', cls:'background:rgba(29,158,117,0.15);color:#1D9E75;' },
+    progress:  { label:'进行中', cls:'background:rgba(55,138,221,0.15);color:#378ADD;' },
+    none:      { label:'未开始', cls:'background:rgba(107,114,128,0.15);color:#6b7280;' }
+  };
+  var avatarColors = ['#378ADD','#1D9E75','#7F77DD','#EF9F27','#D85A30','#0D9488'];
+
+  var employees = [
+    {id:1, name:'张伟', no:'EMP001', dept:'技术部/研发组', deptShort:'研发组', pos:'高级研发工程师', email:'zhangwei@jianfa.com', phone:'138****2856', risk:'high', riskScore:82, tags:['研发'], clicks:3, training:'completed'},
+    {id:2, name:'李娜', no:'EMP002', dept:'财务部/会计组', deptShort:'会计组', pos:'会计主管', email:'lina@jianfa.com', phone:'139****1024', risk:'high', riskScore:78, tags:['财务'], clicks:4, training:'completed'},
+    {id:3, name:'王强', no:'EMP003', dept:'技术部/运维组', deptShort:'运维组', pos:'运维工程师', email:'wangqiang@jianfa.com', phone:'137****8832', risk:'mid', riskScore:55, tags:['运维'], clicks:1, training:'progress'},
+    {id:4, name:'刘洋', no:'EMP004', dept:'技术部/研发组', deptShort:'研发组', pos:'前端工程师', email:'liuyang@jianfa.com', phone:'135****6677', risk:'low', riskScore:22, tags:['研发'], clicks:0, training:'completed'},
+    {id:5, name:'陈静', no:'EMP005', dept:'人力资源部', deptShort:'人力部', pos:'HR专员', email:'chenjing@jianfa.com', phone:'136****4458', risk:'mid', riskScore:48, tags:['新员工'], clicks:2, training:'progress'},
+    {id:6, name:'赵磊', no:'EMP006', dept:'技术部/安全组', deptShort:'安全组', pos:'安全工程师', email:'zhaolei@jianfa.com', phone:'138****9912', risk:'low', riskScore:15, tags:['运维'], clicks:0, training:'completed'},
+    {id:7, name:'孙芳', no:'EMP007', dept:'市场部', deptShort:'市场部', pos:'市场经理', email:'sunfang@jianfa.com', phone:'139****3344', risk:'high', riskScore:75, tags:[], clicks:3, training:'none'},
+    {id:8, name:'周明', no:'EMP008', dept:'行政部', deptShort:'行政部', pos:'行政主管', email:'zhouming@jianfa.com', phone:'133****7766', risk:'mid', riskScore:52, tags:[], clicks:1, training:'completed'},
+    {id:9, name:'吴婷', no:'EMP009', dept:'财务部/出纳组', deptShort:'出纳组', pos:'出纳', email:'wuting@jianfa.com', phone:'136****2200', risk:'high', riskScore:88, tags:['财务'], clicks:5, training:'progress'},
+    {id:10, name:'郑浩', no:'EMP010', dept:'技术部/研发组', deptShort:'研发组', pos:'架构师', email:'zhenghao@jianfa.com', phone:'135****1188', risk:'low', riskScore:18, tags:['研发'], clicks:0, training:'completed'},
+    {id:11, name:'黄丽', no:'EMP011', dept:'人力资源部', deptShort:'人力部', pos:'HRBP', email:'huangli@jianfa.com', phone:'138****5599', risk:'mid', riskScore:50, tags:[], clicks:1, training:'completed'},
+    {id:12, name:'林峰', no:'EMP012', dept:'市场部', deptShort:'市场部', pos:'品牌专员', email:'linfeng@jianfa.com', phone:'139****6611', risk:'mid', riskScore:58, tags:['新员工'], clicks:2, training:'none'},
+    {id:13, name:'徐敏', no:'EMP013', dept:'财务部', deptShort:'财务部', pos:'财务总监', email:'xumin@jianfa.com', phone:'137****0099', risk:'high', riskScore:72, tags:['高管'], clicks:3, training:'completed'},
+    {id:14, name:'杨帆', no:'EMP014', dept:'技术部', deptShort:'技术部', pos:'CTO', email:'yangfan@jianfa.com', phone:'135****0001', risk:'low', riskScore:12, tags:['高管','研发'], clicks:0, training:'completed'}
+  ];
+
+  // ========== Toast 提示 ==========
+  function showToast(msg, type){
+    var container = document.getElementById('toast-container');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type || 'info');
+    t.innerHTML = (type==='success'?'✓':(type==='error'?'✕':'ⓘ')) + ' <span>' + msg + '</span>';
+    container.appendChild(t);
+    setTimeout(function(){
+      t.style.transition = 'opacity 0.3s, transform 0.3s';
+      t.style.opacity = '0'; t.style.transform = 'translateX(30px)';
+      setTimeout(function(){ t.remove(); }, 300);
+    }, 2600);
+  }
+
+  // ========== 渲染列表 ==========
+  var currentTag = 'all';
+  var currentRisk = 'all';
+  var currentDept = 'all';
+  var currentPage = 1;
+  var pageSize = 20;
+
+  function getFilteredData(){
+    var kw = (document.getElementById('emp-search').value || '').trim().toLowerCase();
+    return employees.filter(function(e){
+      if(currentTag !== 'all' && e.tags.indexOf(currentTag) === -1) return false;
+      if(currentRisk !== 'all' && e.risk !== currentRisk) return false;
+      if(currentDept !== 'all' && e.dept.indexOf(currentDept) === -1 && e.deptShort.indexOf(currentDept) === -1) return false;
+      if(kw){
+        var blob = (e.name + e.no + e.email + e.pos).toLowerCase();
+        if(blob.indexOf(kw) === -1) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderTable(){
+    var tbody = document.getElementById('emp-tbody');
+    var data = getFilteredData();
+    var total = data.length;
+    var totalPages = Math.ceil(total / pageSize);
+    if(currentPage > totalPages) currentPage = Math.max(1, totalPages);
+    var start = (currentPage - 1) * pageSize;
+    var pageData = data.slice(start, start + pageSize);
+
+    var html = '';
+    pageData.forEach(function(e, idx){
+      var rk = riskMap[e.risk];
+      var tr = trainingMap[e.training];
+      var avatarColor = avatarColors[e.id % avatarColors.length];
+      var actions = '';
+      actions += '<button class="btn-link" data-action="view">查看档案</button>';
+      actions += '<button class="btn-link" data-action="edit">编辑</button>';
+      actions += '<button class="btn-link" style="color:#1D9E75;" data-action="send">发送演练</button>';
+
+      html += '<tr data-id="'+e.id+'">'+
+        '<td><input type="checkbox" class="row-check" onclick="event.stopPropagation()"></td>'+
+        '<td><div class="emp-cell"><div class="emp-avatar-sm" style="background:'+avatarColor+';">'+e.name.charAt(0)+'</div><div><div style="font-weight:500;">'+e.name+'</div><div style="font-size:10px;color:var(--color-text-tertiary);margin-top:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">'+e.no+'</div></div></div></td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+e.deptShort+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-primary);">'+e.pos+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">'+e.email+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">'+e.phone+'</td>'+
+        '<td><span class="badge" style="'+rk.cls+'">'+rk.label+'</span> <span style="font-size:11px;font-weight:600;color:'+rk.color+';margin-left:4px;">'+e.riskScore+'</span></td>'+
+        '<td style="text-align:center;font-weight:500;color:'+(e.clicks>0?'#D85A30':'var(--color-text-tertiary)')+';">'+e.clicks+'</td>'+
+        '<td><span class="badge" style="'+tr.cls+'">'+tr.label+'</span></td>'+
+        '<td style="text-align:right;white-space:nowrap;">'+actions+'</td>'+
+      '</tr>';
+    });
+    if(pageData.length === 0){
+      html = '<tr><td colspan="10" style="text-align:center;padding:40px;color:var(--color-text-tertiary);font-size:12px;">暂无匹配数据</td></tr>';
+    }
+    tbody.innerHTML = html;
+
+    document.getElementById('selected-info').textContent = '共 ' + total + ' 条';
+    var endIdx = Math.min(start + pageSize, total);
+    document.getElementById('page-info').textContent = total === 0 ? '暂无记录' : '显示 ' + (start+1) + ' - ' + endIdx + ' 条，共 ' + total + ' 条记录';
+
+    // 绑定行点击
+    tbody.querySelectorAll('tr').forEach(function(tr){
+      tr.addEventListener('click', function(e){
+        if(e.target.closest('.btn-link') || e.target.type === 'checkbox') return;
+        var id = parseInt(tr.getAttribute('data-id'));
+        openProfile(id);
+      });
+    });
+
+    tbody.querySelectorAll('[data-action]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var action = btn.getAttribute('data-action');
+        var id = parseInt(btn.closest('tr').getAttribute('data-id'));
+        var emp = employees.find(function(x){ return x.id === id; });
+        if(action === 'view'){ openProfile(id); }
+        else if(action === 'edit'){ showToast('正在编辑「'+emp.name+'」的档案...', 'info'); }
+        else if(action === 'send'){ showToast('已将「'+emp.name+'」加入演练发送队列', 'success'); }
+      });
+    });
+
+    renderPagination(totalPages);
+  }
+
+  function renderPagination(totalPages){
+    var pg = document.getElementById('pagination');
+    if(!pg) return;
+    var html = '';
+    html += '<button class="page-btn" '+(currentPage===1?'disabled':'')+' onclick="window._pg('+(currentPage-1)+')">‹</button>';
+    var s = Math.max(1, currentPage - 2);
+    var e = Math.min(totalPages, s + 4);
+    if(s > 1){ html += '<button class="page-btn" onclick="window._pg(1)">1</button>'; if(s>2) html += '<button class="page-btn" disabled>...</button>'; }
+    for(var i=s;i<=e;i++){
+      html += '<button class="page-btn '+(i===currentPage?'active':'')+'" onclick="window._pg('+i+')">'+i+'</button>';
+    }
+    if(e < totalPages){ if(e<totalPages-1) html += '<button class="page-btn" disabled>...</button>'; html += '<button class="page-btn" onclick="window._pg('+totalPages+')">'+totalPages+'</button>'; }
+    html += '<button class="page-btn" '+(currentPage===totalPages?'disabled':'')+' onclick="window._pg('+(currentPage+1)+')">›</button>';
+    pg.innerHTML = html;
+  }
+  window._pg = function(p){ currentPage = p; renderTable(); };
+
+  // ========== 筛选标签 ==========
+  document.querySelectorAll('.filter-tag[data-tag]').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('.filter-tag[data-tag]').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      currentTag = tag.getAttribute('data-tag');
+      currentPage = 1;
+      renderTable();
+    });
+  });
+  document.querySelectorAll('.filter-tag[data-risk]').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('.filter-tag[data-risk]').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      currentRisk = tag.getAttribute('data-risk');
+      currentPage = 1;
+      renderTable();
+    });
+  });
+
+  // ========== 部门树 ==========
+  document.querySelectorAll('.tree-node').forEach(function(node){
+    node.addEventListener('click', function(e){
+      e.stopPropagation();
+      // 选中高亮
+      document.querySelectorAll('.tree-node').forEach(function(n){ n.classList.remove('active'); });
+      node.classList.add('active');
+      currentDept = node.getAttribute('data-dept');
+      currentPage = 1;
+      renderTable();
+      var label = node.querySelector('.tree-label').textContent;
+      if(currentDept === 'all'){
+        showToast('已切换到「全部部门」', 'info');
+      } else {
+        showToast('已筛选部门：'+label, 'info');
+      }
+    });
+  });
+
+  // 树展开/收起
+  document.querySelectorAll('.tree-toggle').forEach(function(toggle){
+    toggle.addEventListener('click', function(e){
+      e.stopPropagation();
+      if(toggle.textContent.trim() === '') return;
+      var parent = toggle.closest('.tree-node');
+      var next = parent.nextElementSibling;
+      if(next && next.classList.contains('tree-children')){
+        next.classList.toggle('collapsed');
+        toggle.classList.toggle('collapsed');
+      }
+    });
+  });
+
+  // 部门搜索
+  var deptSearchTimer = null;
+  document.getElementById('dept-search').addEventListener('input', function(e){
+    clearTimeout(deptSearchTimer);
+    var kw = e.target.value.trim().toLowerCase();
+    deptSearchTimer = setTimeout(function(){
+      document.querySelectorAll('.tree-node').forEach(function(n){
+        var label = n.querySelector('.tree-label').textContent.toLowerCase();
+        var parent = n.parentElement;
+        if(!kw || label.indexOf(kw) !== -1){
+          n.style.display = '';
+          if(parent.classList.contains('tree-children')) parent.style.display = '';
+        } else {
+          n.style.display = 'none';
+        }
+      });
+    }, 200);
+  });
+
+  // ========== 添加员工弹窗 ==========
+  function openAddModal(){ document.getElementById('add-emp-modal').style.display = 'flex'; }
+  function closeAddModal(){ document.getElementById('add-emp-modal').style.display = 'none'; }
+  document.getElementById('btn-add-emp').addEventListener('click', openAddModal);
+  document.getElementById('add-emp-close').addEventListener('click', closeAddModal);
+  document.getElementById('add-emp-cancel').addEventListener('click', closeAddModal);
+  document.getElementById('add-emp-save').addEventListener('click', function(){
+    closeAddModal();
+    showToast('员工信息已保存，风险画像将自动初始化', 'success');
+  });
+
+  // 标签多选
+  document.querySelectorAll('.tag-chip').forEach(function(chip){
+    chip.addEventListener('click', function(){
+      chip.classList.toggle('selected');
+    });
+  });
+
+  // 风险滑块
+  var riskRange = document.getElementById('risk-range');
+  var riskBadge = document.getElementById('risk-badge');
+  riskRange.addEventListener('input', function(){
+    var v = parseInt(riskRange.value);
+    riskBadge.textContent = v;
+    if(v <= 30){ riskBadge.style.background = 'rgba(29,158,117,0.15)'; riskBadge.style.color = '#1D9E75'; }
+    else if(v <= 70){ riskBadge.style.background = 'rgba(239,159,39,0.15)'; riskBadge.style.color = '#EF9F27'; }
+    else { riskBadge.style.background = 'rgba(216,90,48,0.15)'; riskBadge.style.color = '#D85A30'; }
+  });
+
+  // ========== 员工档案弹窗 ==========
+  function openProfile(id){
+    var emp = employees.find(function(x){ return x.id === id; });
+    if(!emp) return;
+    var rk = riskMap[emp.risk];
+    var avatarColor = avatarColors[emp.id % avatarColors.length];
+    document.getElementById('profile-avatar').textContent = emp.name.charAt(0);
+    document.getElementById('profile-avatar').style.background = avatarColor;
+    document.getElementById('profile-name').textContent = emp.name;
+    var rb = document.getElementById('profile-risk-badge');
+    rb.textContent = rk.text;
+    rb.style.cssText = rk.cls;
+    document.getElementById('profile-no').textContent = emp.no;
+    document.getElementById('profile-dept').textContent = emp.dept.replace('/', ' / ');
+    document.getElementById('profile-pos').textContent = emp.pos;
+    document.getElementById('profile-email').textContent = emp.email;
+    document.getElementById('profile-phone').textContent = emp.phone;
+    document.getElementById('profile-risk-score').textContent = emp.riskScore;
+    document.getElementById('profile-risk-score').style.color = rk.color;
+    document.getElementById('profile-clicks').textContent = emp.clicks;
+
+    // 更新风险画像维度
+    var dims = [
+      {label:'邮件识别', val: Math.min(100, emp.riskScore - 7)},
+      {label:'链接点击', val: Math.min(100, emp.riskScore + 6)},
+      {label:'密码提交', val: Math.min(100, emp.riskScore - 12)},
+      {label:'附件下载', val: Math.min(100, emp.riskScore - 17)},
+      {label:'举报意识', val: Math.max(5, 100 - emp.riskScore - 12)}
+    ];
+    var dimHtml = '';
+    dims.forEach(function(d){
+      var c = d.val > 70 ? '#D85A30' : (d.val > 40 ? '#EF9F27' : '#1D9E75');
+      dimHtml += '<div class="risk-dim">'+
+        '<span class="risk-dim-label">'+d.label+'</span>'+
+        '<div class="bar-track"><div class="bar-fill" style="width:'+d.val+'%;background:'+c+';"></div></div>'+
+        '<span class="risk-dim-value" style="color:'+c+';">'+d.val+'</span>'+
+      '</div>';
+    });
+    document.getElementById('risk-profile-list').innerHTML = dimHtml;
+
+    // 培训状态
+    var tr = trainingMap[emp.training];
+    var statusEl = document.getElementById('profile-training-status');
+    var pctEl = document.getElementById('profile-training-pct');
+    if(emp.training === 'completed'){
+      statusEl.textContent = '已完成';
+      statusEl.style.color = '#1D9E75';
+      pctEl.textContent = '100%';
+    } else if(emp.training === 'progress'){
+      statusEl.textContent = '进行中';
+      statusEl.style.color = '#378ADD';
+      pctEl.textContent = '60%';
+    } else {
+      statusEl.textContent = '未开始';
+      statusEl.style.color = '#8c8c8c';
+      pctEl.textContent = '0%';
+    }
+
+    document.getElementById('profile-modal').style.display = 'flex';
+  }
+  function closeProfile(){ document.getElementById('profile-modal').style.display = 'none'; }
+  document.getElementById('profile-close').addEventListener('click', closeProfile);
+  document.getElementById('profile-close-btn').addEventListener('click', closeProfile);
+  document.getElementById('profile-edit').addEventListener('click', function(){
+    closeProfile();
+    showToast('正在编辑员工档案...', 'info');
+  });
+  document.getElementById('profile-send-drill').addEventListener('click', function(){
+    closeProfile();
+    showToast('已将该员工加入定向演练发送队列', 'success');
+  });
+
+  // 点击遮罩关闭
+  [document.getElementById('add-emp-modal'), document.getElementById('profile-modal')].forEach(function(m){
+    if(m) m.addEventListener('click', function(e){ if(e.target === m) m.style.display = 'none'; });
+  });
+
+  // ========== 其他按钮 ==========
+  document.getElementById('btn-sync-ad').addEventListener('click', function(){
+    showToast('正在连接AD/LDAP服务器同步组织架构...', 'info');
+  });
+  document.getElementById('btn-add-dept').addEventListener('click', function(){
+    showToast('请通过部门管理添加新部门', 'info');
+  });
+  document.getElementById('btn-import-csv').addEventListener('click', function(){
+    showToast('请选择CSV文件导入员工名单（工号、姓名、邮箱必填）', 'info');
+  });
+  document.getElementById('btn-export').addEventListener('click', function(){
+    var data = getFilteredData();
+    showToast('正在导出 '+data.length+' 条员工数据，请稍候...', 'info');
+  });
+
+  // 全选
+  document.getElementById('check-all').addEventListener('change', function(e){
+    var checked = e.target.checked;
+    document.querySelectorAll('#emp-tbody .row-check').forEach(function(c){ c.checked = checked; });
+    document.querySelectorAll('#emp-table thead .row-check').forEach(function(c){ c.checked = checked; });
+  });
+  document.querySelectorAll('#emp-table thead .row-check').forEach(function(c){
+    c.addEventListener('change', function(e){
+      var checked = e.target.checked;
+      document.querySelectorAll('#emp-tbody .row-check').forEach(function(cb){ cb.checked = checked; });
+      document.getElementById('check-all').checked = checked;
+    });
+  });
+
+  document.getElementById('page-size').addEventListener('change', function(e){
+    pageSize = parseInt(e.target.value);
+    currentPage = 1;
+    renderTable();
+  });
+
+  // 搜索
+  var searchTimer = null;
+  document.getElementById('emp-search').addEventListener('input', function(){
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function(){ currentPage = 1; renderTable(); }, 300);
+  });
+
+  // 初始渲染
+  renderTable();
+})();
+</script>
+
+<!-- Copilot FAB -->
+<div class="copilot-fab" id="copilotFab" onclick="Copilot.open()">
+  <span class="fab-pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg>
+</div>
+<!-- Copilot Drawer -->
+<div class="copilot-overlay" id="copilotOverlay" onclick="Copilot.close()"></div>
+<div class="copilot-drawer" id="copilotDrawer" data-page="用户和组">
+  <div class="copilot-header">
+    <div class="copilot-header-left">
+      <div class="copilot-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg></div>
+      <div>
+        <div class="copilot-header-title">AI Copilot</div>
+        <div class="copilot-header-sub" id="copilotContext">当前上下文：用户和组</div>
+      </div>
+    </div>
+    <button class="copilot-close" onclick="Copilot.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="copilot-sessions">
+    <div class="copilot-session-btn active" onclick="Copilot.switchSession(this,'current')">当前会话</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s1')">演练分析</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s2')">模板生成</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s3')">风险报告</div>
+    <div class="copilot-session-btn" onclick="Copilot.newSession()">+ 新建</div>
+  </div>
+  <div class="copilot-messages" id="copilotMessages">
+    <div class="copilot-empty" id="copilotEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h4>AI Copilot 智能助手</h4>
+      <p>我是您的安全演练AI助手，可以帮您分析演练数据、生成模板、撰写报告等。<br/>下方快捷问题可直接点击使用。</p>
+    </div>
+  </div>
+  <div class="copilot-draft-banner" id="copilotDraftBanner" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span>AI生成内容处于草稿态，需人工确认后生效。审核记录将进入审计日志。</span>
+  </div>
+  <div class="copilot-input-area">
+    <div class="copilot-quick-tags" id="copilotQuickTags">
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">风险画像分析</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">高危人员列表</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">培训推荐</span>
+    </div>
+    <div class="copilot-input-wrap">
+      <textarea class="copilot-input" id="copilotInput" placeholder="输入您的问题..." rows="1" onkeydown="Copilot.onKeydown(event)" oninput="Copilot.autoResize(this)"></textarea>
+      <button class="copilot-send" id="copilotSend" onclick="Copilot.send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+if(typeof showToast!=='function'){function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}}
+
+// ===== Copilot 全局AI助手 =====
+var Copilot=(function(){
+  var drawer=document.getElementById('copilotDrawer');
+  var overlay=document.getElementById('copilotOverlay');
+  var messagesEl=document.getElementById('copilotMessages');
+  var inputEl=document.getElementById('copilotInput');
+  var sendBtn=document.getElementById('copilotSend');
+  var emptyEl=document.getElementById('copilotEmpty');
+  var draftBanner=document.getElementById('copilotDraftBanner');
+  var pageContext=drawer?drawer.getAttribute('data-page'):'';
+  var isGenerating=false;
+  var messages=[];
+
+  function open(){if(!drawer)return;drawer.classList.add('open');overlay.classList.add('show');setTimeout(function(){inputEl&&inputEl.focus();},350);}
+  function close(){if(!drawer)return;drawer.classList.remove('open');overlay.classList.remove('show');}
+  function switchSession(btn,key){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');btn.classList.add('active');showToast('已切换到会话：'+btn.textContent,'info');}
+  function newSession(){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');messages=[];if(emptyEl)emptyEl.style.display='block';messagesEl.innerHTML='';messagesEl.appendChild(emptyEl);showToast('已创建新会话','info');}
+  function quickAsk(text){if(!inputEl)return;inputEl.value=text;autoResize(inputEl);send();}
+  function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+  function autoResize(el){el.style.height='38px';el.style.height=Math.min(el.scrollHeight,100)+'px';}
+  function addMessage(role,content,opts){
+    opts=opts||{};
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');msg.className='copilot-msg '+role;
+    var avatar=document.createElement('div');avatar.className='copilot-msg-avatar';avatar.textContent=role==='ai'?'AI':'我';
+    var bubble=document.createElement('div');bubble.className='copilot-msg-bubble';
+    if(role==='ai'){bubble.innerHTML=renderMarkdown(content);}else{bubble.textContent=content;}
+    msg.appendChild(avatar);msg.appendChild(bubble);
+    if(role==='ai'&&opts.showContext){var badge=document.createElement('div');badge.className='copilot-context-badge';badge.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>上下文：'+pageContext;bubble.appendChild(badge);}
+    if(role==='ai'&&opts.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';opts.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}
+    if(role==='ai'&&opts.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+opts.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+opts.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}
+    messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;return bubble;
+  }
+  function showTyping(){if(emptyEl)emptyEl.style.display='none';var msg=document.createElement('div');msg.className='copilot-msg ai';msg.id='copilotTypingMsg';msg.innerHTML='<div class="copilot-msg-avatar">AI</div><div class="copilot-msg-bubble"><div class="copilot-typing"><span></span><span></span><span></span></div></div>';messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;}
+  function hideTyping(){var t=document.getElementById('copilotTypingMsg');if(t)t.remove();}
+  function typewriter(el,text,opts){opts=opts||{};var i=0;var speed=15;el.innerHTML='';function type(){if(i<text.length){el.innerHTML=renderMarkdown(text.substring(0,i+1));i++;messagesEl.scrollTop=messagesEl.scrollHeight;setTimeout(type,speed);}else{isGenerating=false;sendBtn.disabled=false;if(opts.onComplete)opts.onComplete();}}type();}
+  function renderMarkdown(text){var html=text;html=html.replace(/```([\s\S]*?)```/g,function(m,c){return '<pre style="background:#1a1a1a;color:#0f0;padding:8px 12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:8px 0"><code>'+c.replace(/</g,'&lt;')+'</code></pre>';});html=html.replace(/`([^`]+)`/g,'<code>$1</code>');html=html.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');html=html.replace(/^### (.+)$/gm,'<h4>$1</h4>');html=html.replace(/^- (.+)$/gm,'<li>$1</li>');html=html.replace(/(<li>.*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';});html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');html=html.replace(/\n/g,'<br>');return html;}
+  function send(){if(isGenerating)return;var text=inputEl.value.trim();if(!text)return;addMessage('user',text);inputEl.value='';inputEl.style.height='38px';isGenerating=true;sendBtn.disabled=true;showTyping();setTimeout(function(){hideTyping();var response=generateResponse(text);var bubble=addMessage('ai','',{showContext:messages.length<=1});typewriter(bubble,response.text,{onComplete:function(){if(response.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';response.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}if(response.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+response.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+response.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}messagesEl.scrollTop=messagesEl.scrollHeight;}});},800);}
+  function generateResponse(text){
+    var pageResponses={
+      '数据概览':{text:'**当前页面：数据概览**\n\n根据最新数据分析：\n\n- 本月中招率 **18.5%**，较上月下降3.2%，趋势向好\n- **财务部**中招率最高（32.1%），建议优先安排培训\n- 举报率22.3%，员工安全意识在提升\n- 培训通过率86.2%，仍有提升空间\n\n### 建议措施\n1. 针对财务部开展专项钓鱼演练\n2. 推送财务类钓鱼识别培训课程\n3. 对连续中招人员启动一对一辅导',actions:[{label:'一键生成报告'},{label:'创建财务部演练'},{label:'推荐培训课程'}]},
+      '演练管理':{text:'**当前页面：演练管理**\n\n最近一次演练「Q3财务钓鱼演练」分析：\n\n| 指标 | 数值 | 评价 |\n|------|------|------|\n| 发送数 | 580 | - |\n| 打开率 | 72.3% | 偏高 |\n| 点击率 | 28.1% | 风险高 |\n| 中招率 | 18.6% | 需关注 |\n| 举报率 | 15.2% | 正常 |\n\n### 关键发现\n- **邮件主题**「紧急：财务报销确认」点击率异常高\n- 发送后2小时内集中中招，说明员工缺乏犹豫期\n- 3人重复中招（已标记为高风险）',actions:[{label:'查看详情'},{label:'生成演练报告'},{label:'标记高危人员'}]},
+      '素材模板':{text:'**当前页面：素材模板**\n\n根据历史演练数据，为您推荐模板生成方案：\n\n### 高效模板特征\n- **场景**：节假日福利领取（点击率平均34.2%）\n- **语气**：紧急+友好混合（打开率提升25%）\n- **发件人**：伪装HR部门（信任度高）\n\n已为您生成草稿模板，请审核确认后入库：',draft:{title:'AI生成模板：节假日福利领取',content:'主题：【福利】2026年中秋礼品领取通知\n发件人：HR-福利管理 <hr-welfare@company.com>\n正文：尊敬的同事，2026年中秋节礼品领取通道已开放，请点击下方链接选择您的礼品...\n预估点击率：32%',actions:true}},
+      '发送配置':{text:'**当前页面：发送配置**\n\n发送通道健康度检查：\n\n- **平台默认SMTP** — 送达率 98.2% ✅\n- **Office365 (EWS)** — 送达率 95.7% ✅\n- **阿里云短信** — 送达率 99.1% ✅\n\n### DNS记录状态\n- SPF ✅ 已配置\n- DKIM ✅ 已配置\n- DMARC ⚠️ 建议添加`p=quarantine`策略\n\n建议：为提升送达率可信度，请完善DMARC记录。',actions:[{label:'查看DMARC配置指引'}]},
+      '用户和组':{text:'**当前页面：用户和组**\n\n高风险人员分析（共86人）：\n\n### 风险分布\n- **极高危险**（风险值>80）：12人\n- **高危险**（风险值60-80）：28人\n- **中危险**（风险值40-60）：46人\n\n### Top 3 高危人员\n1. **王某某**（财务部）— 3次中招，风险值92\n2. **李某**（市场部）— 2次中招+1次误报，风险值87\n3. **张某**（行政部）— 2次中招，风险值85\n\n建议立即安排专项培训。',actions:[{label:'查看风险画像'},{label:'分配培训计划'},{label:'创建针对演练'}]},
+      '安全培训':{text:'**当前页面：安全培训**\n\n培训效果分析：\n\n- 课程完成率：**86.2%**\n- 考试通过率：**78.5%**\n- 培训后中招率下降：**42.3%**\n\n### 薄弱知识点\n1. 邮件头信息识别（错误率61%）\n2. 短链接安全判断（错误率48%）\n3. 附件安全检查（错误率35%）\n\n已为您生成针对性题库草稿，请审核：',draft:{title:'AI生成题库：邮件头识别专项',content:'1. 以下哪项邮件头字段可用于验证发件人身份？\nA. Subject  B. X-Powered-By  C. Received-SPF  D. Date\n答案：C\n\n2. DKIM签名验证失败说明什么？\nA. 邮件被篡改  B. 发件人未认证  C. 服务器宕机  D. 以上都对\n答案：A',actions:true}},
+      '数据报表':{text:'**当前页面：数据报表**\n\n跨演练趋势分析：\n\n### 中招率变化趋势\n- 2026 Q1平均中招率：**24.5%**\n- 2026 Q2平均中招率：**21.2%**\n- 2026 Q3平均中招率：**18.5%**\n\n**整体下降趋势明显**，季度环比下降约14%。\n\n### 最有效改进场景\n- 系统升级类：中招率从31%→18%（下降42%）\n- 财务类：中招率从28%→22%（下降21%）\n\n### 仍需关注\n- 节假日类中招率仅下降8%，建议加强场景化培训',actions:[{label:'导出分析报告'},{label:'生成趋势图表'},{label:'生成改进方案'}]},
+      '邮件举报':{text:'**当前页面：邮件举报**\n\n举报数据分析：\n\n- 本月举报总数：**186次**\n- 演练邮件举报：**142次**（76.3%）\n- 真实钓鱼举报：**32次**（17.2%）\n- 误报：**12次**（6.5%）\n\n### 举报响应时间\n- 平均响应：**4.2分钟**（优秀）\n- 最快：**47秒**\n- 最慢：**23分钟**\n\n举报率持续提升，说明员工安全意识在增强。建议对Top举报者给予积分奖励。',actions:[{label:'查看积分排行'},{label:'生成举报报告'}]},
+      '系统设置':{text:'**当前页面：系统设置**\n\n系统安全配置检查：\n\n### 检查结果\n- 两步验证：✅ 已启用\n- 密码策略：✅ 满足复杂度要求\n- IP白名单：✅ 已配置12个IP\n- 数据加密：✅ 已启用\n- 审计模式：✅ 已启用\n\n### 建议优化\n- ⚠️ 会话超时设置为60分钟，建议缩短至30分钟\n- ⚠️ 数据留存期限为1年，建议根据合规要求调整为2年\n- 💡 建议启用SIEM推送，实现实时告警',actions:[{label:'应用安全建议'}]},
+      '智能助手':{text:'**当前页面：智能助手**\n\nAI能力使用统计：\n\n- 本月API调用：**3,420次**\n- Token消耗：**2.1M**\n- 费用预估：**¥186**\n\n### 各功能使用占比\n1. AI对话助手：48%\n2. 智能分析报告：28%\n3. AI模板生成：18%\n4. 培训推荐：6%\n\n所有AI生成内容均已进入审核队列，确保安全合规。',actions:[{label:'查看审核队列'},{label:'优化AI配置'}]},
+      'API开放平台':{text:'**当前页面：API开放平台**\n\nAPI调用分析：\n\n- 本月总调用：**12,580次**\n- 成功率：**99.2%**\n- 平均响应：**128ms**\n\n### Top 3 调用API\n1. `POST /api/v1/drills` — 4,200次\n2. `GET /api/v1/reports/drills/{id}` — 3,150次\n3. `GET /api/v1/users/risk` — 2,830次\n\n### 异常调用\n- ⚠️ AppID `app_xxxx` 在凌晨3点有异常高频调用，建议检查\n- ⚠️ 2次401认证失败来自IP `10.12.34.56`',actions:[{label:'查看异常日志'},{label:'设置调用限制'}]}
+    };
+    if(text.indexOf('报告')>-1||text.indexOf('分析')>-1){return pageResponses[pageContext]||pageResponses['数据概览'];}
+    if(text.indexOf('生成')>-1||text.indexOf('模板')>-1||text.indexOf('创建')>-1){return pageResponses[pageContext]||pageResponses['素材模板'];}
+    if(text.indexOf('风险')>-1||text.indexOf('高危')>-1){return pageResponses[pageContext]||pageResponses['用户和组'];}
+    return pageResponses[pageContext]||{text:'我是您的AI Copilot助手。当前页面上下文：**'+pageContext+'**。\n\n我可以帮您：\n- 分析当前页面数据\n- 生成报告和建议\n- 创建模板和课程\n- 风险评估和预警\n\n请问有什么可以帮您的？',actions:[]};
+  }
+  function confirmDraft(btn){var card=btn.closest('.copilot-review-card');var badge=card.querySelector('.copilot-review-badge');badge.className='copilot-review-badge confirmed';badge.textContent='已确认入库';var actions=card.querySelector('.copilot-review-actions');actions.innerHTML='<span style="font-size:11px;color:#1D9E75">✓ 审核通过 · 操作人：张管理 · '+new Date().toLocaleString()+'</span>';showToast('草稿已确认入库，审核记录已写入审计日志','success');draftBanner.style.display='none';}
+  function discardDraft(btn){var card=btn.closest('.copilot-review-card');card.style.opacity='0.5';card.querySelector('.copilot-review-actions').innerHTML='<span style="font-size:11px;color:#8c8c8c">已丢弃</span>';showToast('草稿已丢弃','info');}
+  return{open:open,close:close,switchSession:switchSession,newSession:newSession,quickAsk:quickAsk,onKeydown:onKeydown,autoResize:autoResize,send:send,confirmDraft:confirmDraft,discardDraft:discardDraft};
+})();
+</script>

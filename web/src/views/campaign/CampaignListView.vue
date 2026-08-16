@@ -1,0 +1,347 @@
+<template>
+  <div class="page-container">
+    <PageHeader title="演练管理">
+      <template #actions>
+        <el-button :icon="Download" @click="batchExport">批量导出</el-button>
+        <el-button type="primary" :icon="Plus" @click="$router.push('/campaign/create')">
+          发起演练
+        </el-button>
+      </template>
+    </PageHeader>
+
+    <!-- 统计卡片筛选 -->
+    <el-row :gutter="12" style="margin: 16px 16px 0">
+      <el-col :span="4" v-for="c in statCards" :key="c.label">
+        <div class="card stat-mini" :class="`card-${c.accent}`" :style="{ cursor: 'pointer' }"
+             @click="statusFilter = c.key">
+          <div class="stat-title">{{ c.label }}</div>
+          <div class="stat-value">{{ c.value }}</div>
+          <div class="stat-sub">{{ c.sub }}</div>
+        </div>
+      </el-col>
+    </el-row>
+
+    <div class="card" style="margin: 12px 16px">
+      <div class="toolbar">
+        <el-radio-group v-model="statusFilter" size="small">
+          <el-radio-button value="">全部<span class="filter-count">{{ statusCounts.all }}</span></el-radio-button>
+          <el-radio-button value="running">进行中<span class="filter-count">{{ statusCounts.running }}</span></el-radio-button>
+          <el-radio-button value="scheduled">待开始<span class="filter-count">{{ statusCounts.scheduled }}</span></el-radio-button>
+          <el-radio-button value="completed">已完成<span class="filter-count">{{ statusCounts.completed }}</span></el-radio-button>
+          <el-radio-button value="terminated">已终止<span class="filter-count">{{ statusCounts.terminated }}</span></el-radio-button>
+        </el-radio-group>
+        <el-select v-model="typeFilter" size="small" placeholder="全部类型" clearable style="width: 140px">
+          <el-option label="邮件钓鱼" value="mail" />
+          <el-option label="短信钓鱼" value="sms" />
+          <el-option label="社交媒体钓鱼" value="social" />
+          <el-option label="USB实物钓鱼" value="usb" />
+        </el-select>
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          size="small"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          style="width: 240px"
+        />
+        <el-input v-model="kw" size="small" placeholder="搜索演练名称" style="width: 200px" clearable />
+      </div>
+
+      <el-table :data="pagedRows" size="small" style="margin-top: 12px" @selection-change="onSelectionChange">
+        <el-table-column type="selection" width="42" />
+        <el-table-column label="演练名称" min-width="180">
+          <template #default="{ row }">
+            <el-link type="primary" @click="$router.push(`/campaign/${row.id}`)">
+              {{ row.name }}
+            </el-link>
+            <div class="name-sub">{{ statusSubText(row) }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="类型" width="110">
+          <template #default="{ row }">{{ TYPE_LABEL[row.type] }}</template>
+        </el-table-column>
+        <el-table-column label="时间范围" width="190" prop="time_range" />
+        <el-table-column label="目标规模" width="90" align="right">
+          <template #default="{ row }">{{ row.target_count.toLocaleString() }} 人</template>
+        </el-table-column>
+        <el-table-column label="进度（投递 → 阅读 → 点击 → 中招）" min-width="240">
+          <template #default="{ row }">
+            <div class="stage-progress">
+              <div class="stage-row">
+                <span class="stage-label">投递</span>
+                <el-progress :percentage="row.deliver_rate" :stroke-width="5" color="#378ADD" :show-text="false" style="flex: 1" />
+                <span class="stage-val">{{ row.deliver_rate }}%</span>
+              </div>
+              <div class="stage-row">
+                <span class="stage-label">阅读</span>
+                <el-progress :percentage="row.open_rate" :stroke-width="5" color="#13C2C2" :show-text="false" style="flex: 1" />
+                <span class="stage-val">{{ row.open_rate }}%</span>
+              </div>
+              <div class="stage-row">
+                <span class="stage-label">点击</span>
+                <el-progress :percentage="row.click_rate" :stroke-width="5" color="#FAAD14" :show-text="false" style="flex: 1" />
+                <span class="stage-val">{{ row.click_rate }}%</span>
+              </div>
+              <div class="stage-row">
+                <span class="stage-label">中招</span>
+                <el-progress :percentage="row.victim_rate" :stroke-width="5" color="#A32D2D" :show-text="false" style="flex: 1" />
+                <span class="stage-val">{{ row.victim_rate }}%</span>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }"><StatusBadge :status="row.status" /></template>
+        </el-table-column>
+        <el-table-column label="操作" width="190" fixed="right">
+          <template #default="{ row }">
+            <el-button v-if="row.status === 'scheduled'" link type="primary" size="small" @click="doStart(row)">启动</el-button>
+            <el-button v-if="row.status === 'running'" link type="warning" size="small" @click="doPause(row)">暂停</el-button>
+            <el-button v-if="row.status === 'paused'" link type="primary" size="small" @click="doResume(row)">恢复</el-button>
+            <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
+                       link type="danger" size="small" @click="doTerminate(row)">终止</el-button>
+            <el-button v-if="row.status === 'scheduled'" link size="small" @click="doEdit(row)">编辑</el-button>
+            <el-button v-if="['completed', 'terminated'].includes(row.status)" link size="small" @click="doCopy(row)">复制</el-button>
+            <el-button v-if="['completed', 'terminated'].includes(row.status)"
+                       link size="small" @click="$router.push(`/campaign/${row.id}`)">报表</el-button>
+            <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
+                       link size="small" @click="$router.push(`/campaign/${row.id}`)">监控</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        style="margin-top: 12px; justify-content: flex-end"
+        layout="total, sizes, prev, pager, next"
+        :total="filteredRows.length"
+        :page-sizes="[10, 20, 50, 100]"
+      />
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Download, Plus } from '@element-plus/icons-vue'
+import PageHeader from '@/components/base/PageHeader.vue'
+import StatusBadge from '@/components/base/StatusBadge.vue'
+import { campaignApi } from '@/api'
+
+// TODO(一期)：以 campaignApi.list({status, type, kw, page}) 服务端查询替换本地 mock 过滤。
+interface CampaignRow {
+  id: number
+  name: string
+  type: string
+  time_range: string
+  start_date: string
+  end_date: string
+  started_at?: string
+  target_count: number
+  deliver_rate: number
+  open_rate: number
+  click_rate: number
+  victim_rate: number
+  status: string
+}
+
+const router = useRouter()
+const statusFilter = ref('')
+const typeFilter = ref('')
+const kw = ref('')
+const dateRange = ref<[Date, Date] | null>(null)
+const page = ref(1)
+const pageSize = ref(10)
+const selectedRows = ref<CampaignRow[]>([])
+
+const TYPE_LABEL: Record<string, string> = {
+  mail: '邮件钓鱼', sms: '短信钓鱼', social: '社交媒体', usb: 'USB实物',
+}
+
+const statCards = [
+  { key: '', label: '演练总数', value: 128, sub: '↑ 12 本月', accent: 'blue' },
+  { key: '', label: '演练总人次', value: '48,260', sub: '累计覆盖员工', accent: 'orange' },
+  { key: 'running', label: '进行中', value: 3, sub: '覆盖 4,200 人', accent: 'green' },
+  { key: 'scheduled', label: '待开始', value: 5, sub: '计划本周 3 场', accent: 'purple' },
+  { key: 'completed', label: '已完成', value: 115, sub: '平均中招率 17.8%', accent: 'teal' },
+  { key: 'terminated', label: '已终止', value: 5, sub: '异常终止 2 场', accent: 'red' },
+]
+
+const allRows = ref<CampaignRow[]>([
+  { id: 1, name: 'Q3全员防钓鱼演练', type: 'mail', time_range: '08-15 ~ 08-22', start_date: '2026-08-15', end_date: '2026-08-22', started_at: '2026-08-15', target_count: 3580, deliver_rate: 100, open_rate: 71, click_rate: 27, victim_rate: 16, status: 'running' },
+  { id: 2, name: '财务人员专项演练', type: 'mail', time_range: '08-26 ~ 08-28', start_date: '2026-08-26', end_date: '2026-08-28', target_count: 56, deliver_rate: 0, open_rate: 0, click_rate: 0, victim_rate: 0, status: 'scheduled' },
+  { id: 3, name: 'Q2全员钓鱼演练', type: 'mail', time_range: '06-10 ~ 06-18', start_date: '2026-06-10', end_date: '2026-06-18', target_count: 3512, deliver_rate: 100, open_rate: 68, click_rate: 31, victim_rate: 19, status: 'completed' },
+  { id: 4, name: '短信钓鱼试点', type: 'sms', time_range: '05-20 ~ 05-22', start_date: '2026-05-20', end_date: '2026-05-22', target_count: 420, deliver_rate: 100, open_rate: 52, click_rate: 18, victim_rate: 8, status: 'completed' },
+  { id: 5, name: 'USB投放测试（研发楼）', type: 'usb', time_range: '04-02 ~ 04-03', start_date: '2026-04-02', end_date: '2026-04-03', target_count: 200, deliver_rate: 100, open_rate: 40, click_rate: 12, victim_rate: 5, status: 'terminated' },
+  { id: 6, name: '新员工安全意识测试', type: 'mail', time_range: '08-10 ~ 08-20', start_date: '2026-08-10', end_date: '2026-08-20', started_at: '2026-08-10', target_count: 30, deliver_rate: 100, open_rate: 63, click_rate: 23, victim_rate: 10, status: 'paused' },
+])
+
+// 状态筛选计数徽标（基于全量 mock 数据统计）
+const statusCounts = computed(() => {
+  const counts: Record<'all' | 'running' | 'scheduled' | 'completed' | 'terminated' | 'paused', number> = {
+    all: allRows.value.length, running: 0, scheduled: 0, completed: 0, terminated: 0, paused: 0,
+  }
+  for (const r of allRows.value) counts[r.status as keyof typeof counts]++
+  return counts
+})
+
+// 状态 / 类型 / 关键词 / 日期范围 四项客户端过滤
+const filteredRows = computed(() => allRows.value.filter((r) => {
+  if (statusFilter.value && r.status !== statusFilter.value) return false
+  if (typeFilter.value && r.type !== typeFilter.value) return false
+  if (kw.value.trim() && !r.name.toLowerCase().includes(kw.value.trim().toLowerCase())) return false
+  if (dateRange.value) {
+    const selStart = new Date(dateRange.value[0]); selStart.setHours(0, 0, 0, 0)
+    const selEnd = new Date(dateRange.value[1]); selEnd.setHours(23, 59, 59, 999)
+    const rowStart = new Date(r.start_date).getTime()
+    const rowEnd = new Date(r.end_date).getTime() + 24 * 3600 * 1000 - 1
+    if (rowEnd < selStart.getTime() || rowStart > selEnd.getTime()) return false
+  }
+  return true
+}))
+
+const pagedRows = computed(() => {
+  const start = (page.value - 1) * pageSize.value
+  return filteredRows.value.slice(start, start + pageSize.value)
+})
+
+watch([statusFilter, typeFilter, kw, dateRange], () => { page.value = 1 })
+
+// 名称列状态副文（进行中按 started_at 计算天数）
+function runningDays(row: CampaignRow): number {
+  if (!row.started_at) return 1
+  const started = new Date(row.started_at); started.setHours(0, 0, 0, 0)
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  return Math.max(1, Math.round((today.getTime() - started.getTime()) / 86400000) + 1)
+}
+function statusSubText(row: CampaignRow): string {
+  if (row.status === 'running') return `进行中 · 第${runningDays(row)}天`
+  const sub: Record<string, string> = {
+    scheduled: '待开始 · 筹备中',
+    paused: '已暂停 · 可恢复',
+    completed: '已完成 · 可导出报表',
+    terminated: '已终止',
+  }
+  return sub[row.status] ?? ''
+}
+
+// 表格多选与批量导出
+function onSelectionChange(selection: CampaignRow[]) {
+  selectedRows.value = selection
+}
+function batchExport() {
+  if (!selectedRows.value.length) {
+    ElMessage.warning('请先在表格中勾选要导出的演练')
+    return
+  }
+  ElMessage.success(`正在导出已选 ${selectedRows.value.length} 条演练数据，请稍候...`)
+}
+
+// 行操作：后端当前返回 code=10002（尚未实现），catch 后 info 提示即可，不视为失败
+async function doStart(row: CampaignRow) {
+  try {
+    await campaignApi.start(row.id)
+    ElMessage.success('演练已启动')
+  } catch {
+    ElMessage.info('后端接口尚未实现，已在前端模拟状态变更')
+  }
+  row.status = 'running'
+  row.started_at = new Date().toISOString().slice(0, 10)
+}
+async function doPause(row: CampaignRow) {
+  try {
+    await campaignApi.pause(row.id)
+    ElMessage.success('演练已暂停')
+  } catch {
+    ElMessage.info('后端接口尚未实现，已在前端模拟状态变更')
+  }
+  row.status = 'paused'
+}
+async function doResume(row: CampaignRow) {
+  try {
+    await campaignApi.resume(row.id)
+    ElMessage.success('演练已恢复')
+  } catch {
+    ElMessage.info('后端接口尚未实现，已在前端模拟状态变更')
+  }
+  row.status = 'running'
+}
+async function doTerminate(row: CampaignRow) {
+  try {
+    await ElMessageBox.confirm('确认终止该演练？终止后不可撤销。', '终止演练', {
+      confirmButtonText: '终止',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await campaignApi.terminate(row.id)
+    ElMessage.success('演练已终止')
+  } catch {
+    ElMessage.info('后端接口尚未实现，已在前端模拟状态变更')
+  }
+  row.status = 'terminated'
+}
+function doEdit(row: CampaignRow) {
+  ElMessage.info(`已进入演练向导（编辑「${row.name}」）`)
+  router.push('/campaign/create')
+}
+function doCopy(row: CampaignRow) {
+  const text = JSON.stringify(row, null, 2)
+  navigator.clipboard?.writeText(text).catch(() => {})
+  ElMessage.success(`已复制演练「${row.name}」的数据，可用于创建新演练`)
+}
+</script>
+
+<style scoped lang="scss">
+.stat-mini {
+  .stat-title { font-size: 12px; color: var(--color-text-secondary); }
+  .stat-value { font-size: 24px; font-weight: 600; margin-top: 6px; }
+  .stat-sub { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
+}
+.toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.filter-count {
+  margin-left: 4px;
+  opacity: 0.75;
+  font-weight: 500;
+}
+.name-sub {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  margin-top: 2px;
+}
+.stage-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.stage-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.stage-label {
+  width: 32px;
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+  flex-shrink: 0;
+}
+.stage-val {
+  width: 36px;
+  text-align: right;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+}
+</style>

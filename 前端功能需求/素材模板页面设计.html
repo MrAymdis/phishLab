@@ -1,0 +1,1492 @@
+<h2 class="sr-only">钓鱼演练平台素材模板页面，包含钓鱼邮件模板、落地页管理、附件与载荷管理三个模块</h2>
+<style>
+  :root{
+    --color-background-primary:#ffffff;
+    --color-background-secondary:#f5f5f5;
+    --color-background-tertiary:#eeeeee;
+    --color-background-info:rgba(55,138,221,0.1);
+    --color-text-primary:#1a1a1a;
+    --color-text-secondary:#595959;
+    --color-text-tertiary:#8c8c8c;
+    --color-text-info:#378ADD;
+    --color-text-success:#1D9E75;
+    --color-border-tertiary:#e8e8e8;
+    --color-border-info:#378ADD;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  /* 基础组件 */
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer;position:relative;overflow:hidden}
+  .nav-item::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.2s ease}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item:hover::before{transform:scaleY(1)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .nav-item.active::before{transform:scaleY(1)}
+  .nav-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+  .card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:12px;padding:14px 16px;transition:all 0.3s ease;border-top:3px solid transparent}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-1px)}
+  .card-blue{border-top-color:#378ADD;background:linear-gradient(180deg,rgba(55,138,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-green{border-top-color:#1D9E75;background:linear-gradient(180deg,rgba(29,158,117,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-orange{border-top-color:#D85A30;background:linear-gradient(180deg,rgba(216,90,48,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-purple{border-top-color:#7F77DD;background:linear-gradient(180deg,rgba(127,119,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-red{border-top-color:#A32D2D;background:linear-gradient(180deg,rgba(163,45,45,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-teal{border-top-color:#0D9488;background:linear-gradient(180deg,rgba(13,148,136,0.03) 0%,var(--color-background-primary) 30%)}
+
+  .card-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0 0 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;flex-shrink:0;margin-right:8px}
+
+  .tab{padding:3px 10px;font-size:11px;border:0.5px solid #d1d5db;border-radius:6px;color:var(--color-text-secondary);background:transparent;cursor:pointer;transition:all 0.2s ease}
+  .tab:hover{background:var(--color-background-secondary)}
+  .tab:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.1)}
+  .tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2);transform:translateY(1px)}
+
+  .badge{padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;white-space:nowrap}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .live-dot{animation:pulse 2s infinite}
+  .bar-track{background:var(--color-background-tertiary);border-radius:4px;height:6px;overflow:hidden;flex:1;position:relative}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+
+  /* 顶部栏 */
+  .top-bar{height:52px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+  .logo-area{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#1D9E75 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;font-size:12px}
+  .logo-text{font-size:15px;font-weight:600;color:var(--color-text-primary)}
+  .search-box{display:flex;align-items:center;background:var(--color-background-secondary);border-radius:6px;padding:6px 12px;width:280px;transition:all 0.2s ease}
+  .search-box:focus-within{background:var(--color-background-tertiary);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .search-input{border:none;outline:none;background:transparent;font-size:12px;color:var(--color-text-primary);width:100%;margin-left:6px}
+  .user-area{display:flex;align-items:center;gap:16px}
+  .notification-icon{position:relative;cursor:pointer;transition:all 0.2s ease}
+  .notification-icon:hover{color:var(--color-text-info)}
+  .notification-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#D85A30;border-radius:50%;font-size:10px;color:white;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .user-info{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.2s ease}
+  .user-info:hover{background:var(--color-background-secondary)}
+  .user-avatar{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500}
+  .user-name{font-size:12px;color:var(--color-text-primary)}
+
+  /* 侧边栏 */
+  .sidebar{width:144px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px 8px;display:flex;flex-direction:column;height:calc(100vh - 52px);position:sticky;top:52px}
+  .sidebar-header{padding:0 8px;margin:0 0 18px 0;display:flex;align-items:center;gap:6px}
+  .sidebar-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+
+  /* 按钮 */
+  .btn{padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;transition:all 0.2s ease;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+  .btn-primary{background:#378ADD;color:white}
+  .btn-primary:hover{background:#2d75bf}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-default{background:var(--color-background-secondary);color:var(--color-text-primary);border:1px solid #d1d5db}
+  .btn-default:hover{background:var(--color-background-tertiary)}
+  .btn-success{background:#1D9E75;color:white}
+  .btn-success:hover{background:#177e5e}
+  .btn-warning{background:#EF9F27;color:white}
+  .btn-warning:hover{background:#d48920}
+  .btn-danger{background:#D85A30;color:white}
+  .btn-danger:hover{background:#b94920}
+  .btn-sm{padding:4px 8px;font-size:11px}
+  .btn-link{background:transparent;color:#378ADD;padding:2px 4px;border:none;cursor:pointer;font-size:12px}
+  .btn-link:hover{text-decoration:underline}
+
+  /* 表格 */
+  .data-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  .data-table thead tr{background:var(--color-background-secondary)}
+  .data-table th{text-align:left;padding:10px 12px;font-weight:500;color:var(--color-text-secondary);font-size:11px;border-bottom:1px solid #d1d5db}
+  .data-table td{padding:12px;border-bottom:0.5px solid #e5e7eb;color:var(--color-text-primary);vertical-align:middle}
+  .data-table tbody tr:hover{background:rgba(55,138,221,0.03);cursor:pointer}
+  .data-table tbody tr.selected{background:rgba(55,138,221,0.08)}
+  .row-check{width:16px;height:16px;accent-color:#378ADD;cursor:pointer}
+
+  /* 筛选标签 */
+  .filter-tag{padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;transition:all 0.2s ease;border:1px solid transparent;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+  .filter-tag:hover{background:var(--color-background-tertiary)}
+  .filter-tag.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .filter-tag .count{margin-left:4px;opacity:0.8;font-weight:500}
+
+  /* 分页 */
+  .pagination{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+  .page-btn{min-width:28px;height:28px;padding:0 8px;border-radius:6px;border:1px solid #d1d5db;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all 0.2s ease}
+  .page-btn:hover:not(:disabled){background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .page-btn.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .page-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* 表单 */
+  .form-group{margin-bottom:18px}
+  .form-label{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px;display:block}
+  .form-label .required{color:#D85A30;margin-left:2px}
+  .form-input{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:var(--color-text-primary);background:var(--color-background-primary);transition:all 0.2s ease;box-sizing:border-box}
+  .form-input:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .form-textarea{resize:vertical;min-height:80px;font-family:inherit}
+  .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+  .form-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+  /* 选项卡片 */
+  .option-card{border:1.5px solid #d1d5db;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-primary)}
+  .option-card:hover{border-color:#378ADD;background:rgba(55,138,221,0.03)}
+  .option-card.selected{border-color:#378ADD;background:rgba(55,138,221,0.06);box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .option-card-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .option-card-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;flex-shrink:0}
+  .option-card-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+  .option-card-desc{font-size:11px;color:var(--color-text-secondary);margin:0}
+
+  /* 模板预览 */
+  .template-card{border:1.5px solid #d1d5db;border-radius:8px;overflow:hidden;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-primary)}
+  .template-card:hover{border-color:#378ADD;box-shadow:0 2px 8px rgba(55,138,221,0.1)}
+  .template-card.selected{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.15)}
+  .template-preview{height:100px;background:linear-gradient(135deg,#f3f4f6 0%,#e5e7eb 100%);display:flex;align-items:center;justify-content:center;padding:12px;position:relative}
+  .template-meta{padding:10px}
+  .template-name{font-size:12px;font-weight:500;color:var(--color-text-primary);margin:0 0 4px 0}
+  .template-tag{font-size:10px;color:var(--color-text-secondary);background:var(--color-background-secondary);padding:2px 6px;border-radius:4px}
+
+  /* 开关 */
+  .switch{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0}
+  .switch input{opacity:0;width:0;height:0}
+  .switch-slider{position:absolute;cursor:pointer;inset:0;background:#d1d5db;border-radius:20px;transition:0.3s}
+  .switch-slider::before{content:'';position:absolute;height:16px;width:16px;left:2px;top:2px;background:white;border-radius:50%;transition:0.3s}
+  .switch input:checked + .switch-slider{background:#1D9E75}
+  .switch input:checked + .switch-slider::before{transform:translateX(16px)}
+
+  /* 模态框 */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;animation:fadeIn 0.2s ease}
+  .modal{background:var(--color-background-primary);border-radius:12px;max-width:1100px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:modalIn 0.25s ease}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;flex-shrink:0}
+  .modal-title{font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0}
+  .modal-close{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary);transition:all 0.2s ease}
+  .modal-close:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .modal-body{padding:20px;overflow-y:auto;flex:1}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e5e7eb;background:var(--color-background-secondary);flex-shrink:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes modalIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+
+  /* Toast提示 */
+  .toast-container{position:fixed;top:70px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:8px;font-size:12px;color:white;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn 0.3s ease}
+  .toast-success{background:#1D9E75}
+  .toast-error{background:#D85A30}
+  .toast-info{background:#378ADD}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+/* ===== Copilot 侧边栏 ===== */
+.copilot-fab{position:fixed;right:24px;bottom:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(55,138,221,0.35);z-index:9998;transition:all .3s ease}
+.copilot-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(55,138,221,0.45)}
+.copilot-fab svg{width:22px;height:22px}
+.copilot-fab .fab-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid #378ADD;animation:copilotPulse 2s ease-out infinite;opacity:0}
+@keyframes copilotPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.copilot-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9998;opacity:0;visibility:hidden;transition:all .3s}
+.copilot-overlay.show{opacity:1;visibility:visible}
+.copilot-drawer{position:fixed;top:0;right:-420px;width:400px;height:100vh;background:var(--color-background-primary,#fff);box-shadow:-4px 0 24px rgba(0,0,0,0.1);z-index:9999;display:flex;flex-direction:column;transition:right .35s cubic-bezier(.4,0,.2,1)}
+.copilot-drawer.open{right:0}
+.copilot-header{padding:14px 18px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.copilot-header-left{display:flex;align-items:center;gap:10px}
+.copilot-header-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center}
+.copilot-header-icon svg{width:18px;height:18px}
+.copilot-header-title{font-size:15px;font-weight:600}
+.copilot-header-sub{font-size:11px;opacity:.85;margin-top:2px}
+.copilot-close{background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;transition:opacity .2s}
+.copilot-close:hover{opacity:1}
+.copilot-close svg{width:18px;height:18px}
+.copilot-sessions{padding:8px 12px;border-bottom:1px solid #e8e8e8;display:flex;gap:6px;align-items:center;flex-shrink:0;overflow-x:auto}
+.copilot-session-btn{padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;transition:all .2s}
+.copilot-session-btn:hover{border-color:#378ADD;color:#378ADD}
+.copilot-session-btn.active{background:rgba(55,138,221,0.1);border-color:#378ADD;color:#378ADD}
+.copilot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.copilot-msg{display:flex;gap:10px;max-width:92%}
+.copilot-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.copilot-msg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+.copilot-msg.ai .copilot-msg-avatar{background:linear-gradient(135deg,#378ADD,#7F77DD)}
+.copilot-msg.user .copilot-msg-avatar{background:#8c8c8c}
+.copilot-msg-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word}
+.copilot-msg.ai .copilot-msg-bubble{background:#f5f5f5;color:#1a1a1a;border-top-left-radius:4px}
+.copilot-msg.user .copilot-msg-bubble{background:#378ADD;color:#fff;border-top-right-radius:4px}
+.copilot-msg-bubble h4{margin:8px 0 4px;font-size:13px}
+.copilot-msg-bubble ul,.copilot-msg-bubble ol{margin:4px 0;padding-left:18px}
+.copilot-msg-bubble li{margin:2px 0}
+.copilot-msg-bubble table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.copilot-msg-bubble th,.copilot-msg-bubble td{border:1px solid #d8d8d8;padding:4px 8px;text-align:left}
+.copilot-msg-bubble th{background:#e8e8e8}
+.copilot-msg-bubble strong{font-weight:600}
+.copilot-msg-bubble code{background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:12px}
+.copilot-msg-actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.copilot-action-btn{padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #378ADD;background:rgba(55,138,221,0.06);color:#378ADD;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.copilot-action-btn:hover{background:#378ADD;color:#fff}
+.copilot-action-btn svg{width:12px;height:12px}
+.copilot-typing{display:inline-flex;gap:3px;align-items:center;padding:4px 0}
+.copilot-typing span{width:6px;height:6px;border-radius:50%;background:#8c8c8c;animation:copilotTyping 1.4s infinite}
+.copilot-typing span:nth-child(2){animation-delay:.2s}
+.copilot-typing span:nth-child(3){animation-delay:.4s}
+@keyframes copilotTyping{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.copilot-context-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.15);font-size:11px;margin-top:4px}
+.copilot-context-badge svg{width:10px;height:10px}
+.copilot-input-area{padding:12px 16px;border-top:1px solid #e8e8e8;flex-shrink:0}
+.copilot-quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.copilot-quick-tag{padding:3px 8px;border-radius:12px;font-size:11px;background:#f0f5ff;color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.copilot-quick-tag:hover{background:#378ADD;color:#fff}
+.copilot-input-wrap{display:flex;gap:8px;align-items:flex-end}
+.copilot-input{flex:1;border:1px solid #d8d8d8;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;max-height:100px;min-height:38px;outline:none;transition:border-color .2s;line-height:1.5}
+.copilot-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.copilot-send{width:38px;height:38px;border-radius:10px;background:#378ADD;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.copilot-send:hover{background:#2979c9}
+.copilot-send:disabled{background:#ccc;cursor:not-allowed}
+.copilot-send svg{width:16px;height:16px}
+.copilot-draft-banner{padding:6px 12px;background:rgba(239,159,39,0.1);border-top:1px solid rgba(239,159,39,0.3);font-size:11px;color:#9a6800;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.copilot-draft-banner svg{width:12px;height:12px;flex-shrink:0}
+.copilot-empty{text-align:center;padding:40px 20px;color:#8c8c8c}
+.copilot-empty svg{width:40px;height:40px;margin-bottom:12px;opacity:.4}
+.copilot-empty h4{font-size:14px;margin-bottom:6px;color:#595959}
+.copilot-empty p{font-size:12px;line-height:1.6}
+.copilot-review-card{border:1px solid #e8e8e8;border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copilot-review-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.copilot-review-card-title{font-size:12px;font-weight:600;color:#1a1a1a}
+.copilot-review-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.copilot-review-badge.draft{background:rgba(239,159,39,0.15);color:#9a6800}
+.copilot-review-badge.confirmed{background:rgba(29,158,117,0.15);color:#1D9E75}
+.copilot-review-content{font-size:12px;color:#595959;line-height:1.6;padding:8px;background:#f9f9f9;border-radius:6px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+.copilot-review-actions{display:flex;gap:6px}
+.copilot-review-btn{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;transition:all .2s}
+.copilot-review-btn.preview{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.06)}
+.copilot-review-btn.preview:hover{background:#378ADD;color:#fff}
+.copilot-review-btn.confirm{border-color:#1D9E75;color:#1D9E75;background:rgba(29,158,117,0.06)}
+.copilot-review-btn.confirm:hover{background:#1D9E75;color:#fff}
+.copilot-review-btn.discard{border-color:#8c8c8c;color:#8c8c8c;background:transparent}
+.copilot-review-btn.discard:hover{background:#8c8c8c;color:#fff}
+.copilot-error{padding:8px 12px;background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:8px;font-size:12px;color:#A32D2D;display:flex;align-items:center;gap:8px}
+.copilot-error-retry{margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;border:1px solid #A32D2D;color:#A32D2D;cursor:pointer;background:transparent}
+.copilot-error-retry:hover{background:#A32D2D;color:#fff}
+</style>
+
+<div style="display:flex;flex-direction:column;font-family:var(--font-sans);min-height:560px;">
+  <!-- 顶部栏 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <div class="logo-icon">鱼</div>
+      <span class="logo-text">钓鱼演练平台</span>
+    </div>
+    <div class="user-area">
+      <div class="notification-icon" style="color:var(--color-text-secondary)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notification-badge">3</div>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar">张</div>
+        <span class="user-name">张管理</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;">
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+        </svg>
+        <span class="sidebar-title">导航菜单</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        数据概览
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        演练管理
+      </div>
+      <div class="nav-item active">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+        </div>
+        素材模板
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </div>
+        发送配置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        用户和组
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        </div>
+        安全培训
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </div>
+        数据报表
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+        </div>
+        邮件举报
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        系统设置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"></path>
+          </svg>
+        </div>
+        智能助手
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        API开放平台
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div style="flex:1;padding:14px 18px;min-width:0;overflow-y:auto;">
+      <!-- 面包屑 -->
+      <div style="margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;">
+        <span id="breadcrumb" style="font-size:12px;color:var(--color-text-tertiary);">素材模板 / 钓鱼邮件模板</span>
+      </div>
+
+      <!-- Tab 切换 -->
+      <div style="display:flex;gap:8px;margin-bottom:18px;">
+        <button class="tab active" data-tab="email">钓鱼邮件模板</button>
+        <button class="tab" data-tab="landing">落地页管理</button>
+        <button class="tab" data-tab="payload">附件与载荷</button>
+      </div>
+
+      <!-- ====== Tab 1: 钓鱼邮件模板 ====== -->
+      <div id="tab-email">
+        <!-- 统计卡片 -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;">
+          <div class="card card-blue" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">邮件模板总数</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:var(--color-text-primary);">48</p>
+            <p style="font-size:11px;color:var(--color-text-success);margin:6px 0 0;">↑ 6 本月新增</p>
+          </div>
+          <div class="card card-green" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">本月新增</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:#1D9E75;">6</p>
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:6px 0 0;">含 2 个高难度</p>
+          </div>
+          <div class="card card-orange" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">使用次数最多</p>
+            <p style="font-size:16px;font-weight:500;margin:0;color:var(--color-text-primary);">OA密码过期提醒</p>
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:6px 0 0;">累计使用 28 次</p>
+          </div>
+          <div class="card card-teal" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">平均点击率</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:var(--color-text-primary);">21.4%</p>
+            <p style="font-size:11px;color:var(--color-text-tertiary);margin:6px 0 0;">较上月 ↓ 2.1%</p>
+          </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-top:none;">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="filter-tag active" data-cat="all">全部<span class="count">48</span></span>
+              <span class="filter-tag" data-cat="holiday">节假日<span class="count">8</span></span>
+              <span class="filter-tag" data-cat="upgrade">系统升级<span class="count">6</span></span>
+              <span class="filter-tag" data-cat="lottery">中奖<span class="count">5</span></span>
+              <span class="filter-tag" data-cat="hr">HR通知<span class="count">9</span></span>
+              <span class="filter-tag" data-cat="finance">财务报销<span class="count">11</span></span>
+              <span class="filter-tag" data-cat="alert">安全告警<span class="count">9</span></span>
+            </div>
+            <div class="search-box" style="width:200px;margin-left:auto;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input class="search-input" id="email-search" placeholder="搜索模板名称">
+            </div>
+            <button class="btn btn-primary" id="btn-new-email">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              新建模板
+            </button>
+          </div>
+        </div>
+
+        <!-- 模板卡片网格 -->
+        <div id="email-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;"></div>
+
+        <!-- 分页 -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">
+          <span id="email-info" style="font-size:11px;color:var(--color-text-tertiary);">共 8 条</span>
+          <div class="pagination" id="email-pagination"></div>
+        </div>
+      </div>
+
+      <!-- ====== Tab 2: 落地页管理 ====== -->
+      <div id="tab-landing" style="display:none;">
+        <!-- 统计卡片 -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px;">
+          <div class="card card-blue" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">落地页总数</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:var(--color-text-primary);">22</p>
+            <p style="font-size:11px;color:var(--color-text-success);margin:6px 0 0;">↑ 3 本月新增</p>
+          </div>
+          <div class="card card-purple" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">克隆页面数</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:#7F77DD;">14</p>
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:6px 0 0;">含 3 个移动端</p>
+          </div>
+          <div class="card card-green" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">自定义页面数</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:#1D9E75;">8</p>
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:6px 0 0;">可视化构建</p>
+          </div>
+          <div class="card card-orange" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">平均停留时长</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:var(--color-text-primary);">38s</p>
+            <p style="font-size:11px;color:var(--color-text-tertiary);margin:6px 0 0;">表单提交率 42%</p>
+          </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-top:none;">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="filter-tag active" data-ltype="all">全部<span class="count">22</span></span>
+              <span class="filter-tag" data-ltype="mail">邮箱登录<span class="count">6</span></span>
+              <span class="filter-tag" data-ltype="oa">OA系统<span class="count">5</span></span>
+              <span class="filter-tag" data-ltype="pan">网盘认证<span class="count">4</span></span>
+              <span class="filter-tag" data-ltype="pay">支付页面<span class="count">3</span></span>
+              <span class="filter-tag" data-ltype="custom">自定义<span class="count">4</span></span>
+            </div>
+            <div class="search-box" style="width:200px;margin-left:auto;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input class="search-input" id="landing-search" placeholder="搜索页面名称">
+            </div>
+            <button class="btn btn-default" id="btn-clone-landing">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              克隆页面
+            </button>
+            <button class="btn btn-primary" id="btn-new-landing">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              新建页面
+            </button>
+          </div>
+        </div>
+
+        <!-- 落地页卡片网格 -->
+        <div id="landing-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;"></div>
+
+        <!-- 分页 -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">
+          <span id="landing-info" style="font-size:11px;color:var(--color-text-tertiary);">共 6 条</span>
+          <div class="pagination" id="landing-pagination"></div>
+        </div>
+      </div>
+
+      <!-- ====== Tab 3: 附件与载荷管理 ====== -->
+      <div id="tab-payload" style="display:none;">
+        <!-- 统计卡片 -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:18px;">
+          <div class="card card-blue" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">附件总数</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:var(--color-text-primary);">35</p>
+            <p style="font-size:11px;color:var(--color-text-success);margin:6px 0 0;">↑ 4 本月新增</p>
+          </div>
+          <div class="card card-green" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">本月新增</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:#1D9E75;">4</p>
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:6px 0 0;">含 2 个二维码</p>
+          </div>
+          <div class="card card-orange" style="padding:14px;">
+            <p style="font-size:11px;color:var(--color-text-secondary);margin:0 0 6px;">平均检测逃逸率</p>
+            <p style="font-size:24px;font-weight:500;margin:0;color:#D85A30;">76.3%</p>
+            <p style="font-size:11px;color:var(--color-text-tertiary);margin:6px 0 0;">覆盖 12 款主流AV</p>
+          </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-top:none;">
+          <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="filter-tag active" data-ptype="all">全部<span class="count">35</span></span>
+              <span class="filter-tag" data-ptype="macro">宏文档<span class="count">11</span></span>
+              <span class="filter-tag" data-ptype="exe">可执行文件<span class="count">8</span></span>
+              <span class="filter-tag" data-ptype="qr">二维码<span class="count">9</span></span>
+              <span class="filter-tag" data-ptype="other">其他<span class="count">7</span></span>
+            </div>
+            <div class="search-box" style="width:200px;margin-left:auto;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input class="search-input" id="payload-search" placeholder="搜索文件名">
+            </div>
+            <button class="btn btn-default" id="btn-qr">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect><line x1="14" y1="14" x2="14" y2="21"></line><line x1="18" y1="18" x2="21" y2="18"></line><line x1="21" y1="14" x2="21" y2="21"></line></svg>
+              生成二维码
+            </button>
+            <button class="btn btn-primary" id="btn-upload">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              上传附件
+            </button>
+          </div>
+        </div>
+
+        <!-- 数据表格 -->
+        <div class="card card-blue" style="padding:0;overflow:hidden;">
+          <table class="data-table" id="payload-table">
+            <colgroup>
+              <col style="width:24%"><col style="width:11%"><col style="width:9%"><col style="width:13%"><col style="width:17%"><col style="width:8%"><col style="width:9%"><col style="width:9%">
+            </colgroup>
+            <thead>
+              <tr>
+                <th>文件名</th>
+                <th>类型</th>
+                <th>文件大小</th>
+                <th>目标平台</th>
+                <th>检测逃逸率</th>
+                <th>使用次数</th>
+                <th>状态</th>
+                <th style="text-align:right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="payload-tbody"></tbody>
+          </table>
+        </div>
+
+        <!-- 分页 -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;">
+          <span id="payload-info" style="font-size:11px;color:var(--color-text-tertiary);">共 8 条</span>
+          <div class="pagination" id="payload-pagination"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 弹窗：新建/编辑邮件模板 ====== -->
+<div class="modal-overlay" id="email-modal" style="display:none;">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="email-modal-title">新建邮件模板</h3>
+      <button class="modal-close" data-close="email-modal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">模板名称<span class="required">*</span></label>
+          <input class="form-input" id="tpl-name" placeholder="如：OA密码过期提醒">
+        </div>
+        <div class="form-group">
+          <label class="form-label">场景分类<span class="required">*</span></label>
+          <select class="form-input form-select" id="tpl-cat">
+            <option value="holiday">节假日</option>
+            <option value="upgrade">系统升级</option>
+            <option value="lottery">中奖</option>
+            <option value="hr">HR通知</option>
+            <option value="finance">财务报销</option>
+            <option value="alert">安全告警</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">难度等级</label>
+        <div id="tpl-stars" style="display:flex;gap:6px;align-items:center;">
+          <span class="star option-card" data-star="1" style="cursor:pointer;font-size:18px;color:#d1d5db;">★</span>
+          <span class="star option-card" data-star="2" style="cursor:pointer;font-size:18px;color:#d1d5db;">★</span>
+          <span class="star option-card" data-star="3" style="cursor:pointer;font-size:18px;color:#d1d5db;">★</span>
+          <span class="star option-card" data-star="4" style="cursor:pointer;font-size:18px;color:#d1d5db;">★</span>
+          <span class="star option-card" data-star="5" style="cursor:pointer;font-size:18px;color:#d1d5db;">★</span>
+          <span style="font-size:11px;color:var(--color-text-tertiary);margin-left:6px;" id="star-text">中级</span>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">邮件主题<span class="required">*</span></label>
+          <input class="form-input" id="tpl-subject" placeholder="如：【安全提醒】您的OA账号密码即将过期">
+        </div>
+        <div class="form-group">
+          <label class="form-label">发件人显示名称<span class="required">*</span></label>
+          <input class="form-input" id="tpl-sender" placeholder="如：OA系统管理员">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">邮件正文</label>
+        <textarea class="form-input form-textarea" id="tpl-body" rows="8" placeholder="在此输入邮件正文，支持动态变量：{{.FirstName}} {{.LastName}} {{.Department}} {{.Email}} {{.Date}} ...">尊敬的 {{.LastName}}{{.FirstName}}：
+
+您于 {{.Department}} 部门使用的 OA 系统账号密码将于 48 小时内过期，为避免影响正常办公，请尽快完成密码重置。
+
+点击下方链接立即重置：
+{{.ResetURL}}
+
+此邮件由系统自动发送，请勿回复。</textarea>
+        <p class="form-hint">支持插入动态变量：{{.FirstName}} {{.LastName}} {{.Department}} {{.Email}} {{.Date}} {{.ResetURL}} 等，发送时自动替换。</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">追踪选项</label>
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;">
+            <div><span style="font-size:12px;font-weight:500;color:var(--color-text-primary);">追踪像素</span><p style="font-size:11px;color:var(--color-text-tertiary);margin:2px 0 0;">嵌入1x1图片，统计邮件打开率</p></div>
+            <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;">
+            <div><span style="font-size:12px;font-weight:500;color:var(--color-text-primary);">链接追踪</span><p style="font-size:11px;color:var(--color-text-tertiary);margin:2px 0 0;">替换正文链接，统计点击行为</p></div>
+            <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;">
+            <div><span style="font-size:12px;font-weight:500;color:var(--color-text-primary);">附件追踪</span><p style="font-size:11px;color:var(--color-text-tertiary);margin:2px 0 0;">统计附件下载行为</p></div>
+            <label class="switch"><input type="checkbox"><span class="switch-slider"></span></label>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" data-close="email-modal">取消</button>
+      <button class="btn btn-default" id="email-save-draft">保存草稿</button>
+      <button class="btn btn-primary" id="email-save-test">保存并测试</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 弹窗：克隆落地页 ====== -->
+<div class="modal-overlay" id="clone-modal" style="display:none;">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-header">
+      <h3 class="modal-title">克隆页面</h3>
+      <button class="modal-close" data-close="clone-modal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">源页面URL<span class="required">*</span></label>
+        <input class="form-input" id="clone-url" placeholder="https://mail.company.com/login">
+        <p class="form-hint">输入需要克隆的页面地址，系统将自动抓取页面结构与样式。</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">页面名称<span class="required">*</span></label>
+        <input class="form-input" id="clone-name" placeholder="如：企业邮箱登录页">
+      </div>
+      <div class="form-group">
+        <label class="form-label">页面类型</label>
+        <select class="form-input form-select" id="clone-type">
+          <option value="mail">邮箱登录</option>
+          <option value="oa">OA系统</option>
+          <option value="pan">网盘认证</option>
+          <option value="pay">支付页面</option>
+          <option value="custom">自定义</option>
+        </select>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;">
+        <div><span style="font-size:12px;font-weight:500;color:var(--color-text-primary);">自动适配移动端</span><p style="font-size:11px;color:var(--color-text-tertiary);margin:2px 0 0;">生成响应式布局，支持手机访问</p></div>
+        <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" data-close="clone-modal">取消</button>
+      <button class="btn btn-primary" id="clone-submit">开始克隆</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 弹窗：新建/编辑落地页 ====== -->
+<div class="modal-overlay" id="landing-modal" style="display:none;">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-header">
+      <h3 class="modal-title" id="landing-modal-title">新建落地页</h3>
+      <button class="modal-close" data-close="landing-modal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">页面名称<span class="required">*</span></label>
+          <input class="form-input" id="lp-name" placeholder="如：企业邮箱登录页">
+        </div>
+        <div class="form-group">
+          <label class="form-label">页面类型<span class="required">*</span></label>
+          <select class="form-input form-select" id="lp-type">
+            <option value="mail">邮箱登录</option>
+            <option value="oa">OA系统</option>
+            <option value="pan">网盘认证</option>
+            <option value="pay">支付页面</option>
+            <option value="custom">自定义</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">表单字段配置</label>
+        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" checked style="accent-color:#378ADD;"> 用户名
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" checked style="accent-color:#378ADD;"> 密码
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" checked style="accent-color:#378ADD;"> 验证码
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" style="accent-color:#378ADD;"> 记住登录
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" style="accent-color:#378ADD;"> 二次验证
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" style="accent-color:#378ADD;"> 手机号
+          </label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">教育弹窗内容</label>
+        <textarea class="form-input form-textarea" id="lp-edu" rows="4" placeholder="用户提交凭据后展示的安全教育内容">⚠️ 您刚刚中招了！
+
+这是一次公司组织的安全演练。您刚刚在仿冒页面输入了账号密码，如果在真实场景中，您的凭据已被攻击者窃取。
+
+请牢记：
+1. 认准官方域名，不轻信邮件中的链接
+2. 输入密码前核对网址是否为 HTTPS 且域名正确
+3. 可疑邮件请及时通过举报通道上报安全团队</textarea>
+        <p class="form-hint">用户提交表单后自动弹出，用于即时安全教育。</p>
+      </div>
+      <div class="form-group">
+        <label class="form-label">跳转设置</label>
+        <select class="form-input form-select" id="lp-redirect">
+          <option value="edu">显示教育弹窗后停留</option>
+          <option value="official">跳转至真实系统首页</option>
+          <option value="custom">跳转至自定义URL</option>
+          <option value="none">关闭页面</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" data-close="landing-modal">取消</button>
+      <button class="btn btn-primary" id="landing-submit">保存页面</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 弹窗：生成二维码 ====== -->
+<div class="modal-overlay" id="qr-modal" style="display:none;">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <h3 class="modal-title">生成二维码</h3>
+      <button class="modal-close" data-close="qr-modal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">二维码类型</label>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;">
+          <div class="option-card selected" data-qrtype="url"><div class="option-card-header" style="margin-bottom:0;"><div class="option-card-icon" style="background:#378ADD;width:28px;height:28px;font-size:12px;">URL</div></div></div>
+          <div class="option-card" data-qrtype="text"><div class="option-card-header" style="margin-bottom:0;"><div class="option-card-icon" style="background:#1D9E75;width:28px;height:28px;font-size:12px;">TXT</div></div></div>
+          <div class="option-card" data-qrtype="wifi"><div class="option-card-header" style="margin-bottom:0;"><div class="option-card-icon" style="background:#7F77DD;width:28px;height:28px;font-size:12px;">WIFI</div></div></div>
+          <div class="option-card" data-qrtype="email"><div class="option-card-header" style="margin-bottom:0;"><div class="option-card-icon" style="background:#D85A30;width:28px;height:28px;font-size:12px;">MAIL</div></div></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">内容<span class="required">*</span></label>
+        <input class="form-input" id="qr-content" placeholder="https://secure-login.company.com/verify">
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">尺寸</label>
+          <select class="form-input form-select" id="qr-size">
+            <option value="256">256 × 256 px</option>
+            <option value="512" selected>512 × 512 px</option>
+            <option value="1024">1024 × 1024 px</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Logo上传</label>
+          <input class="form-input" type="file" id="qr-logo" accept="image/*">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">生成预览</label>
+        <div style="height:200px;border:2px dashed #d1d5db;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--color-background-secondary);flex-direction:column;gap:8px;">
+          <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--color-text-tertiary)">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+            <line x1="14" y1="14" x2="14" y2="21"></line><line x1="18" y1="18" x2="21" y2="18"></line><line x1="21" y1="14" x2="21" y2="21"></line>
+          </svg>
+          <span style="font-size:11px;color:var(--color-text-tertiary);">点击下方按钮生成预览</span>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" data-close="qr-modal">取消</button>
+      <button class="btn btn-default" id="qr-preview">生成预览</button>
+      <button class="btn btn-primary" id="qr-submit">保存二维码</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 弹窗：上传附件 ====== -->
+<div class="modal-overlay" id="upload-modal" style="display:none;">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-header">
+      <h3 class="modal-title">上传附件</h3>
+      <button class="modal-close" data-close="upload-modal">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">文件<span class="required">*</span></label>
+        <div style="border:2px dashed #d1d5db;border-radius:8px;padding:28px;text-align:center;background:var(--color-background-secondary);cursor:pointer;transition:all 0.2s ease;" onmouseover="this.style.borderColor='#378ADD'" onmouseout="this.style.borderColor='#d1d5db'">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+          <p style="font-size:12px;color:var(--color-text-primary);margin:8px 0 0;font-weight:500;">点击或拖拽文件到此处上传</p>
+          <p style="font-size:11px;color:var(--color-text-tertiary);margin:4px 0 0;">支持 .docx .xlsx .exe .lnk .zip 等，单文件 ≤ 20MB</p>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">目标平台</label>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:11px;color:var(--color-text-primary);"><input type="checkbox" checked style="accent-color:#378ADD;"> Windows</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:11px;color:var(--color-text-primary);"><input type="checkbox" style="accent-color:#378ADD;"> macOS</label>
+          <label style="display:flex;align-items:center;gap:6px;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:11px;color:var(--color-text-primary);"><input type="checkbox" style="accent-color:#378ADD;"> Linux</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">免杀处理选项</label>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" checked style="accent-color:#378ADD;"> 代码混淆加密
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" checked style="accent-color:#378ADD;"> 多态外壳包裹
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" style="accent-color:#378ADD;"> 反沙箱检测
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:var(--color-text-primary);">
+            <input type="checkbox" style="accent-color:#378ADD;"> 反虚拟机检测
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-default" data-close="upload-modal">取消</button>
+      <button class="btn btn-primary" id="upload-submit">上传并处理</button>
+    </div>
+  </div>
+</div>
+
+<!-- Toast容器 -->
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+(function(){
+  // ========== Toast ==========
+  function showToast(msg, type){
+    var c = document.getElementById('toast-container');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type||'info');
+    t.innerHTML = (type==='success'?'✓':(type==='error'?'✕':'ⓘ')) + ' <span>' + msg + '</span>';
+    c.appendChild(t);
+    setTimeout(function(){
+      t.style.transition='opacity 0.3s,transform 0.3s';
+      t.style.opacity='0'; t.style.transform='translateX(30px)';
+      setTimeout(function(){ t.remove(); }, 300);
+    }, 2600);
+  }
+
+  // ========== Tab切换 ==========
+  var tabBreadcrumbs = {email:'素材模板 / 钓鱼邮件模板', landing:'素材模板 / 落地页管理', payload:'素材模板 / 附件与载荷'};
+  document.querySelectorAll('.tab[data-tab]').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      document.querySelectorAll('.tab[data-tab]').forEach(function(t){ t.classList.remove('active'); });
+      tab.classList.add('active');
+      var name = tab.getAttribute('data-tab');
+      ['email','landing','payload'].forEach(function(n){
+        var el = document.getElementById('tab-'+n);
+        if(el) el.style.display = (n === name) ? 'block' : 'none';
+      });
+      document.getElementById('breadcrumb').textContent = tabBreadcrumbs[name];
+    });
+  });
+
+  // ========== 模态框 ==========
+  document.querySelectorAll('[data-close]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      document.getElementById(btn.getAttribute('data-close')).style.display = 'none';
+    });
+  });
+  document.querySelectorAll('.modal-overlay').forEach(function(m){
+    m.addEventListener('click', function(e){ if(e.target === m) m.style.display = 'none'; });
+  });
+
+  // ========== 邮件模板数据 ==========
+  var emailData = [
+    {id:1, name:'OA密码过期提醒', cat:'upgrade', catText:'系统升级', subject:'【安全提醒】您的OA账号密码即将过期', sender:'OA系统管理员', stars:3, used:28, click:24.6, preview:'from OA系统管理员 · 02-20'},
+    {id:2, name:'年终奖金发放通知', cat:'finance', catText:'财务报销', subject:'关于2025年度年终奖金发放及个税申报', sender:'财务部-薪酬组', stars:4, used:19, click:31.2, preview:'from 财务部-薪酬组 · 01-15'},
+    {id:3, name:'春节红包抽奖活动', cat:'lottery', catText:'中奖', subject:'【恭喜】您获得春节红包抽奖资格，点击领取', sender:'员工关怀中心', stars:2, used:22, click:28.9, preview:'from 员工关怀中心 · 02-08'},
+    {id:4, name:'新员工入职材料提交', cat:'hr', catText:'HR通知', subject:'【HR】请于本周五前完成入职材料在线提交', sender:'人力资源部', stars:3, used:15, click:19.8, preview:'from 人力资源部 · 03-01'},
+    {id:5, name:'邮箱存储空间告警', cat:'alert', catText:'安全告警', subject:'【安全告警】您的邮箱存储已满98%，请立即清理', sender:'邮件系统运维', stars:3, used:17, click:22.4, preview:'from 邮件系统运维 · 03-12'},
+    {id:6, name:'中秋节福利领取', cat:'holiday', catText:'节假日', subject:'中秋福利：月饼礼盒领取通知（限员工本人）', sender:'行政部', stars:2, used:13, click:26.7, preview:'from 行政部 · 09-12'},
+    {id:7, name:'VPN账号异常登录', cat:'alert', catText:'安全告警', subject:'检测到您的VPN账号异地登录，请核实', sender:'信息安全部', stars:4, used:11, click:18.3, preview:'from 信息安全部 · 04-05'},
+    {id:8, name:'差旅报销单审批', cat:'finance', catText:'财务报销', subject:'您的差旅报销单待审批，请登录系统处理', sender:'财务共享中心', stars:3, used:14, click:20.1, preview:'from 财务共享中心 · 02-28'}
+  ];
+  var catColor = {holiday:'#EF9F27', upgrade:'#378ADD', lottery:'#1D9E75', hr:'#7F77DD', finance:'#D85A30', alert:'#A32D2D'};
+  var starText = {1:'初级', 2:'初级', 3:'中级', 4:'高级', 5:'专家'};
+
+  var emailCat = 'all';
+  var emailPage = 1;
+  var emailPageSize = 6;
+
+  function renderEmailGrid(){
+    var data = emailData.filter(function(d){
+      if(emailCat === 'all') return true;
+      return d.cat === emailCat;
+    });
+    var kw = (document.getElementById('email-search').value || '').trim().toLowerCase();
+    if(kw){ data = data.filter(function(d){ return d.name.toLowerCase().indexOf(kw) >= 0 || d.subject.toLowerCase().indexOf(kw) >= 0; }); }
+    var total = data.length;
+    var totalPages = Math.max(1, Math.ceil(total / emailPageSize));
+    if(emailPage > totalPages) emailPage = totalPages;
+    var start = (emailPage - 1) * emailPageSize;
+    var pageData = data.slice(start, start + emailPageSize);
+
+    var html = '';
+    pageData.forEach(function(d){
+      var cc = catColor[d.cat] || '#378ADD';
+      var starsHtml = '';
+      for(var i=1;i<=5;i++){ starsHtml += '<span style="color:'+(i<=d.stars?'#EF9F27':'#d1d5db')+';">★</span>'; }
+      html += '<div class="template-card" data-id="'+d.id+'">'+
+        '<div class="template-preview" style="height:auto;min-height:90px;flex-direction:column;align-items:stretch;justify-content:flex-start;padding:12px;gap:6px;background:linear-gradient(135deg,'+cc+'0d 0%,#f3f4f6 100%);">'+
+          '<div style="display:flex;align-items:center;gap:6px;font-size:11px;font-weight:500;color:var(--color-text-primary);">'+
+            '<div style="width:18px;height:18px;border-radius:4px;background:'+cc+';color:white;display:flex;align-items:center;justify-content:center;font-size:10px;">✉</div>'+
+            '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">'+d.subject+'</span>'+
+          '</div>'+
+          '<div style="font-size:10px;color:var(--color-text-tertiary);padding-left:24px;">'+d.preview+'</div>'+
+        '</div>'+
+        '<div class="template-meta">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
+            '<p class="template-name" style="margin:0;">'+d.name+'</p>'+
+            '<span class="badge" style="background:'+cc+'15;color:'+cc+';">'+d.catText+'</span>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--color-text-secondary);margin-bottom:8px;">'+
+            '<span>'+starsHtml+'</span>'+
+            '<span>'+starText[d.stars]+'</span>'+
+          '</div>'+
+          '<div style="display:flex;gap:10px;font-size:10px;color:var(--color-text-tertiary);margin-bottom:8px;border-top:1px dashed #e5e7eb;padding-top:6px;">'+
+            '<span>使用 '+d.used+' 次</span>'+
+            '<span style="color:'+cc+';">点击率 '+d.click+'%</span>'+
+          '</div>'+
+          '<div style="display:flex;gap:4px;flex-wrap:wrap;border-top:1px solid #f0f0f0;padding-top:8px;">'+
+            '<button class="btn-link btn-sm" data-eact="preview">预览</button>'+
+            '<button class="btn-link btn-sm" data-eact="edit">编辑</button>'+
+            '<button class="btn-link btn-sm" data-eact="test">测试发送</button>'+
+            '<button class="btn-link btn-sm" data-eact="copy">复制</button>'+
+            '<button class="btn-link btn-sm" style="color:#D85A30;" data-eact="delete">删除</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    });
+    if(pageData.length === 0){
+      html = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--color-text-tertiary);font-size:12px;">暂无匹配的模板</div>';
+    }
+    document.getElementById('email-grid').innerHTML = html;
+    document.getElementById('email-info').textContent = '共 ' + total + ' 条';
+
+    // 渲染分页
+    var pg = document.getElementById('email-pagination');
+    var pgh = '';
+    pgh += '<button class="page-btn" '+(emailPage===1?'disabled':'')+' onclick="window._epg('+(emailPage-1)+')">‹</button>';
+    for(var i=1;i<=totalPages;i++){ pgh += '<button class="page-btn '+(i===emailPage?'active':'')+'" onclick="window._epg('+i+')">'+i+'</button>'; }
+    pgh += '<button class="page-btn" '+(emailPage===totalPages?'disabled':'')+' onclick="window._epg('+(emailPage+1)+')">›</button>';
+    pg.innerHTML = pgh;
+
+    // 绑定操作
+    document.querySelectorAll('#email-grid [data-eact]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var act = btn.getAttribute('data-eact');
+        var id = btn.closest('.template-card').getAttribute('data-id');
+        var item = emailData.filter(function(x){ return x.id == id; })[0];
+        if(act === 'preview'){ showToast('正在预览模板「'+item.name+'」', 'info'); }
+        else if(act === 'edit'){ openEmailModal(item); }
+        else if(act === 'test'){ showToast('测试邮件已发送至您的邮箱', 'success'); }
+        else if(act === 'copy'){ showToast('已复制模板「'+item.name+'」', 'success'); }
+        else if(act === 'delete'){ if(confirm('确认删除模板「'+item.name+'」？')) showToast('模板已删除', 'error'); }
+      });
+    });
+  }
+  window._epg = function(p){ emailPage = p; renderEmailGrid(); };
+
+  // 邮件筛选
+  document.querySelectorAll('#tab-email .filter-tag').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('#tab-email .filter-tag').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      emailCat = tag.getAttribute('data-cat');
+      emailPage = 1; renderEmailGrid();
+    });
+  });
+  document.getElementById('email-search').addEventListener('input', function(){
+    clearTimeout(window._es);
+    window._es = setTimeout(renderEmailGrid, 300);
+  });
+
+  // ========== 邮件模板弹窗 ==========
+  function openEmailModal(item){
+    var modal = document.getElementById('email-modal');
+    document.getElementById('email-modal-title').textContent = item ? '编辑邮件模板' : '新建邮件模板';
+    document.getElementById('tpl-name').value = item ? item.name : '';
+    document.getElementById('tpl-cat').value = item ? item.cat : 'upgrade';
+    document.getElementById('tpl-subject').value = item ? item.subject : '';
+    document.getElementById('tpl-sender').value = item ? item.sender : '';
+    setStars(item ? item.stars : 3);
+    modal.style.display = 'flex';
+  }
+  // 星级选择
+  var currentStars = 3;
+  function setStars(n){
+    currentStars = n;
+    document.querySelectorAll('#tpl-stars .star').forEach(function(s){
+      var v = parseInt(s.getAttribute('data-star'));
+      s.style.color = v <= n ? '#EF9F27' : '#d1d5db';
+    });
+    document.getElementById('star-text').textContent = starText[n];
+  }
+  document.querySelectorAll('#tpl-stars .star').forEach(function(s){
+    s.addEventListener('click', function(){ setStars(parseInt(s.getAttribute('data-star'))); });
+  });
+  document.getElementById('btn-new-email').addEventListener('click', function(){ openEmailModal(null); });
+  document.getElementById('email-save-draft').addEventListener('click', function(){
+    if(!document.getElementById('tpl-name').value){ showToast('请填写模板名称', 'error'); return; }
+    document.getElementById('email-modal').style.display = 'none';
+    showToast('模板草稿已保存', 'success');
+  });
+  document.getElementById('email-save-test').addEventListener('click', function(){
+    if(!document.getElementById('tpl-name').value){ showToast('请填写模板名称', 'error'); return; }
+    document.getElementById('email-modal').style.display = 'none';
+    showToast('模板已保存，测试邮件已发送', 'success');
+  });
+
+  // ========== 落地页数据 ==========
+  var landingData = [
+    {id:1, name:'企业邮箱登录页', type:'mail', typeText:'邮箱登录', fields:3, collect:5, grad:'#378ADD', used:18},
+    {id:2, name:'OA协同办公登录', type:'oa', typeText:'OA系统', fields:4, collect:6, grad:'#7F77DD', used:15},
+    {id:3, name:'企业网盘认证页', type:'pan', typeText:'网盘认证', fields:3, collect:4, grad:'#0D9488', used:9},
+    {id:4, name:'薪资查询系统登录', type:'custom', typeText:'自定义', fields:2, collect:3, grad:'#1D9E75', used:12},
+    {id:5, name:'统一支付平台', type:'pay', typeText:'支付页面', fields:4, collect:7, grad:'#D85A30', used:7},
+    {id:6, name:'VPN接入认证页', type:'custom', typeText:'自定义', fields:3, collect:4, grad:'#EF9F27', used:11}
+  ];
+  var ltypeColor = {mail:'#378ADD', oa:'#7F77DD', pan:'#0D9488', pay:'#D85A30', custom:'#1D9E75'};
+
+  var landingType = 'all';
+  var landingPage = 1;
+  var landingPageSize = 6;
+
+  function renderLandingGrid(){
+    var data = landingData.filter(function(d){
+      if(landingType === 'all') return true;
+      return d.type === landingType;
+    });
+    var kw = (document.getElementById('landing-search').value || '').trim().toLowerCase();
+    if(kw){ data = data.filter(function(d){ return d.name.toLowerCase().indexOf(kw) >= 0; }); }
+    var total = data.length;
+    var totalPages = Math.max(1, Math.ceil(total / landingPageSize));
+    if(landingPage > totalPages) landingPage = totalPages;
+    var start = (landingPage - 1) * landingPageSize;
+    var pageData = data.slice(start, start + landingPageSize);
+
+    var html = '';
+    pageData.forEach(function(d){
+      var cc = ltypeColor[d.type] || '#378ADD';
+      html += '<div class="template-card" data-id="'+d.id+'">'+
+        '<div class="template-preview" style="height:140px;flex-direction:column;align-items:center;justify-content:center;padding:12px;background:linear-gradient(135deg,'+cc+'1a 0%,#f3f4f6 100%);">'+
+          '<div style="width:80%;background:white;border-radius:6px;padding:8px 10px;box-shadow:0 1px 3px rgba(0,0,0,0.08);">'+
+            '<div style="height:8px;width:50%;background:'+cc+';border-radius:2px;margin-bottom:6px;"></div>'+
+            '<div style="height:6px;width:100%;background:#e5e7eb;border-radius:2px;margin-bottom:4px;"></div>'+
+            '<div style="height:6px;width:100%;background:#e5e7eb;border-radius:2px;margin-bottom:6px;"></div>'+
+            '<div style="height:14px;width:60%;background:'+cc+';border-radius:3px;margin:0 auto;"></div>'+
+          '</div>'+
+          '<span style="font-size:10px;color:var(--color-text-tertiary);margin-top:8px;">'+d.typeText+' 登录表单</span>'+
+        '</div>'+
+        '<div class="template-meta">'+
+          '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">'+
+            '<p class="template-name" style="margin:0;">'+d.name+'</p>'+
+            '<span class="badge" style="background:'+cc+'15;color:'+cc+';">'+d.typeText+'</span>'+
+          '</div>'+
+          '<div style="display:flex;gap:10px;font-size:10px;color:var(--color-text-tertiary);margin-bottom:8px;border-top:1px dashed #e5e7eb;padding-top:6px;">'+
+            '<span>表单字段 '+d.fields+' 项</span>'+
+            '<span>收集项 '+d.collect+' 项</span>'+
+            '<span>使用 '+d.used+' 次</span>'+
+          '</div>'+
+          '<div style="display:flex;gap:4px;flex-wrap:wrap;border-top:1px solid #f0f0f0;padding-top:8px;">'+
+            '<button class="btn-link btn-sm" data-lact="preview">预览</button>'+
+            '<button class="btn-link btn-sm" data-lact="edit">编辑</button>'+
+            '<button class="btn-link btn-sm" data-lact="clone">克隆</button>'+
+            '<button class="btn-link btn-sm" style="color:#D85A30;" data-lact="delete">删除</button>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+    });
+    if(pageData.length === 0){
+      html = '<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--color-text-tertiary);font-size:12px;">暂无匹配的落地页</div>';
+    }
+    document.getElementById('landing-grid').innerHTML = html;
+    document.getElementById('landing-info').textContent = '共 ' + total + ' 条';
+
+    var pg = document.getElementById('landing-pagination');
+    var pgh = '';
+    pgh += '<button class="page-btn" '+(landingPage===1?'disabled':'')+' onclick="window._lpg('+(landingPage-1)+')">‹</button>';
+    for(var i=1;i<=totalPages;i++){ pgh += '<button class="page-btn '+(i===landingPage?'active':'')+'" onclick="window._lpg('+i+')">'+i+'</button>'; }
+    pgh += '<button class="page-btn" '+(landingPage===totalPages?'disabled':'')+' onclick="window._lpg('+(landingPage+1)+')">›</button>';
+    pg.innerHTML = pgh;
+
+    document.querySelectorAll('#landing-grid [data-lact]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var act = btn.getAttribute('data-lact');
+        var id = btn.closest('.template-card').getAttribute('data-id');
+        var item = landingData.filter(function(x){ return x.id == id; })[0];
+        if(act === 'preview'){ showToast('正在预览落地页「'+item.name+'」', 'info'); }
+        else if(act === 'edit'){ openLandingModal(item); }
+        else if(act === 'clone'){ showToast('已复制落地页「'+item.name+'」', 'success'); }
+        else if(act === 'delete'){ if(confirm('确认删除落地页「'+item.name+'」？')) showToast('落地页已删除', 'error'); }
+      });
+    });
+  }
+  window._lpg = function(p){ landingPage = p; renderLandingGrid(); };
+
+  document.querySelectorAll('#tab-landing .filter-tag').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('#tab-landing .filter-tag').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      landingType = tag.getAttribute('data-ltype');
+      landingPage = 1; renderLandingGrid();
+    });
+  });
+  document.getElementById('landing-search').addEventListener('input', function(){
+    clearTimeout(window._ls);
+    window._ls = setTimeout(renderLandingGrid, 300);
+  });
+
+  // 落地页弹窗
+  function openLandingModal(item){
+    var modal = document.getElementById('landing-modal');
+    document.getElementById('landing-modal-title').textContent = item ? '编辑落地页' : '新建落地页';
+    document.getElementById('lp-name').value = item ? item.name : '';
+    document.getElementById('lp-type').value = item ? item.type : 'mail';
+    modal.style.display = 'flex';
+  }
+  document.getElementById('btn-new-landing').addEventListener('click', function(){ openLandingModal(null); });
+  document.getElementById('btn-clone-landing').addEventListener('click', function(){
+    document.getElementById('clone-modal').style.display = 'flex';
+  });
+  document.getElementById('clone-submit').addEventListener('click', function(){
+    if(!document.getElementById('clone-url').value){ showToast('请填写源页面URL', 'error'); return; }
+    if(!document.getElementById('clone-name').value){ showToast('请填写页面名称', 'error'); return; }
+    document.getElementById('clone-modal').style.display = 'none';
+    showToast('页面克隆任务已提交，预计 30 秒后完成', 'success');
+  });
+  document.getElementById('landing-submit').addEventListener('click', function(){
+    if(!document.getElementById('lp-name').value){ showToast('请填写页面名称', 'error'); return; }
+    document.getElementById('landing-modal').style.display = 'none';
+    showToast('落地页已保存', 'success');
+  });
+
+  // ========== 附件载荷数据 ==========
+  var payloadData = [
+    {id:1, name:'2025薪酬调整通知.docx', type:'macro', typeText:'宏文档', size:'84 KB', platform:'Windows', evade:82, used:16, status:'enabled', icon:'📄', grad:'#378ADD'},
+    {id:2, name:'invoice_q3_2025.xlsm', type:'macro', typeText:'宏文档', size:'156 KB', platform:'Windows/macOS', evade:75, used:12, status:'enabled', icon:'📊', grad:'#378ADD'},
+    {id:3, name:'员工通讯录更新.exe', type:'exe', typeText:'可执行文件', size:'1.2 MB', platform:'Windows', evade:68, used:9, status:'enabled', icon:'⚙', grad:'#1D9E75'},
+    {id:4, name:'VPN客户端安装包.exe', type:'exe', typeText:'可执行文件', size:'2.8 MB', platform:'Windows', evade:71, used:7, status:'enabled', icon:'⚙', grad:'#1D9E75'},
+    {id:5, name:'扫码登录认证二维码.png', type:'qr', typeText:'二维码', size:'24 KB', platform:'全平台', evade:96, used:21, status:'enabled', icon:'▦', grad:'#7F77DD'},
+    {id:6, name:'企业邮箱升级二维码.png', type:'qr', typeText:'二维码', size:'28 KB', platform:'全平台', evade:93, used:18, status:'enabled', icon:'▦', grad:'#7F77DD'},
+    {id:7, name:'会议纪要.lnk', type:'other', typeText:'其他', size:'2 KB', platform:'Windows', evade:88, used:5, status:'disabled', icon:'🔗', grad:'#EF9F27'},
+    {id:8, name:'社保查询系统.jar', type:'exe', typeText:'可执行文件', size:'420 KB', platform:'Windows/Linux', evade:64, used:4, status:'enabled', icon:'☕', grad:'#1D9E75'}
+  ];
+  var ptypeColor = {macro:'#378ADD', exe:'#1D9E75', qr:'#7F77DD', other:'#EF9F27'};
+
+  var payloadType = 'all';
+  var payloadPage = 1;
+  var payloadPageSize = 8;
+
+  function renderPayloadTable(){
+    var data = payloadData.filter(function(d){
+      if(payloadType === 'all') return true;
+      return d.type === payloadType;
+    });
+    var kw = (document.getElementById('payload-search').value || '').trim().toLowerCase();
+    if(kw){ data = data.filter(function(d){ return d.name.toLowerCase().indexOf(kw) >= 0; }); }
+    var total = data.length;
+    var totalPages = Math.max(1, Math.ceil(total / payloadPageSize));
+    if(payloadPage > totalPages) payloadPage = totalPages;
+    var start = (payloadPage - 1) * payloadPageSize;
+    var pageData = data.slice(start, start + payloadPageSize);
+
+    var html = '';
+    pageData.forEach(function(d){
+      var cc = ptypeColor[d.type] || '#378ADD';
+      var evColor = d.evade >= 85 ? '#1D9E75' : (d.evade >= 70 ? '#EF9F27' : '#D85A30');
+      var stCls = d.status === 'enabled' ? 'background:#1D9E7515;color:#1D9E75;' : 'background:#8c8c8c15;color:#8c8c8c;';
+      var stText = d.status === 'enabled' ? '启用' : '禁用';
+      var stDot = d.status === 'enabled' ? '#1D9E75' : '#8c8c8c';
+      html += '<tr data-id="'+d.id+'">'+
+        '<td><div style="display:flex;align-items:center;gap:8px;">'+
+          '<span style="width:24px;height:24px;border-radius:5px;background:'+cc+'15;color:'+cc+';display:flex;align-items:center;justify-content:center;font-size:13px;">'+d.icon+'</span>'+
+          '<span style="font-weight:500;font-size:12px;">'+d.name+'</span>'+
+        '</div></td>'+
+        '<td><span class="badge" style="background:'+cc+'15;color:'+cc+';">'+d.typeText+'</span></td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+d.size+'</td>'+
+        '<td style="font-size:11px;color:var(--color-text-secondary);">'+d.platform+'</td>'+
+        '<td>'+
+          '<div style="display:flex;align-items:center;gap:6px;">'+
+            '<div class="bar-track"><div class="bar-fill" style="width:'+d.evade+'%;background:'+evColor+';"></div></div>'+
+            '<span style="font-size:11px;font-weight:500;color:'+evColor+';width:36px;text-align:right;">'+d.evade+'%</span>'+
+          '</div>'+
+        '</td>'+
+        '<td style="font-size:11px;color:var(--color-text-primary);font-weight:500;">'+d.used+'</td>'+
+        '<td><span class="badge" style="'+stCls+'"><span class="dot live-dot" style="background:'+stDot+';margin-right:4px;"></span>'+stText+'</span></td>'+
+        '<td style="text-align:right;white-space:nowrap;">'+
+          '<button class="btn-link btn-sm" data-pact="download">下载</button>'+
+          '<button class="btn-link btn-sm" data-pact="edit">编辑</button>'+
+          '<button class="btn-link btn-sm" style="color:#EF9F27;" data-pact="toggle">'+(d.status==='enabled'?'禁用':'启用')+'</button>'+
+          '<button class="btn-link btn-sm" style="color:#D85A30;" data-pact="delete">删除</button>'+
+        '</td>'+
+      '</tr>';
+    });
+    if(pageData.length === 0){
+      html = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--color-text-tertiary);font-size:12px;">暂无匹配的数据</td></tr>';
+    }
+    document.getElementById('payload-tbody').innerHTML = html;
+    document.getElementById('payload-info').textContent = '共 ' + total + ' 条';
+
+    var pg = document.getElementById('payload-pagination');
+    var pgh = '';
+    pgh += '<button class="page-btn" '+(payloadPage===1?'disabled':'')+' onclick="window._ppg('+(payloadPage-1)+')">‹</button>';
+    for(var i=1;i<=totalPages;i++){ pgh += '<button class="page-btn '+(i===payloadPage?'active':'')+'" onclick="window._ppg('+i+')">'+i+'</button>'; }
+    pgh += '<button class="page-btn" '+(payloadPage===totalPages?'disabled':'')+' onclick="window._ppg('+(payloadPage+1)+')">›</button>';
+    pg.innerHTML = pgh;
+
+    document.querySelectorAll('#payload-tbody [data-pact]').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        var act = btn.getAttribute('data-pact');
+        var id = btn.closest('tr').getAttribute('data-id');
+        var item = payloadData.filter(function(x){ return x.id == id; })[0];
+        if(act === 'download'){ showToast('正在下载「'+item.name+'」', 'info'); }
+        else if(act === 'edit'){ showToast('正在编辑「'+item.name+'」配置', 'info'); }
+        else if(act === 'toggle'){
+          var en = item.status === 'enabled';
+          showToast('「'+item.name+'」已'+(en?'禁用':'启用'), en?'info':'success');
+          item.status = en ? 'disabled' : 'enabled';
+          renderPayloadTable();
+        }
+        else if(act === 'delete'){ if(confirm('确认删除「'+item.name+'」？')) showToast('附件已删除', 'error'); }
+      });
+    });
+  }
+  window._ppg = function(p){ payloadPage = p; renderPayloadTable(); };
+
+  document.querySelectorAll('#tab-payload .filter-tag').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('#tab-payload .filter-tag').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      payloadType = tag.getAttribute('data-ptype');
+      payloadPage = 1; renderPayloadTable();
+    });
+  });
+  document.getElementById('payload-search').addEventListener('input', function(){
+    clearTimeout(window._ps);
+    window._ps = setTimeout(renderPayloadTable, 300);
+  });
+
+  // 二维码弹窗
+  document.querySelectorAll('#qr-modal .option-card').forEach(function(c){
+    c.addEventListener('click', function(){
+      document.querySelectorAll('#qr-modal .option-card').forEach(function(x){ x.classList.remove('selected'); });
+      c.classList.add('selected');
+    });
+  });
+  document.getElementById('btn-qr').addEventListener('click', function(){
+    document.getElementById('qr-modal').style.display = 'flex';
+  });
+  document.getElementById('qr-preview').addEventListener('click', function(){
+    if(!document.getElementById('qr-content').value){ showToast('请输入二维码内容', 'error'); return; }
+    showToast('二维码预览已生成', 'success');
+  });
+  document.getElementById('qr-submit').addEventListener('click', function(){
+    if(!document.getElementById('qr-content').value){ showToast('请输入二维码内容', 'error'); return; }
+    document.getElementById('qr-modal').style.display = 'none';
+    showToast('二维码已保存到附件库', 'success');
+  });
+
+  // 上传弹窗
+  document.getElementById('btn-upload').addEventListener('click', function(){
+    document.getElementById('upload-modal').style.display = 'flex';
+  });
+  document.getElementById('upload-submit').addEventListener('click', function(){
+    document.getElementById('upload-modal').style.display = 'none';
+    showToast('附件已上传，免杀处理中，预计 1 分钟后完成', 'success');
+  });
+
+  // 初始渲染
+  renderEmailGrid();
+  renderLandingGrid();
+  renderPayloadTable();
+})();
+</script>
+
+<!-- Copilot FAB -->
+<div class="copilot-fab" id="copilotFab" onclick="Copilot.open()">
+  <span class="fab-pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg>
+</div>
+<!-- Copilot Drawer -->
+<div class="copilot-overlay" id="copilotOverlay" onclick="Copilot.close()"></div>
+<div class="copilot-drawer" id="copilotDrawer" data-page="素材模板">
+  <div class="copilot-header">
+    <div class="copilot-header-left">
+      <div class="copilot-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg></div>
+      <div>
+        <div class="copilot-header-title">AI Copilot</div>
+        <div class="copilot-header-sub" id="copilotContext">当前上下文：素材模板</div>
+      </div>
+    </div>
+    <button class="copilot-close" onclick="Copilot.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="copilot-sessions">
+    <div class="copilot-session-btn active" onclick="Copilot.switchSession(this,'current')">当前会话</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s1')">演练分析</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s2')">模板生成</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s3')">风险报告</div>
+    <div class="copilot-session-btn" onclick="Copilot.newSession()">+ 新建</div>
+  </div>
+  <div class="copilot-messages" id="copilotMessages">
+    <div class="copilot-empty" id="copilotEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h4>AI Copilot 智能助手</h4>
+      <p>我是您的安全演练AI助手，可以帮您分析演练数据、生成模板、撰写报告等。<br/>下方快捷问题可直接点击使用。</p>
+    </div>
+  </div>
+  <div class="copilot-draft-banner" id="copilotDraftBanner" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span>AI生成内容处于草稿态，需人工确认后生效。审核记录将进入审计日志。</span>
+  </div>
+  <div class="copilot-input-area">
+    <div class="copilot-quick-tags" id="copilotQuickTags">
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">生成钓鱼模板</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">模板效果分析</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">推荐落地页</span>
+    </div>
+    <div class="copilot-input-wrap">
+      <textarea class="copilot-input" id="copilotInput" placeholder="输入您的问题..." rows="1" onkeydown="Copilot.onKeydown(event)" oninput="Copilot.autoResize(this)"></textarea>
+      <button class="copilot-send" id="copilotSend" onclick="Copilot.send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+if(typeof showToast!=='function'){function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}}
+
+// ===== Copilot 全局AI助手 =====
+var Copilot=(function(){
+  var drawer=document.getElementById('copilotDrawer');
+  var overlay=document.getElementById('copilotOverlay');
+  var messagesEl=document.getElementById('copilotMessages');
+  var inputEl=document.getElementById('copilotInput');
+  var sendBtn=document.getElementById('copilotSend');
+  var emptyEl=document.getElementById('copilotEmpty');
+  var draftBanner=document.getElementById('copilotDraftBanner');
+  var pageContext=drawer?drawer.getAttribute('data-page'):'';
+  var isGenerating=false;
+  var messages=[];
+
+  function open(){if(!drawer)return;drawer.classList.add('open');overlay.classList.add('show');setTimeout(function(){inputEl&&inputEl.focus();},350);}
+  function close(){if(!drawer)return;drawer.classList.remove('open');overlay.classList.remove('show');}
+  function switchSession(btn,key){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');btn.classList.add('active');showToast('已切换到会话：'+btn.textContent,'info');}
+  function newSession(){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');messages=[];if(emptyEl)emptyEl.style.display='block';messagesEl.innerHTML='';messagesEl.appendChild(emptyEl);showToast('已创建新会话','info');}
+  function quickAsk(text){if(!inputEl)return;inputEl.value=text;autoResize(inputEl);send();}
+  function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+  function autoResize(el){el.style.height='38px';el.style.height=Math.min(el.scrollHeight,100)+'px';}
+  function addMessage(role,content,opts){
+    opts=opts||{};
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');msg.className='copilot-msg '+role;
+    var avatar=document.createElement('div');avatar.className='copilot-msg-avatar';avatar.textContent=role==='ai'?'AI':'我';
+    var bubble=document.createElement('div');bubble.className='copilot-msg-bubble';
+    if(role==='ai'){bubble.innerHTML=renderMarkdown(content);}else{bubble.textContent=content;}
+    msg.appendChild(avatar);msg.appendChild(bubble);
+    if(role==='ai'&&opts.showContext){var badge=document.createElement('div');badge.className='copilot-context-badge';badge.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>上下文：'+pageContext;bubble.appendChild(badge);}
+    if(role==='ai'&&opts.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';opts.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}
+    if(role==='ai'&&opts.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+opts.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+opts.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}
+    messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;return bubble;
+  }
+  function showTyping(){if(emptyEl)emptyEl.style.display='none';var msg=document.createElement('div');msg.className='copilot-msg ai';msg.id='copilotTypingMsg';msg.innerHTML='<div class="copilot-msg-avatar">AI</div><div class="copilot-msg-bubble"><div class="copilot-typing"><span></span><span></span><span></span></div></div>';messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;}
+  function hideTyping(){var t=document.getElementById('copilotTypingMsg');if(t)t.remove();}
+  function typewriter(el,text,opts){opts=opts||{};var i=0;var speed=15;el.innerHTML='';function type(){if(i<text.length){el.innerHTML=renderMarkdown(text.substring(0,i+1));i++;messagesEl.scrollTop=messagesEl.scrollHeight;setTimeout(type,speed);}else{isGenerating=false;sendBtn.disabled=false;if(opts.onComplete)opts.onComplete();}}type();}
+  function renderMarkdown(text){var html=text;html=html.replace(/```([\s\S]*?)```/g,function(m,c){return '<pre style="background:#1a1a1a;color:#0f0;padding:8px 12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:8px 0"><code>'+c.replace(/</g,'&lt;')+'</code></pre>';});html=html.replace(/`([^`]+)`/g,'<code>$1</code>');html=html.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');html=html.replace(/^### (.+)$/gm,'<h4>$1</h4>');html=html.replace(/^- (.+)$/gm,'<li>$1</li>');html=html.replace(/(<li>.*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';});html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');html=html.replace(/\n/g,'<br>');return html;}
+  function send(){if(isGenerating)return;var text=inputEl.value.trim();if(!text)return;addMessage('user',text);inputEl.value='';inputEl.style.height='38px';isGenerating=true;sendBtn.disabled=true;showTyping();setTimeout(function(){hideTyping();var response=generateResponse(text);var bubble=addMessage('ai','',{showContext:messages.length<=1});typewriter(bubble,response.text,{onComplete:function(){if(response.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';response.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}if(response.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+response.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+response.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}messagesEl.scrollTop=messagesEl.scrollHeight;}});},800);}
+  function generateResponse(text){
+    var pageResponses={
+      '数据概览':{text:'**当前页面：数据概览**\n\n根据最新数据分析：\n\n- 本月中招率 **18.5%**，较上月下降3.2%，趋势向好\n- **财务部**中招率最高（32.1%），建议优先安排培训\n- 举报率22.3%，员工安全意识在提升\n- 培训通过率86.2%，仍有提升空间\n\n### 建议措施\n1. 针对财务部开展专项钓鱼演练\n2. 推送财务类钓鱼识别培训课程\n3. 对连续中招人员启动一对一辅导',actions:[{label:'一键生成报告'},{label:'创建财务部演练'},{label:'推荐培训课程'}]},
+      '演练管理':{text:'**当前页面：演练管理**\n\n最近一次演练「Q3财务钓鱼演练」分析：\n\n| 指标 | 数值 | 评价 |\n|------|------|------|\n| 发送数 | 580 | - |\n| 打开率 | 72.3% | 偏高 |\n| 点击率 | 28.1% | 风险高 |\n| 中招率 | 18.6% | 需关注 |\n| 举报率 | 15.2% | 正常 |\n\n### 关键发现\n- **邮件主题**「紧急：财务报销确认」点击率异常高\n- 发送后2小时内集中中招，说明员工缺乏犹豫期\n- 3人重复中招（已标记为高风险）',actions:[{label:'查看详情'},{label:'生成演练报告'},{label:'标记高危人员'}]},
+      '素材模板':{text:'**当前页面：素材模板**\n\n根据历史演练数据，为您推荐模板生成方案：\n\n### 高效模板特征\n- **场景**：节假日福利领取（点击率平均34.2%）\n- **语气**：紧急+友好混合（打开率提升25%）\n- **发件人**：伪装HR部门（信任度高）\n\n已为您生成草稿模板，请审核确认后入库：',draft:{title:'AI生成模板：节假日福利领取',content:'主题：【福利】2026年中秋礼品领取通知\n发件人：HR-福利管理 <hr-welfare@company.com>\n正文：尊敬的同事，2026年中秋节礼品领取通道已开放，请点击下方链接选择您的礼品...\n预估点击率：32%',actions:true}},
+      '发送配置':{text:'**当前页面：发送配置**\n\n发送通道健康度检查：\n\n- **平台默认SMTP** — 送达率 98.2% ✅\n- **Office365 (EWS)** — 送达率 95.7% ✅\n- **阿里云短信** — 送达率 99.1% ✅\n\n### DNS记录状态\n- SPF ✅ 已配置\n- DKIM ✅ 已配置\n- DMARC ⚠️ 建议添加`p=quarantine`策略\n\n建议：为提升送达率可信度，请完善DMARC记录。',actions:[{label:'查看DMARC配置指引'}]},
+      '用户和组':{text:'**当前页面：用户和组**\n\n高风险人员分析（共86人）：\n\n### 风险分布\n- **极高危险**（风险值>80）：12人\n- **高危险**（风险值60-80）：28人\n- **中危险**（风险值40-60）：46人\n\n### Top 3 高危人员\n1. **王某某**（财务部）— 3次中招，风险值92\n2. **李某**（市场部）— 2次中招+1次误报，风险值87\n3. **张某**（行政部）— 2次中招，风险值85\n\n建议立即安排专项培训。',actions:[{label:'查看风险画像'},{label:'分配培训计划'},{label:'创建针对演练'}]},
+      '安全培训':{text:'**当前页面：安全培训**\n\n培训效果分析：\n\n- 课程完成率：**86.2%**\n- 考试通过率：**78.5%**\n- 培训后中招率下降：**42.3%**\n\n### 薄弱知识点\n1. 邮件头信息识别（错误率61%）\n2. 短链接安全判断（错误率48%）\n3. 附件安全检查（错误率35%）\n\n已为您生成针对性题库草稿，请审核：',draft:{title:'AI生成题库：邮件头识别专项',content:'1. 以下哪项邮件头字段可用于验证发件人身份？\nA. Subject  B. X-Powered-By  C. Received-SPF  D. Date\n答案：C\n\n2. DKIM签名验证失败说明什么？\nA. 邮件被篡改  B. 发件人未认证  C. 服务器宕机  D. 以上都对\n答案：A',actions:true}},
+      '数据报表':{text:'**当前页面：数据报表**\n\n跨演练趋势分析：\n\n### 中招率变化趋势\n- 2026 Q1平均中招率：**24.5%**\n- 2026 Q2平均中招率：**21.2%**\n- 2026 Q3平均中招率：**18.5%**\n\n**整体下降趋势明显**，季度环比下降约14%。\n\n### 最有效改进场景\n- 系统升级类：中招率从31%→18%（下降42%）\n- 财务类：中招率从28%→22%（下降21%）\n\n### 仍需关注\n- 节假日类中招率仅下降8%，建议加强场景化培训',actions:[{label:'导出分析报告'},{label:'生成趋势图表'},{label:'生成改进方案'}]},
+      '邮件举报':{text:'**当前页面：邮件举报**\n\n举报数据分析：\n\n- 本月举报总数：**186次**\n- 演练邮件举报：**142次**（76.3%）\n- 真实钓鱼举报：**32次**（17.2%）\n- 误报：**12次**（6.5%）\n\n### 举报响应时间\n- 平均响应：**4.2分钟**（优秀）\n- 最快：**47秒**\n- 最慢：**23分钟**\n\n举报率持续提升，说明员工安全意识在增强。建议对Top举报者给予积分奖励。',actions:[{label:'查看积分排行'},{label:'生成举报报告'}]},
+      '系统设置':{text:'**当前页面：系统设置**\n\n系统安全配置检查：\n\n### 检查结果\n- 两步验证：✅ 已启用\n- 密码策略：✅ 满足复杂度要求\n- IP白名单：✅ 已配置12个IP\n- 数据加密：✅ 已启用\n- 审计模式：✅ 已启用\n\n### 建议优化\n- ⚠️ 会话超时设置为60分钟，建议缩短至30分钟\n- ⚠️ 数据留存期限为1年，建议根据合规要求调整为2年\n- 💡 建议启用SIEM推送，实现实时告警',actions:[{label:'应用安全建议'}]},
+      '智能助手':{text:'**当前页面：智能助手**\n\nAI能力使用统计：\n\n- 本月API调用：**3,420次**\n- Token消耗：**2.1M**\n- 费用预估：**¥186**\n\n### 各功能使用占比\n1. AI对话助手：48%\n2. 智能分析报告：28%\n3. AI模板生成：18%\n4. 培训推荐：6%\n\n所有AI生成内容均已进入审核队列，确保安全合规。',actions:[{label:'查看审核队列'},{label:'优化AI配置'}]},
+      'API开放平台':{text:'**当前页面：API开放平台**\n\nAPI调用分析：\n\n- 本月总调用：**12,580次**\n- 成功率：**99.2%**\n- 平均响应：**128ms**\n\n### Top 3 调用API\n1. `POST /api/v1/drills` — 4,200次\n2. `GET /api/v1/reports/drills/{id}` — 3,150次\n3. `GET /api/v1/users/risk` — 2,830次\n\n### 异常调用\n- ⚠️ AppID `app_xxxx` 在凌晨3点有异常高频调用，建议检查\n- ⚠️ 2次401认证失败来自IP `10.12.34.56`',actions:[{label:'查看异常日志'},{label:'设置调用限制'}]}
+    };
+    if(text.indexOf('报告')>-1||text.indexOf('分析')>-1){return pageResponses[pageContext]||pageResponses['数据概览'];}
+    if(text.indexOf('生成')>-1||text.indexOf('模板')>-1||text.indexOf('创建')>-1){return pageResponses[pageContext]||pageResponses['素材模板'];}
+    if(text.indexOf('风险')>-1||text.indexOf('高危')>-1){return pageResponses[pageContext]||pageResponses['用户和组'];}
+    return pageResponses[pageContext]||{text:'我是您的AI Copilot助手。当前页面上下文：**'+pageContext+'**。\n\n我可以帮您：\n- 分析当前页面数据\n- 生成报告和建议\n- 创建模板和课程\n- 风险评估和预警\n\n请问有什么可以帮您的？',actions:[]};
+  }
+  function confirmDraft(btn){var card=btn.closest('.copilot-review-card');var badge=card.querySelector('.copilot-review-badge');badge.className='copilot-review-badge confirmed';badge.textContent='已确认入库';var actions=card.querySelector('.copilot-review-actions');actions.innerHTML='<span style="font-size:11px;color:#1D9E75">✓ 审核通过 · 操作人：张管理 · '+new Date().toLocaleString()+'</span>';showToast('草稿已确认入库，审核记录已写入审计日志','success');draftBanner.style.display='none';}
+  function discardDraft(btn){var card=btn.closest('.copilot-review-card');card.style.opacity='0.5';card.querySelector('.copilot-review-actions').innerHTML='<span style="font-size:11px;color:#8c8c8c">已丢弃</span>';showToast('草稿已丢弃','info');}
+  return{open:open,close:close,switchSession:switchSession,newSession:newSession,quickAsk:quickAsk,onKeydown:onKeydown,autoResize:autoResize,send:send,confirmDraft:confirmDraft,discardDraft:discardDraft};
+})();
+</script>

@@ -1,0 +1,1801 @@
+<h2 class="sr-only">钓鱼演练平台系统设置页面，包含权限管理、审计日志、系统集成和基础参数设置四个模块</h2>
+<style>
+  :root{
+    --color-background-primary:#ffffff;
+    --color-background-secondary:#f5f5f5;
+    --color-background-tertiary:#eeeeee;
+    --color-background-info:rgba(55,138,221,0.1);
+    --color-text-primary:#1a1a1a;
+    --color-text-secondary:#595959;
+    --color-text-tertiary:#8c8c8c;
+    --color-text-info:#378ADD;
+    --color-text-success:#1D9E75;
+    --color-border-tertiary:#e8e8e8;
+    --color-border-info:#378ADD;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  }
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  /* 基础组件 */
+  .nav-item{display:flex;align-items:center;gap:6px;padding:7px 10px;font-size:12px;color:var(--color-text-secondary);border-radius:6px;margin-bottom:2px;transition:all 0.2s ease;cursor:pointer;position:relative;overflow:hidden}
+  .nav-item::before{content:'';position:absolute;left:0;top:0;width:3px;height:100%;background:var(--color-text-info);transform:scaleY(0);transition:transform 0.2s ease}
+  .nav-item:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .nav-item:hover::before{transform:scaleY(1)}
+  .nav-item.active{background:var(--color-background-info);color:var(--color-text-info);font-weight:500}
+  .nav-item.active::before{transform:scaleY(1)}
+  .nav-icon{width:14px;height:14px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+
+  .card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:12px;padding:14px 16px;transition:all 0.3s ease;border-top:3px solid transparent}
+  .card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-1px)}
+  .card-blue{border-top-color:#378ADD;background:linear-gradient(180deg,rgba(55,138,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-green{border-top-color:#1D9E75;background:linear-gradient(180deg,rgba(29,158,117,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-orange{border-top-color:#D85A30;background:linear-gradient(180deg,rgba(216,90,48,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-purple{border-top-color:#7F77DD;background:linear-gradient(180deg,rgba(127,119,221,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-red{border-top-color:#A32D2D;background:linear-gradient(180deg,rgba(163,45,45,0.03) 0%,var(--color-background-primary) 30%)}
+  .card-teal{border-top-color:#0D9488;background:linear-gradient(180deg,rgba(13,148,136,0.03) 0%,var(--color-background-primary) 30%)}
+
+  .card-title{font-size:14px;font-weight:500;color:var(--color-text-primary);margin:0 0 14px 0;display:flex;align-items:center;justify-content:space-between}
+  .card-title-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;flex-shrink:0;margin-right:8px}
+
+  .tab{padding:3px 10px;font-size:11px;border:0.5px solid #d1d5db;border-radius:6px;color:var(--color-text-secondary);background:transparent;cursor:pointer;transition:all 0.2s ease}
+  .tab:hover{background:var(--color-background-secondary)}
+  .tab:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,0.1)}
+  .tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2);transform:translateY(1px)}
+
+  .badge{padding:2px 8px;border-radius:4px;font-size:11px;display:inline-block;white-space:nowrap}
+  .dot{width:6px;height:6px;border-radius:50%;display:inline-block;flex-shrink:0}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+  .live-dot{animation:pulse 2s infinite}
+  .bar-track{background:var(--color-background-tertiary);border-radius:4px;height:6px;overflow:hidden;flex:1;position:relative}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.5s ease}
+
+  /* 顶部栏 */
+  .top-bar{height:52px;background:var(--color-background-primary);border-bottom:0.5px solid var(--color-border-tertiary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:100;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+  .logo-area{display:flex;align-items:center;gap:10px}
+  .logo-icon{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#1D9E75 100%);border-radius:6px;display:flex;align-items:center;justify-content:center;color:white;font-weight:600;font-size:12px}
+  .logo-text{font-size:15px;font-weight:600;color:var(--color-text-primary)}
+  .search-box{display:flex;align-items:center;background:var(--color-background-secondary);border-radius:6px;padding:6px 12px;width:280px;transition:all 0.2s ease}
+  .search-box:focus-within{background:var(--color-background-tertiary);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .search-input{border:none;outline:none;background:transparent;font-size:12px;color:var(--color-text-primary);width:100%;margin-left:6px}
+  .user-area{display:flex;align-items:center;gap:16px}
+  .notification-icon{position:relative;cursor:pointer;transition:all 0.2s ease}
+  .notification-icon:hover{color:var(--color-text-info)}
+  .notification-badge{position:absolute;top:-4px;right:-4px;width:14px;height:14px;background:#D85A30;border-radius:50%;font-size:10px;color:white;display:flex;align-items:center;justify-content:center;font-weight:600}
+  .user-info{display:flex;align-items:center;gap:8px;cursor:pointer;padding:4px 8px;border-radius:6px;transition:all 0.2s ease}
+  .user-info:hover{background:var(--color-background-secondary)}
+  .user-avatar{width:28px;height:28px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);border-radius:50%;display:flex;align-items:center;justify-content:center;color:white;font-size:11px;font-weight:500}
+  .user-name{font-size:12px;color:var(--color-text-primary)}
+
+  /* 侧边栏 */
+  .sidebar{width:144px;flex-shrink:0;background:var(--color-background-primary);border-right:0.5px solid var(--color-border-tertiary);padding:14px 8px;display:flex;flex-direction:column;height:calc(100vh - 52px);position:sticky;top:52px}
+  .sidebar-header{padding:0 8px;margin:0 0 18px 0;display:flex;align-items:center;gap:6px}
+  .sidebar-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+
+  /* KPI统计卡片 */
+  .stat-card{background:var(--color-background-primary);border:1px solid #d1d5db;border-radius:8px;padding:14px;transition:all 0.3s ease;cursor:pointer;position:relative;overflow:hidden}
+  .stat-card:hover{box-shadow:0 2px 8px rgba(0,0,0,0.08);transform:translateY(-2px)}
+  .stat-card.active{border-color:var(--color-text-info);box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+  .stat-label{font-size:11px;color:var(--color-text-secondary);margin:0 0 6px 0}
+  .stat-value{font-size:24px;font-weight:500;color:var(--color-text-primary);margin:0;line-height:1.2}
+  .stat-delta{font-size:11px;margin:6px 0 0 0;font-weight:500}
+
+  /* 按钮 */
+  .btn{padding:6px 12px;font-size:12px;border-radius:6px;border:none;cursor:pointer;transition:all 0.2s ease;display:inline-flex;align-items:center;gap:6px;font-weight:500}
+  .btn-primary{background:#378ADD;color:white}
+  .btn-primary:hover{background:#2d75bf}
+  .btn-primary:active{transform:translateY(1px)}
+  .btn-default{background:var(--color-background-secondary);color:var(--color-text-primary);border:1px solid #d1d5db}
+  .btn-default:hover{background:var(--color-background-tertiary)}
+  .btn-success{background:#1D9E75;color:white}
+  .btn-success:hover{background:#177e5e}
+  .btn-warning{background:#EF9F27;color:white}
+  .btn-warning:hover{background:#d48920}
+  .btn-danger{background:#D85A30;color:white}
+  .btn-danger:hover{background:#b94920}
+  .btn-sm{padding:4px 8px;font-size:11px}
+  .btn-link{background:transparent;color:#378ADD;padding:2px 4px;border:none;cursor:pointer;font-size:12px}
+  .btn-link:hover{text-decoration:underline}
+
+  /* 表格 */
+  .data-table{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
+  .data-table thead tr{background:var(--color-background-secondary)}
+  .data-table th{text-align:left;padding:10px 12px;font-weight:500;color:var(--color-text-secondary);font-size:11px;border-bottom:1px solid #d1d5db}
+  .data-table td{padding:12px;border-bottom:0.5px solid #e5e7eb;color:var(--color-text-primary);vertical-align:middle}
+  .data-table tbody tr:hover{background:rgba(55,138,221,0.03);cursor:pointer}
+  .data-table tbody tr.selected{background:rgba(55,138,221,0.08)}
+  .row-check{width:16px;height:16px;accent-color:#378ADD;cursor:pointer}
+
+  /* 筛选标签 */
+  .filter-tag{padding:4px 10px;border-radius:20px;font-size:11px;cursor:pointer;transition:all 0.2s ease;border:1px solid transparent;background:var(--color-background-secondary);color:var(--color-text-secondary)}
+  .filter-tag:hover{background:var(--color-background-tertiary)}
+  .filter-tag.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .filter-tag .count{margin-left:4px;opacity:0.8;font-weight:500}
+
+  /* 分页 */
+  .pagination{display:flex;align-items:center;gap:4px;justify-content:flex-end}
+  .page-btn{min-width:28px;height:28px;padding:0 8px;border-radius:6px;border:1px solid #d1d5db;background:var(--color-background-primary);color:var(--color-text-secondary);cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;transition:all 0.2s ease}
+  .page-btn:hover:not(:disabled){background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .page-btn.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info)}
+  .page-btn:disabled{opacity:0.5;cursor:not-allowed}
+
+  /* 表单 */
+  .form-group{margin-bottom:18px}
+  .form-label{font-size:12px;font-weight:500;color:var(--color-text-primary);margin-bottom:6px;display:block}
+  .form-label .required{color:#D85A30;margin-left:2px}
+  .form-input{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:6px;font-size:12px;color:var(--color-text-primary);background:var(--color-background-primary);transition:all 0.2s ease;box-sizing:border-box}
+  .form-input:focus{outline:none;border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .form-textarea{resize:vertical;min-height:80px;font-family:inherit}
+  .form-select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+  .form-hint{font-size:11px;color:var(--color-text-tertiary);margin-top:4px}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+
+  /* 选项卡片 */
+  .option-card{border:1.5px solid #d1d5db;border-radius:8px;padding:12px;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-primary)}
+  .option-card:hover{border-color:#378ADD;background:rgba(55,138,221,0.03)}
+  .option-card.selected{border-color:#378ADD;background:rgba(55,138,221,0.06);box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .option-card-header{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+  .option-card-icon{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:white;font-size:14px;flex-shrink:0}
+  .option-card-title{font-size:13px;font-weight:500;color:var(--color-text-primary)}
+  .option-card-desc{font-size:11px;color:var(--color-text-secondary);margin:0}
+
+  /* 模态框 */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:200;padding:20px;animation:fadeIn 0.2s ease}
+  .modal{background:var(--color-background-primary);border-radius:12px;max-width:1100px;width:100%;max-height:90vh;overflow:hidden;display:flex;flex-direction:column;animation:modalIn 0.25s ease}
+  .modal-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid #e5e7eb;flex-shrink:0}
+  .modal-title{font-size:15px;font-weight:500;color:var(--color-text-primary);margin:0}
+  .modal-close{width:28px;height:28px;border-radius:6px;border:none;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--color-text-secondary);transition:all 0.2s ease}
+  .modal-close:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .modal-body{padding:20px;overflow-y:auto;flex:1}
+  .modal-footer{display:flex;justify-content:flex-end;gap:8px;padding:14px 20px;border-top:1px solid #e5e7eb;background:var(--color-background-secondary);flex-shrink:0}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  @keyframes modalIn{from{opacity:0;transform:scale(0.95)}to{opacity:1;transform:scale(1)}}
+
+  /* Toast提示 */
+  .toast-container{position:fixed;top:70px;right:20px;z-index:300;display:flex;flex-direction:column;gap:8px}
+  .toast{padding:10px 16px;border-radius:8px;font-size:12px;color:white;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.15);animation:toastIn 0.3s ease}
+  .toast-success{background:#1D9E75}
+  .toast-error{background:#D85A30}
+  .toast-info{background:#378ADD}
+  @keyframes toastIn{from{opacity:0;transform:translateX(30px)}to{opacity:1;transform:translateX(0)}}
+
+  /* 滚动条美化 */
+  ::-webkit-scrollbar{width:6px;height:6px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+  ::-webkit-scrollbar-thumb:hover{background:#9ca3af}
+
+  /* ===== 系统设置页面扩展组件 ===== */
+  /* 主Tab导航 */
+  .main-tabs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+  .main-tab{padding:8px 16px;font-size:13px;border:0.5px solid #d1d5db;border-radius:8px;color:var(--color-text-secondary);background:var(--color-background-primary);cursor:pointer;transition:all 0.2s ease;font-weight:500;display:inline-flex;align-items:center;gap:6px}
+  .main-tab:hover{background:var(--color-background-secondary);color:var(--color-text-primary)}
+  .main-tab.active{background:var(--color-background-info);color:var(--color-text-info);border-color:var(--color-border-info);box-shadow:inset 0 2px 4px rgba(55,138,221,0.2)}
+
+  /* 开关 */
+  .switch{position:relative;display:inline-block;width:36px;height:20px;flex-shrink:0;vertical-align:middle}
+  .switch input{opacity:0;width:0;height:0}
+  .switch-slider{position:absolute;cursor:pointer;inset:0;background:#ccc;border-radius:20px;transition:0.3s}
+  .switch-slider::before{content:'';position:absolute;height:16px;width:16px;left:2px;bottom:2px;background:white;border-radius:50%;transition:0.3s}
+  .switch input:checked + .switch-slider{background:#1D9E75}
+  .switch input:checked + .switch-slider::before{transform:translateX(16px)}
+  .switch-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 0}
+  .switch-label{font-size:12px;color:var(--color-text-primary);font-weight:500}
+  .switch-desc{font-size:11px;color:var(--color-text-tertiary);margin-top:2px}
+
+  /* 表单分区标题 */
+  .section-title{font-size:13px;font-weight:600;color:var(--color-text-primary);margin:0 0 16px 0;padding-left:10px;border-left:3px solid var(--color-text-info);display:flex;align-items:center;gap:6px;line-height:1.2}
+  .section-box{border:1px solid var(--color-border-tertiary);border-radius:10px;padding:18px;margin-bottom:16px;background:var(--color-background-primary)}
+
+  /* 角色列表项 */
+  .role-item{padding:10px 12px;border-radius:8px;cursor:pointer;transition:all 0.2s ease;border:1px solid transparent;margin-bottom:6px}
+  .role-item:hover{background:var(--color-background-secondary)}
+  .role-item.active{background:var(--color-background-info);border-color:var(--color-border-info)}
+  .role-name{font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0 0 4px 0;display:flex;align-items:center;justify-content:space-between}
+  .role-count{font-size:11px;color:var(--color-text-tertiary)}
+
+  /* 权限矩阵 */
+  .perm-table th,.perm-table td{text-align:center}
+  .perm-table th:first-child,.perm-table td:first-child{text-align:left}
+  .perm-table tbody tr:hover{cursor:default}
+  .perm-check{width:16px;height:16px;accent-color:#378ADD;cursor:pointer}
+
+  /* 标签输入 */
+  .tag-input{display:flex;flex-wrap:wrap;gap:6px;padding:6px;border:1px solid #d1d5db;border-radius:6px;min-height:38px;align-items:center;background:var(--color-background-primary);transition:all 0.2s ease}
+  .tag-input:focus-within{border-color:#378ADD;box-shadow:0 0 0 3px rgba(55,138,221,0.1)}
+  .tag-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:var(--color-background-info);color:var(--color-text-info);border-radius:4px;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .tag-chip .tag-close{cursor:pointer;font-weight:700;opacity:0.7}
+  .tag-chip .tag-close:hover{opacity:1}
+  .tag-input-field{border:none;outline:none;font-size:12px;flex:1;min-width:140px;background:transparent;color:var(--color-text-primary)}
+
+  /* 代码块 */
+  .code-block{background:var(--color-background-secondary);border-radius:6px;padding:10px 12px;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--color-text-secondary);white-space:pre-wrap;word-break:break-all;border:1px solid var(--color-border-tertiary);line-height:1.6}
+
+  /* 文件上传 */
+  .upload-area{display:flex;align-items:center;gap:12px}
+  .upload-preview{width:64px;height:64px;border:1px dashed #d1d5db;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--color-background-secondary);overflow:hidden;flex-shrink:0}
+  .upload-preview img{width:100%;height:100%;object-fit:cover}
+  .upload-preview .logo-icon{width:36px;height:36px;font-size:14px}
+
+  /* 集成子卡片 */
+  .integration-card{margin-bottom:16px}
+  .integration-card:last-child{margin-bottom:0}
+  .sub-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .sub-card{border:1px solid var(--color-border-tertiary);border-radius:8px;padding:14px;background:var(--color-background-secondary)}
+  .sub-card-title{font-size:13px;font-weight:500;color:var(--color-text-primary);margin:0 0 12px 0;display:flex;align-items:center;gap:6px}
+
+  /* 单选组 */
+  .radio-group{display:flex;gap:8px;flex-wrap:wrap}
+  .radio-item{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--color-text-secondary);cursor:pointer;padding:6px 12px;border:1px solid #d1d5db;border-radius:6px;transition:all 0.2s ease}
+  .radio-item:hover{border-color:#378ADD}
+  .radio-item input{accent-color:#378ADD;cursor:pointer}
+  .radio-item:has(input:checked){border-color:var(--color-border-info);background:var(--color-background-info);color:var(--color-text-info)}
+
+  /* 多选标签 */
+  .check-tags{display:flex;gap:6px;flex-wrap:wrap}
+  .check-tag{display:flex;align-items:center;gap:4px;padding:5px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:11px;color:var(--color-text-secondary);cursor:pointer;transition:all 0.2s ease;background:var(--color-background-primary)}
+  .check-tag:hover{border-color:#378ADD}
+  .check-tag input{accent-color:#378ADD;cursor:pointer}
+  .check-tag.checked{border-color:var(--color-border-info);background:var(--color-background-info);color:var(--color-text-info)}
+
+  /* 操作类型徽章颜色 */
+  .badge-create{background:rgba(55,138,221,0.12);color:#378ADD}
+  .badge-modify{background:rgba(239,159,39,0.14);color:#B07012}
+  .badge-delete{background:rgba(216,90,48,0.12);color:#D85A30}
+  .badge-login{background:rgba(29,158,117,0.12);color:#1D9E75}
+  .badge-export{background:rgba(127,119,221,0.12);color:#7F77DD}
+  .badge-success{background:rgba(29,158,117,0.12);color:#1D9E75}
+  .badge-fail{background:rgba(216,90,48,0.12);color:#D85A30}
+
+  .text-truncate{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .avatar-sm{width:22px;height:22px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:500;flex-shrink:0}
+/* ===== Copilot 侧边栏 ===== */
+.copilot-fab{position:fixed;right:24px;bottom:24px;width:48px;height:48px;border-radius:50%;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 4px 16px rgba(55,138,221,0.35);z-index:9998;transition:all .3s ease}
+.copilot-fab:hover{transform:scale(1.08);box-shadow:0 6px 20px rgba(55,138,221,0.45)}
+.copilot-fab svg{width:22px;height:22px}
+.copilot-fab .fab-pulse{position:absolute;inset:0;border-radius:50%;border:2px solid #378ADD;animation:copilotPulse 2s ease-out infinite;opacity:0}
+@keyframes copilotPulse{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.5);opacity:0}}
+.copilot-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.25);z-index:9998;opacity:0;visibility:hidden;transition:all .3s}
+.copilot-overlay.show{opacity:1;visibility:visible}
+.copilot-drawer{position:fixed;top:0;right:-420px;width:400px;height:100vh;background:var(--color-background-primary,#fff);box-shadow:-4px 0 24px rgba(0,0,0,0.1);z-index:9999;display:flex;flex-direction:column;transition:right .35s cubic-bezier(.4,0,.2,1)}
+.copilot-drawer.open{right:0}
+.copilot-header{padding:14px 18px;background:linear-gradient(135deg,#378ADD 0%,#7F77DD 100%);color:#fff;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.copilot-header-left{display:flex;align-items:center;gap:10px}
+.copilot-header-icon{width:32px;height:32px;border-radius:8px;background:rgba(255,255,255,0.2);display:flex;align-items:center;justify-content:center}
+.copilot-header-icon svg{width:18px;height:18px}
+.copilot-header-title{font-size:15px;font-weight:600}
+.copilot-header-sub{font-size:11px;opacity:.85;margin-top:2px}
+.copilot-close{background:none;border:none;color:#fff;cursor:pointer;padding:4px;opacity:.8;transition:opacity .2s}
+.copilot-close:hover{opacity:1}
+.copilot-close svg{width:18px;height:18px}
+.copilot-sessions{padding:8px 12px;border-bottom:1px solid #e8e8e8;display:flex;gap:6px;align-items:center;flex-shrink:0;overflow-x:auto}
+.copilot-session-btn{padding:4px 10px;border-radius:6px;font-size:12px;white-space:nowrap;cursor:pointer;border:1px solid #e8e8e8;background:#f5f5f5;color:#595959;transition:all .2s}
+.copilot-session-btn:hover{border-color:#378ADD;color:#378ADD}
+.copilot-session-btn.active{background:rgba(55,138,221,0.1);border-color:#378ADD;color:#378ADD}
+.copilot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.copilot-msg{display:flex;gap:10px;max-width:92%}
+.copilot-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.copilot-msg-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#fff}
+.copilot-msg.ai .copilot-msg-avatar{background:linear-gradient(135deg,#378ADD,#7F77DD)}
+.copilot-msg.user .copilot-msg-avatar{background:#8c8c8c}
+.copilot-msg-bubble{padding:10px 14px;border-radius:12px;font-size:13px;line-height:1.6;word-break:break-word}
+.copilot-msg.ai .copilot-msg-bubble{background:#f5f5f5;color:#1a1a1a;border-top-left-radius:4px}
+.copilot-msg.user .copilot-msg-bubble{background:#378ADD;color:#fff;border-top-right-radius:4px}
+.copilot-msg-bubble h4{margin:8px 0 4px;font-size:13px}
+.copilot-msg-bubble ul,.copilot-msg-bubble ol{margin:4px 0;padding-left:18px}
+.copilot-msg-bubble li{margin:2px 0}
+.copilot-msg-bubble table{border-collapse:collapse;margin:8px 0;font-size:12px;width:100%}
+.copilot-msg-bubble th,.copilot-msg-bubble td{border:1px solid #d8d8d8;padding:4px 8px;text-align:left}
+.copilot-msg-bubble th{background:#e8e8e8}
+.copilot-msg-bubble strong{font-weight:600}
+.copilot-msg-bubble code{background:rgba(0,0,0,0.06);padding:1px 4px;border-radius:3px;font-size:12px}
+.copilot-msg-actions{margin-top:8px;display:flex;flex-wrap:wrap;gap:6px}
+.copilot-action-btn{padding:4px 10px;border-radius:6px;font-size:12px;border:1px solid #378ADD;background:rgba(55,138,221,0.06);color:#378ADD;cursor:pointer;transition:all .2s;display:inline-flex;align-items:center;gap:4px}
+.copilot-action-btn:hover{background:#378ADD;color:#fff}
+.copilot-action-btn svg{width:12px;height:12px}
+.copilot-typing{display:inline-flex;gap:3px;align-items:center;padding:4px 0}
+.copilot-typing span{width:6px;height:6px;border-radius:50%;background:#8c8c8c;animation:copilotTyping 1.4s infinite}
+.copilot-typing span:nth-child(2){animation-delay:.2s}
+.copilot-typing span:nth-child(3){animation-delay:.4s}
+@keyframes copilotTyping{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.copilot-context-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:10px;background:rgba(255,255,255,0.15);font-size:11px;margin-top:4px}
+.copilot-context-badge svg{width:10px;height:10px}
+.copilot-input-area{padding:12px 16px;border-top:1px solid #e8e8e8;flex-shrink:0}
+.copilot-quick-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.copilot-quick-tag{padding:3px 8px;border-radius:12px;font-size:11px;background:#f0f5ff;color:#378ADD;border:1px solid rgba(55,138,221,0.2);cursor:pointer;transition:all .2s}
+.copilot-quick-tag:hover{background:#378ADD;color:#fff}
+.copilot-input-wrap{display:flex;gap:8px;align-items:flex-end}
+.copilot-input{flex:1;border:1px solid #d8d8d8;border-radius:10px;padding:8px 12px;font-size:13px;font-family:inherit;resize:none;max-height:100px;min-height:38px;outline:none;transition:border-color .2s;line-height:1.5}
+.copilot-input:focus{border-color:#378ADD;box-shadow:0 0 0 2px rgba(55,138,221,0.1)}
+.copilot-send{width:38px;height:38px;border-radius:10px;background:#378ADD;border:none;color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all .2s}
+.copilot-send:hover{background:#2979c9}
+.copilot-send:disabled{background:#ccc;cursor:not-allowed}
+.copilot-send svg{width:16px;height:16px}
+.copilot-draft-banner{padding:6px 12px;background:rgba(239,159,39,0.1);border-top:1px solid rgba(239,159,39,0.3);font-size:11px;color:#9a6800;display:flex;align-items:center;gap:6px;flex-shrink:0}
+.copilot-draft-banner svg{width:12px;height:12px;flex-shrink:0}
+.copilot-empty{text-align:center;padding:40px 20px;color:#8c8c8c}
+.copilot-empty svg{width:40px;height:40px;margin-bottom:12px;opacity:.4}
+.copilot-empty h4{font-size:14px;margin-bottom:6px;color:#595959}
+.copilot-empty p{font-size:12px;line-height:1.6}
+.copilot-review-card{border:1px solid #e8e8e8;border-radius:8px;padding:10px;margin:8px 0;background:#fff}
+.copilot-review-card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.copilot-review-card-title{font-size:12px;font-weight:600;color:#1a1a1a}
+.copilot-review-badge{padding:2px 8px;border-radius:10px;font-size:10px;font-weight:500}
+.copilot-review-badge.draft{background:rgba(239,159,39,0.15);color:#9a6800}
+.copilot-review-badge.confirmed{background:rgba(29,158,117,0.15);color:#1D9E75}
+.copilot-review-content{font-size:12px;color:#595959;line-height:1.6;padding:8px;background:#f9f9f9;border-radius:6px;margin-bottom:8px;max-height:120px;overflow-y:auto}
+.copilot-review-actions{display:flex;gap:6px}
+.copilot-review-btn{padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;border:1px solid;transition:all .2s}
+.copilot-review-btn.preview{border-color:#378ADD;color:#378ADD;background:rgba(55,138,221,0.06)}
+.copilot-review-btn.preview:hover{background:#378ADD;color:#fff}
+.copilot-review-btn.confirm{border-color:#1D9E75;color:#1D9E75;background:rgba(29,158,117,0.06)}
+.copilot-review-btn.confirm:hover{background:#1D9E75;color:#fff}
+.copilot-review-btn.discard{border-color:#8c8c8c;color:#8c8c8c;background:transparent}
+.copilot-review-btn.discard:hover{background:#8c8c8c;color:#fff}
+.copilot-error{padding:8px 12px;background:rgba(211,47,47,0.06);border:1px solid rgba(211,47,47,0.2);border-radius:8px;font-size:12px;color:#A32D2D;display:flex;align-items:center;gap:8px}
+.copilot-error-retry{margin-left:auto;padding:2px 8px;border-radius:6px;font-size:11px;border:1px solid #A32D2D;color:#A32D2D;cursor:pointer;background:transparent}
+.copilot-error-retry:hover{background:#A32D2D;color:#fff}
+</style>
+
+<div style="display:flex;flex-direction:column;font-family:var(--font-sans);min-height:560px;">
+  <!-- 顶部栏 -->
+  <div class="top-bar">
+    <div class="logo-area">
+      <div class="logo-icon">鱼</div>
+      <span class="logo-text">钓鱼演练平台</span>
+    </div>
+    <div class="user-area">
+      <div class="notification-icon" style="color:var(--color-text-secondary)">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+          <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+        </svg>
+        <div class="notification-badge">3</div>
+      </div>
+      <div class="user-info">
+        <div class="user-avatar">张</div>
+        <span class="user-name">张管理</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)">
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex:1;">
+    <!-- 侧边栏 -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-info)">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9,22 9,12 15,12 15,22"></polyline>
+        </svg>
+        <span class="sidebar-title">导航菜单</span>
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect>
+          </svg>
+        </div>
+        数据概览
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+          </svg>
+        </div>
+        演练管理
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line>
+          </svg>
+        </div>
+        素材模板
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+        </div>
+        发送配置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+        </div>
+        用户和组
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+          </svg>
+        </div>
+        安全培训
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path><path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+        </div>
+        数据报表
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+        </div>
+        邮件举报
+      </div>
+      <div class="nav-item active">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+        </div>
+        系统设置
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"></path>
+          </svg>
+        </div>
+        智能助手
+      </div>
+      <div class="nav-item">
+        <div class="nav-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline>
+          </svg>
+        </div>
+        API开放平台
+      </div>
+    </div>
+
+    <!-- 主内容区 -->
+    <div style="flex:1;padding:14px 18px;min-width:0;overflow-y:auto;">
+      <!-- 页面标题 + 主Tab -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+        <div>
+          <div style="font-size:16px;font-weight:600;color:var(--color-text-primary);margin-bottom:2px;">系统设置</div>
+          <span class="breadcrumb" style="font-size:12px;color:var(--color-text-tertiary);">系统设置 / <span id="crumb-sub">权限管理</span></span>
+        </div>
+        <div class="main-tabs">
+          <button class="main-tab active" data-tab="rbac">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            权限管理
+          </button>
+          <button class="main-tab" data-tab="audit">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="9" y1="13" x2="15" y2="13"></line><line x1="9" y1="17" x2="15" y2="17"></line></svg>
+            审计日志
+          </button>
+          <button class="main-tab" data-tab="integration">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="9" height="9" rx="1"></rect><rect x="13" y="2" width="9" height="9" rx="1"></rect><rect x="2" y="13" width="9" height="9" rx="1"></rect><line x1="17.5" y1="13" x2="17.5" y2="22"></line><line x1="13" y1="17.5" x2="22" y2="17.5"></line></svg>
+            系统集成
+          </button>
+          <button class="main-tab" data-tab="basic">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="21" x2="4" y2="14"></line><line x1="4" y1="10" x2="4" y2="3"></line><line x1="12" y1="21" x2="12" y2="12"></line><line x1="12" y1="8" x2="12" y2="3"></line><line x1="20" y1="21" x2="20" y2="16"></line><line x1="20" y1="12" x2="20" y2="3"></line><line x1="1" y1="14" x2="7" y2="14"></line><line x1="9" y1="8" x2="15" y2="8"></line><line x1="17" y1="16" x2="23" y2="16"></line></svg>
+            基础参数
+          </button>
+          <button class="main-tab" data-tab="license">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 5m0 0l2 5-5-2-5 2 2-5-2-5 5 2z"></path><path d="M3 12l3 3 3-3"></path><path d="M6 15V21"></path></svg>
+            授权管理
+          </button>
+        </div>
+      </div>
+
+      <!-- ============ Tab 1: 权限管理 ============ -->
+      <div class="tab-panel" id="panel-rbac" style="display:block;">
+        <div style="display:flex;gap:16px;align-items:flex-start;">
+          <!-- 左侧角色列表 -->
+          <div class="card" style="width:220px;flex-shrink:0;padding:14px;">
+            <div class="card-title" style="margin-bottom:12px;">角色列表</div>
+            <div id="role-list">
+              <div class="role-item active" data-role="0">
+                <p class="role-name">超级管理员 <span class="dot" style="background:#D85A30;"></span></p>
+                <p class="role-count">2 名用户</p>
+              </div>
+              <div class="role-item" data-role="1">
+                <p class="role-name">演练操作员</p>
+                <p class="role-count">8 名用户</p>
+              </div>
+              <div class="role-item" data-role="2">
+                <p class="role-name">只读审计员</p>
+                <p class="role-count">5 名用户</p>
+              </div>
+              <div class="role-item" data-role="3">
+                <p class="role-name">部门管理员</p>
+                <p class="role-count">14 名用户</p>
+              </div>
+            </div>
+            <button class="btn btn-default" id="btn-add-role" style="width:100%;justify-content:center;margin-top:12px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+              添加角色
+            </button>
+          </div>
+
+          <!-- 右侧权限配置 -->
+          <div class="card" style="flex:1;min-width:0;padding:18px;">
+            <div class="card-title">
+              <span>权限配置 — <span id="role-title">超级管理员</span></span>
+              <span class="badge badge-success" id="role-status-badge">系统内置</span>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">角色名称<span class="required">*</span></label>
+                <input class="form-input" id="role-name-input" value="超级管理员">
+              </div>
+              <div class="form-group">
+                <label class="form-label">角色标识</label>
+                <input class="form-input" value="role_super_admin" disabled style="background:var(--color-background-secondary);color:var(--color-text-tertiary);">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">角色描述</label>
+              <textarea class="form-input form-textarea" id="role-desc" rows="2">拥有平台全部功能的操作权限，可管理所有模块与数据，不可删除。</textarea>
+            </div>
+
+            <!-- 权限矩阵 -->
+            <div style="margin-bottom:8px;font-size:12px;font-weight:500;color:var(--color-text-primary);">菜单权限矩阵</div>
+            <div style="border:1px solid var(--color-border-tertiary);border-radius:8px;overflow:hidden;margin-bottom:18px;">
+              <table class="data-table perm-table">
+                <thead>
+                  <tr>
+                    <th style="width:38%;">菜单项</th>
+                    <th>查看</th>
+                    <th>编辑</th>
+                    <th>删除</th>
+                  </tr>
+                </thead>
+                <tbody id="perm-tbody">
+                  <tr><td>数据概览</td><td><input type="checkbox" class="perm-check" data-row="0" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="0" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="0" data-col="2" checked></td></tr>
+                  <tr><td>演练管理</td><td><input type="checkbox" class="perm-check" data-row="1" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="1" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="1" data-col="2" checked></td></tr>
+                  <tr><td>素材模板</td><td><input type="checkbox" class="perm-check" data-row="2" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="2" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="2" data-col="2" checked></td></tr>
+                  <tr><td>发送配置</td><td><input type="checkbox" class="perm-check" data-row="3" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="3" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="3" data-col="2" checked></td></tr>
+                  <tr><td>用户和组</td><td><input type="checkbox" class="perm-check" data-row="4" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="4" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="4" data-col="2" checked></td></tr>
+                  <tr><td>安全培训</td><td><input type="checkbox" class="perm-check" data-row="5" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="5" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="5" data-col="2" checked></td></tr>
+                  <tr><td>数据报表</td><td><input type="checkbox" class="perm-check" data-row="6" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="6" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="6" data-col="2" checked></td></tr>
+                  <tr><td>邮件举报</td><td><input type="checkbox" class="perm-check" data-row="7" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="7" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="7" data-col="2" checked></td></tr>
+                  <tr><td>系统设置</td><td><input type="checkbox" class="perm-check" data-row="8" data-col="0" checked></td><td><input type="checkbox" class="perm-check" data-row="8" data-col="1" checked></td><td><input type="checkbox" class="perm-check" data-row="8" data-col="2" checked></td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 数据权限范围 -->
+            <div style="margin-bottom:8px;font-size:12px;font-weight:500;color:var(--color-text-primary);">数据权限范围</div>
+            <div class="radio-group" id="data-scope" style="margin-bottom:18px;">
+              <label class="radio-item"><input type="radio" name="scope" value="all" checked> 全部数据</label>
+              <label class="radio-item"><input type="radio" name="scope" value="dept"> 本部门数据</label>
+              <label class="radio-item"><input type="radio" name="scope" value="custom"> 自定义部门</label>
+            </div>
+            <div class="form-group" id="custom-dept-box" style="display:none;">
+              <label class="form-label">可访问部门</label>
+              <select class="form-input form-select" multiple style="height:80px;">
+                <option selected>研发中心</option>
+                <option selected>安全部</option>
+                <option>财务部</option>
+                <option>人力资源部</option>
+                <option>市场部</option>
+              </select>
+              <p class="form-hint">按住 Ctrl/Cmd 可多选</p>
+            </div>
+
+            <div style="display:flex;justify-content:flex-end;gap:8px;border-top:1px solid var(--color-border-tertiary);padding-top:14px;">
+              <button class="btn btn-default" id="btn-reset-perm">重置</button>
+              <button class="btn btn-primary" id="btn-save-perm">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                保存权限
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ Tab 2: 审计日志 ============ -->
+      <div class="tab-panel" id="panel-audit" style="display:none;">
+        <!-- 统计卡片 -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px;">
+          <div class="stat-card">
+            <p class="stat-label">今日操作数</p>
+            <p class="stat-value">342</p>
+            <p class="stat-delta" style="color:var(--color-text-success);">↑ 18.5% 较昨日</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">本周操作数</p>
+            <p class="stat-value" style="color:#378ADD;">2,156</p>
+            <p class="stat-delta" style="color:var(--color-text-secondary);">日均 308 次</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">异常操作数 <span class="dot live-dot" style="background:#D85A30;margin-left:4px;"></span></p>
+            <p class="stat-value" style="color:#D85A30;">7</p>
+            <p class="stat-delta" style="color:var(--color-text-tertiary);">含 3 次登录失败</p>
+          </div>
+        </div>
+
+        <!-- 工具栏 -->
+        <div class="card" style="padding:12px 16px;margin-bottom:16px;border-top:none;">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+              <span class="filter-tag active" data-logtype="all">全部</span>
+              <span class="filter-tag" data-logtype="操作日志">操作日志</span>
+              <span class="filter-tag" data-logtype="登录日志">登录日志</span>
+              <span class="filter-tag" data-logtype="系统日志">系统日志</span>
+            </div>
+            <div style="flex:1;"></div>
+            <select class="form-input form-select" id="filter-operator" style="width:150px;">
+              <option value="">全部操作人</option>
+              <option value="张管理">张管理</option>
+              <option value="李安全">李安全</option>
+              <option value="王运维">王运维</option>
+              <option value="赵审计">赵审计</option>
+              <option value="系统">系统</option>
+            </select>
+            <select class="form-input form-select" id="filter-range" style="width:140px;">
+              <option value="today">今天</option>
+              <option value="3d" selected>近 3 天</option>
+              <option value="7d">近 7 天</option>
+              <option value="30d">近 30 天</option>
+            </select>
+            <div class="search-box" style="width:200px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--color-text-tertiary)"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+              <input class="search-input" id="audit-search" placeholder="搜索操作内容 / IP">
+            </div>
+          </div>
+        </div>
+
+        <!-- 日志表格 -->
+        <div class="card" style="padding:0;overflow:hidden;">
+          <table class="data-table" id="audit-table">
+            <thead>
+              <tr>
+                <th style="width:140px;">时间</th>
+                <th style="width:120px;">操作人</th>
+                <th style="width:80px;">操作类型</th>
+                <th style="width:100px;">操作模块</th>
+                <th>操作内容</th>
+                <th style="width:120px;">IP 地址</th>
+                <th style="width:70px;">结果</th>
+                <th style="width:80px;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="audit-tbody"></tbody>
+          </table>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-top:1px solid var(--color-border-tertiary);">
+            <span style="font-size:11px;color:var(--color-text-tertiary);" id="audit-page-info">共 0 条</span>
+            <div class="pagination" id="audit-pagination"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ Tab 3: 系统集成 ============ -->
+      <div class="tab-panel" id="panel-integration" style="display:none;">
+        <!-- 1. 单点登录 SSO -->
+        <div class="card card-blue integration-card">
+          <div class="card-title">
+            <span style="display:flex;align-items:center;">
+              <span class="card-title-icon" style="background:#378ADD;">S</span>
+              单点登录 (SSO)
+            </span>
+            <label class="switch"><input type="checkbox" id="sso-switch" checked><span class="switch-slider"></span></label>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">SSO 协议</label>
+              <select class="form-input form-select" id="sso-protocol">
+                <option value="saml" selected>SAML 2.0</option>
+                <option value="oauth">OAuth 2.0</option>
+                <option value="cas">CAS</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Entity ID</label>
+              <input class="form-input" value="https://phishing.cdfg.com/saml/sp">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">IdP SSO URL<span class="required">*</span></label>
+              <input class="form-input" value="https://idp.cdfg.com/sso/saml">
+            </div>
+            <div class="form-group">
+              <label class="form-label">IdP 证书</label>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <button class="btn btn-default btn-sm" id="btn-upload-cert">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                  上传证书
+                </button>
+                <span style="font-size:11px;color:var(--color-text-tertiary);" id="cert-name">idp-cert.pem</span>
+              </div>
+            </div>
+          </div>
+          <div class="switch-row" style="border-top:1px solid var(--color-border-tertiary);padding-top:12px;">
+            <div>
+              <div class="switch-label">首次登录自动创建用户</div>
+              <div class="switch-desc">未匹配到本地用户的 SSO 用户登录时自动创建账号</div>
+            </div>
+            <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;">
+            <button class="btn btn-default" id="btn-test-sso">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              测试连接
+            </button>
+          </div>
+        </div>
+
+        <!-- 2. SIEM/态势感知对接 -->
+        <div class="card card-purple integration-card">
+          <div class="card-title">
+            <span style="display:flex;align-items:center;">
+              <span class="card-title-icon" style="background:#7F77DD;">I</span>
+              SIEM / 态势感知对接
+            </span>
+            <label class="switch"><input type="checkbox" id="siem-switch" checked><span class="switch-slider"></span></label>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">推送协议</label>
+              <select class="form-input form-select" id="siem-protocol">
+                <option value="syslog" selected>Syslog</option>
+                <option value="webhook">HTTP Webhook</option>
+                <option value="kafka">Kafka</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Syslog 服务器地址<span class="required">*</span></label>
+              <input class="form-input" value="10.20.3.55">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">端口</label>
+              <input class="form-input" value="514">
+            </div>
+            <div class="form-group">
+              <label class="form-label">推送频率</label>
+              <select class="form-input form-select">
+                <option>实时推送</option>
+                <option selected>每 1 分钟</option>
+                <option>每 5 分钟</option>
+                <option>每 15 分钟</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">推送事件类型</label>
+            <div class="check-tags" id="siem-events">
+              <label class="check-tag checked"><input type="checkbox" checked> 演练开始</label>
+              <label class="check-tag checked"><input type="checkbox" checked> 中招事件</label>
+              <label class="check-tag checked"><input type="checkbox" checked> 举报事件</label>
+              <label class="check-tag"><input type="checkbox"> 异常告警</label>
+              <label class="check-tag"><input type="checkbox"> 用户登录</label>
+            </div>
+          </div>
+          <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px;border-top:1px solid var(--color-border-tertiary);padding-top:12px;">
+            <button class="btn btn-default" id="btn-test-siem">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+              测试推送
+            </button>
+          </div>
+        </div>
+
+        <!-- 3. 消息推送 -->
+        <div class="card card-green integration-card">
+          <div class="card-title">
+            <span style="display:flex;align-items:center;">
+              <span class="card-title-icon" style="background:#1D9E75;">M</span>
+              消息推送
+            </span>
+          </div>
+          <div class="sub-cards">
+            <!-- 企业微信 -->
+            <div class="sub-card">
+              <p class="sub-card-title">
+                <span class="card-title-icon" style="background:#1D9E75;width:18px;height:18px;font-size:10px;">微</span>
+                企业微信
+                <label class="switch" style="margin-left:auto;"><input type="checkbox" class="msg-switch" data-name="企业微信" checked><span class="switch-slider"></span></label>
+              </p>
+              <div class="form-group">
+                <label class="form-label">Webhook URL</label>
+                <input class="form-input" value="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxx" style="font-size:11px;">
+              </div>
+              <div class="form-group" style="margin-bottom:8px;">
+                <label class="form-label">推送事件</label>
+                <div class="check-tags">
+                  <label class="check-tag checked"><input type="checkbox" checked> 演练开始</label>
+                  <label class="check-tag"><input type="checkbox"> 中招事件</label>
+                  <label class="check-tag checked"><input type="checkbox" checked> 异常告警</label>
+                </div>
+              </div>
+              <button class="btn btn-default btn-sm btn-test-msg" data-name="企业微信" style="width:100%;justify-content:center;">测试推送</button>
+            </div>
+            <!-- 钉钉 -->
+            <div class="sub-card">
+              <p class="sub-card-title">
+                <span class="card-title-icon" style="background:#378ADD;width:18px;height:18px;font-size:10px;">钉</span>
+                钉钉
+                <label class="switch" style="margin-left:auto;"><input type="checkbox" class="msg-switch" data-name="钉钉"><span class="switch-slider"></span></label>
+              </p>
+              <div class="form-group">
+                <label class="form-label">Webhook URL</label>
+                <input class="form-input" placeholder="https://oapi.dingtalk.com/robot/send?access_token=..." style="font-size:11px;">
+              </div>
+              <div class="form-group" style="margin-bottom:8px;">
+                <label class="form-label">推送事件</label>
+                <div class="check-tags">
+                  <label class="check-tag"><input type="checkbox"> 演练开始</label>
+                  <label class="check-tag"><input type="checkbox"> 中招事件</label>
+                  <label class="check-tag"><input type="checkbox"> 异常告警</label>
+                </div>
+              </div>
+              <button class="btn btn-default btn-sm btn-test-msg" data-name="钉钉" style="width:100%;justify-content:center;">测试推送</button>
+            </div>
+            <!-- 飞书 -->
+            <div class="sub-card">
+              <p class="sub-card-title">
+                <span class="card-title-icon" style="background:#7F77DD;width:18px;height:18px;font-size:10px;">飞</span>
+                飞书
+                <label class="switch" style="margin-left:auto;"><input type="checkbox" class="msg-switch" data-name="飞书" checked><span class="switch-slider"></span></label>
+              </p>
+              <div class="form-group">
+                <label class="form-label">Webhook URL</label>
+                <input class="form-input" value="https://open.feishu.cn/open-apis/bot/v2/hook/xxx" style="font-size:11px;">
+              </div>
+              <div class="form-group" style="margin-bottom:8px;">
+                <label class="form-label">推送事件</label>
+                <div class="check-tags">
+                  <label class="check-tag checked"><input type="checkbox" checked> 演练开始</label>
+                  <label class="check-tag checked"><input type="checkbox" checked> 中招事件</label>
+                  <label class="check-tag"><input type="checkbox"> 异常告警</label>
+                </div>
+              </div>
+              <button class="btn btn-default btn-sm btn-test-msg" data-name="飞书" style="width:100%;justify-content:center;">测试推送</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ Tab 4: 基础参数 ============ -->
+      <div class="tab-panel" id="panel-basic" style="display:none;">
+        <form id="basic-form" onsubmit="return false;">
+          <!-- 1. 平台信息 -->
+          <div class="section-box">
+            <h3 class="section-title">平台信息</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">平台名称</label>
+                <input class="form-input" value="建发钓鱼演练平台">
+              </div>
+              <div class="form-group">
+                <label class="form-label">版权信息</label>
+                <input class="form-input" value="© 2026 建发集团信息安全部">
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">平台 Logo</label>
+              <div class="upload-area">
+                <div class="upload-preview" id="logo-preview">
+                  <div class="logo-icon">鱼</div>
+                </div>
+                <div>
+                  <input type="file" id="logo-file" accept="image/*" style="display:none;">
+                  <button class="btn btn-default" type="button" id="btn-upload-logo">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                    上传 Logo
+                  </button>
+                  <p class="form-hint">建议尺寸 128×128，支持 PNG/SVG，≤ 200KB</p>
+                </div>
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">底部备案号</label>
+              <input class="form-input" value="闽ICP备2026000001号-1">
+            </div>
+          </div>
+
+          <!-- 2. 邮件追踪配置 -->
+          <div class="section-box">
+            <h3 class="section-title">邮件追踪配置</h3>
+            <div class="switch-row">
+              <div>
+                <div class="switch-label">开启追踪像素</div>
+                <div class="switch-desc">在邮件中嵌入 1×1 透明像素以统计邮件打开情况</div>
+              </div>
+              <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+            </div>
+            <div class="form-row" style="margin-top:8px;">
+              <div class="form-group">
+                <label class="form-label">追踪域名</label>
+                <input class="form-input" value="track.cdfg-mail.com">
+              </div>
+              <div class="form-group">
+                <label class="form-label">链接过期时间（小时）</label>
+                <input class="form-input" type="number" value="72">
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">点击重定向 URL</label>
+              <input class="form-input" value="https://phishing.cdfg.com/r/redirect">
+              <p class="form-hint">用户点击钓鱼链接后将先跳转至此地址进行记录</p>
+            </div>
+          </div>
+
+          <!-- 3. 数据留存策略 -->
+          <div class="section-box">
+            <h3 class="section-title">数据留存策略</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">演练数据留存期限</label>
+                <select class="form-input form-select">
+                  <option>6 个月</option>
+                  <option selected>1 年</option>
+                  <option>2 年</option>
+                  <option>3 年</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">员工行为数据留存期限</label>
+                <select class="form-input form-select">
+                  <option>6 个月</option>
+                  <option selected>1 年</option>
+                  <option>2 年</option>
+                  <option>3 年</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">日志留存期限</label>
+              <select class="form-input form-select">
+                <option>3 个月</option>
+                <option>6 个月</option>
+                <option selected>1 年</option>
+                <option>2 年</option>
+              </select>
+            </div>
+            <div class="switch-row">
+              <div>
+                <div class="switch-label">到期自动清理</div>
+                <div class="switch-desc">超过留存期限的数据将自动删除</div>
+              </div>
+              <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+            </div>
+            <div class="switch-row" style="margin-bottom:0;">
+              <div>
+                <div class="switch-label">清理前提醒</div>
+                <div class="switch-desc">执行自动清理前 3 天向管理员发送提醒</div>
+              </div>
+              <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+            </div>
+          </div>
+
+          <!-- 4. 安全设置 -->
+          <div class="section-box">
+            <h3 class="section-title">安全设置</h3>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">密码最小长度</label>
+                <input class="form-input" type="number" value="10">
+              </div>
+              <div class="form-group">
+                <label class="form-label">复杂度要求</label>
+                <select class="form-input form-select">
+                  <option>无要求</option>
+                  <option>包含大小写字母</option>
+                  <option selected>包含大小写字母+数字</option>
+                  <option>包含大小写字母+数字+特殊字符</option>
+                </select>
+              </div>
+            </div>
+            <div class="switch-row">
+              <div>
+                <div class="switch-label">强制两步验证 (2FA)</div>
+                <div class="switch-desc">管理员与操作员账号登录需进行二次验证</div>
+              </div>
+              <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+            </div>
+            <div class="form-group" style="margin-top:8px;">
+              <label class="form-label">会话超时时间（分钟）</label>
+              <input class="form-input" type="number" value="30">
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <label class="form-label">IP 白名单</label>
+              <div class="tag-input" id="ip-whitelist">
+                <span class="tag-chip">10.20.0.0/16<span class="tag-close" data-ip="10.20.0.0/16">×</span></span>
+                <span class="tag-chip">172.16.5.0/24<span class="tag-close" data-ip="172.16.5.0/24">×</span></span>
+                <span class="tag-chip">192.168.10.20<span class="tag-close" data-ip="192.168.10.20">×</span></span>
+                <input class="tag-input-field" id="ip-input" placeholder="输入 IP 或网段后回车，如 10.20.3.0/24">
+              </div>
+              <p class="form-hint">留空表示不限制；仅白名单内 IP 可访问后台</p>
+            </div>
+          </div>
+
+          <!-- 5. 合规与隐私 -->
+          <div class="section-box">
+            <h3 class="section-title">合规与隐私</h3>
+            <div class="form-group">
+              <label class="form-label">演练免责声明</label>
+              <textarea class="form-input form-textarea" rows="3">本次钓鱼演练为信息安全部门组织的内部安全意识测试，所有数据仅用于安全培训与改进，不会对员工进行任何形式的处罚。如有疑问请联系信息安全部。</textarea>
+              <p class="form-hint">该文本将展示在钓鱼页面底部及培训说明中</p>
+            </div>
+            <div class="switch-row">
+              <div>
+                <div class="switch-label">数据加密存储</div>
+                <div class="switch-desc">对员工行为数据、邮箱等敏感字段进行加密存储</div>
+              </div>
+              <label class="switch"><input type="checkbox" checked><span class="switch-slider"></span></label>
+            </div>
+            <div class="switch-row" style="margin-bottom:0;">
+              <div>
+                <div class="switch-label">审计模式（只记录不干预）</div>
+                <div class="switch-desc">仅记录员工操作行为，不触发任何拦截或告警动作</div>
+              </div>
+              <label class="switch"><input type="checkbox"><span class="switch-slider"></span></label>
+            </div>
+          </div>
+
+          <div style="display:flex;justify-content:flex-end;gap:8px;padding:8px 0 4px 0;">
+            <button class="btn btn-default" type="button" id="btn-reset-basic">恢复默认</button>
+            <button class="btn btn-primary" type="button" id="btn-save-all">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+              保存所有设置
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- ============ Tab 5: 授权管理 ============ -->
+      <div class="tab-panel" id="panel-license" style="display:none;">
+        <!-- 区块1：授权状态概览 -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;">
+          <div class="stat-card">
+            <p class="stat-label">授权状态</p>
+            <p class="stat-value" style="font-size:18px;"><span class="badge badge-success" style="font-size:13px;padding:4px 12px;">正式版</span></p>
+            <p class="stat-delta" style="color:var(--color-text-success);">● 运行中</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">授权类型</p>
+            <p class="stat-value" style="color:#378ADD;">企业版</p>
+            <p class="stat-delta" style="color:var(--color-text-secondary);">Enterprise Edition</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">到期时间</p>
+            <p class="stat-value" style="font-size:20px;">2027-08-15</p>
+            <p class="stat-delta" style="color:var(--color-text-tertiary);">授权有效期 2 年</p>
+          </div>
+          <div class="stat-card">
+            <p class="stat-label">剩余天数</p>
+            <p class="stat-value" style="color:#1D9E75;">365<span style="font-size:13px;color:var(--color-text-secondary);"> 天</span></p>
+            <p class="stat-delta" style="color:var(--color-text-success);">充足</p>
+          </div>
+        </div>
+
+        <!-- 区块2：授权信息卡片 -->
+        <div class="section-box">
+          <h3 class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+            授权信息
+          </h3>
+          <div class="form-group">
+            <label class="form-label">授权 Key</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input class="form-input" id="license-key-input" readonly value="CDFG-ENT-2026-0815-A3F7B9E2D1C4-5K8M2N6P" style="font-family:monospace;letter-spacing:0.5px;">
+              <button class="btn btn-default" type="button" id="btn-copy-key" style="flex-shrink:0;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                复制
+              </button>
+            </div>
+            <p class="form-hint">授权 Key 是平台授权的唯一凭证，请妥善保管</p>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">客户名称</label>
+              <input class="form-input" value="建发集团" readonly>
+            </div>
+            <div class="form-group">
+              <label class="form-label">授权版本</label>
+              <input class="form-input" value="企业版 v3.2.1" readonly>
+            </div>
+          </div>
+
+          <div style="margin-top:8px;display:flex;flex-direction:column;gap:14px;">
+            <!-- 授权用户数 -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);">授权用户数</span>
+                <span style="font-size:12px;color:var(--color-text-secondary);">3,580 / 5,000</span>
+              </div>
+              <div class="bar-track" style="height:8px;">
+                <div class="bar-fill" style="width:71.6%;background:#EF9F27;"></div>
+              </div>
+              <p class="form-hint">已使用 71.6%，剩余 1,420 个用户配额</p>
+            </div>
+            <!-- 授权邮件发送量 -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);">授权邮件发送量（本月）</span>
+                <span style="font-size:12px;color:var(--color-text-secondary);">12,580 / 50,000 封</span>
+              </div>
+              <div class="bar-track" style="height:8px;">
+                <div class="bar-fill" style="width:25.16%;background:#1D9E75;"></div>
+              </div>
+              <p class="form-hint">已使用 25.2%，剩余 37,420 封</p>
+            </div>
+            <!-- 授权短信发送量 -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);">授权短信发送量（本月）</span>
+                <span style="font-size:12px;color:var(--color-text-secondary);">420 / 5,000 条</span>
+              </div>
+              <div class="bar-track" style="height:8px;">
+                <div class="bar-fill" style="width:8.4%;background:#1D9E75;"></div>
+              </div>
+              <p class="form-hint">已使用 8.4%，剩余 4,580 条</p>
+            </div>
+            <!-- 授权演练次数 -->
+            <div>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+                <span style="font-size:12px;font-weight:500;color:var(--color-text-primary);">授权演练次数（本月）</span>
+                <span style="font-size:12px;color:var(--color-text-secondary);">12 / 无限制</span>
+              </div>
+              <div class="bar-track" style="height:8px;">
+                <div class="bar-fill" style="width:12%;background:#1D9E75;"></div>
+              </div>
+              <p class="form-hint">企业版不限制演练次数</p>
+            </div>
+          </div>
+
+          <!-- 授权文件上传区 -->
+          <div class="form-group" style="margin-top:18px;margin-bottom:0;">
+            <label class="form-label">授权文件</label>
+            <div id="lic-upload-area" style="border:1.5px dashed #d1d5db;border-radius:8px;padding:20px;text-align:center;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-secondary);">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#8c8c8c" stroke-width="1.5" style="margin-bottom:6px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <p style="font-size:12px;color:var(--color-text-secondary);margin:0 0 4px 0;">拖拽 .lic 授权文件到此处，或<span style="color:#378ADD;">点击上传</span></p>
+              <p style="font-size:11px;color:var(--color-text-tertiary);margin:0;">支持 .lic 格式授权文件，单文件 ≤ 1MB</p>
+              <input type="file" id="lic-file" accept=".lic" style="display:none;">
+            </div>
+          </div>
+        </div>
+
+        <!-- 区块3：功能模块控制 -->
+        <div class="card" style="padding:0;overflow:hidden;margin-bottom:16px;">
+          <div class="card-title" style="padding:14px 16px 12px 16px;margin-bottom:0;border-bottom:0.5px solid #e5e7eb;">
+            <span style="display:flex;align-items:center;">
+              <span class="card-title-icon" style="background:#7F77DD;">功</span>
+              功能模块控制
+            </span>
+            <span style="font-size:11px;color:var(--color-text-tertiary);font-weight:400;">已授权 9 / 11 个模块</span>
+          </div>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:30%;">模块</th>
+                <th style="width:25%;">授权状态</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>数据概览</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">基础模块</td></tr>
+              <tr><td>演练管理</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">核心模块</td></tr>
+              <tr><td>素材模板</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">核心模块</td></tr>
+              <tr><td>发送配置</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">核心模块</td></tr>
+              <tr><td>用户和组</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">基础模块</td></tr>
+              <tr><td>安全培训</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">企业版功能</td></tr>
+              <tr><td>数据报表</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">企业版功能</td></tr>
+              <tr><td>邮件举报</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">企业版功能</td></tr>
+              <tr><td>系统设置</td><td><span class="badge badge-success">已授权</span></td><td style="color:var(--color-text-secondary);">基础模块</td></tr>
+              <tr><td>高级 AI 分析</td><td><span class="badge" style="background:var(--color-background-tertiary);color:var(--color-text-tertiary);">未授权</span></td><td style="color:var(--color-text-tertiary);">需升级旗舰版</td></tr>
+              <tr><td>API 开放平台</td><td><span class="badge" style="background:var(--color-background-tertiary);color:var(--color-text-tertiary);">未授权</span></td><td style="color:var(--color-text-tertiary);">需升级旗舰版</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 区块4：在线激活/续期 -->
+        <div class="section-box" style="margin-bottom:0;">
+          <h3 class="section-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 5m0 0l2 5-5-2-5 2 2-5-2-5 5 2z"></path></svg>
+            在线激活 / 续期
+          </h3>
+          <div class="form-row">
+            <div class="form-group" style="margin-bottom:12px;">
+              <label class="form-label">激活码</label>
+              <input class="form-input" id="activate-code-input" placeholder="请输入 32 位激活码，如 A3F7-B9E2-D1C4-5K8M" style="font-family:monospace;letter-spacing:0.5px;">
+            </div>
+            <div class="form-group" style="margin-bottom:12px;">
+              <label class="form-label">&nbsp;</label>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-primary" type="button" id="btn-verify-online" style="flex:1;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"></path><circle cx="12" cy="12" r="10"></circle></svg>
+                  在线验证
+                </button>
+                <button class="btn btn-default" type="button" id="btn-contact-sales">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
+                  联系销售
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:12px;">
+            <label class="form-label">离线激活文件导入</label>
+            <div id="offline-lic-upload" style="border:1.5px dashed #d1d5db;border-radius:8px;padding:14px;text-align:center;cursor:pointer;transition:all 0.2s ease;background:var(--color-background-secondary);">
+              <p style="font-size:12px;color:var(--color-text-secondary);margin:0;">拖拽或<span style="color:#378ADD;">点击选择</span> .lic 离线激活文件</p>
+              <input type="file" id="offline-lic-file" accept=".lic" style="display:none;">
+            </div>
+          </div>
+
+          <div style="background:var(--color-background-info);border-radius:6px;padding:10px 12px;font-size:11px;color:var(--color-text-secondary);line-height:1.7;">
+            <strong style="color:var(--color-text-info);">激活说明：</strong>
+            ① 在线激活：输入激活码后点击"在线验证"，平台将联网核验并自动续期；<br>
+            ② 离线激活：适用于内网环境，上传销售提供的 .lic 激活文件完成续期；<br>
+            ③ 如需扩容用户数或升级版本（如升级至旗舰版），请点击"联系销售"获取报价。
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast 容器 -->
+<div class="toast-container" id="toast-container"></div>
+
+<!-- 审计日志详情弹窗 -->
+<div class="modal-overlay" id="log-modal" style="display:none;">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-header">
+      <h3 class="modal-title">操作日志详情</h3>
+      <button class="modal-close" id="log-close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <div class="modal-body" id="log-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-default" id="log-close-btn">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  // ========== Toast ==========
+  function showToast(msg, type){
+    var container = document.getElementById('toast-container');
+    var t = document.createElement('div');
+    t.className = 'toast toast-' + (type || 'info');
+    t.innerHTML = (type==='success'?'✓':(type==='error'?'✕':'ⓘ')) + ' <span>' + msg + '</span>';
+    container.appendChild(t);
+    setTimeout(function(){
+      t.style.transition = 'opacity 0.3s, transform 0.3s';
+      t.style.opacity = '0'; t.style.transform = 'translateX(30px)';
+      setTimeout(function(){ t.remove(); }, 300);
+    }, 2600);
+  }
+
+  // ========== 主 Tab 切换 ==========
+  var tabTitleMap = {rbac:'权限管理', audit:'审计日志', integration:'系统集成', basic:'基础参数', license:'授权管理'};
+  document.querySelectorAll('.main-tab').forEach(function(tab){
+    tab.addEventListener('click', function(){
+      document.querySelectorAll('.main-tab').forEach(function(t){ t.classList.remove('active'); });
+      tab.classList.add('active');
+      var key = tab.getAttribute('data-tab');
+      document.querySelectorAll('.tab-panel').forEach(function(p){ p.style.display = 'none'; });
+      var panel = document.getElementById('panel-' + key);
+      if(panel) panel.style.display = 'block';
+      document.getElementById('crumb-sub').textContent = tabTitleMap[key] || '';
+    });
+  });
+
+  // ========== 权限管理：角色数据 ==========
+  var rolesData = [
+    {name:'超级管理员', mark:'role_super_admin', desc:'拥有平台全部功能的操作权限，可管理所有模块与数据，不可删除。', built:true, perms:[[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1],[1,1,1]], scope:'all'},
+    {name:'演练操作员', mark:'role_operator', desc:'负责创建与执行钓鱼演练，可管理素材、发送配置与报表。', built:true, perms:[[1,0,0],[1,1,1],[1,1,1],[1,1,0],[1,0,0],[1,1,0],[1,1,0],[1,0,0],[0,0,0]], scope:'dept'},
+    {name:'只读审计员', mark:'role_auditor', desc:'仅可查看演练数据与报表，不可进行任何修改或删除操作。', built:true, perms:[[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,0,0],[0,0,0]], scope:'all'},
+    {name:'部门管理员', mark:'role_dept_admin', desc:'管理本部门员工的演练与培训，数据权限限定在本部门范围内。', built:false, perms:[[1,0,0],[1,1,0],[1,1,0],[1,0,0],[1,1,0],[1,1,0],[1,0,0],[1,0,0],[0,0,0]], scope:'custom'}
+  ];
+  var currentRole = 0;
+
+  function renderRolePerm(){
+    var r = rolesData[currentRole];
+    document.getElementById('role-title').textContent = r.name;
+    document.getElementById('role-name-input').value = r.name;
+    document.getElementById('role-desc').value = r.desc;
+    var badge = document.getElementById('role-status-badge');
+    if(r.built){ badge.textContent = '系统内置'; badge.className = 'badge badge-success'; }
+    else { badge.textContent = '自定义'; badge.className = 'badge badge-create'; }
+    document.querySelectorAll('.perm-check').forEach(function(cb){
+      var row = parseInt(cb.getAttribute('data-row'));
+      var col = parseInt(cb.getAttribute('data-col'));
+      cb.checked = !!(r.perms[row] && r.perms[row][col]);
+    });
+    document.querySelectorAll('input[name="scope"]').forEach(function(radio){
+      radio.checked = (radio.value === r.scope);
+    });
+    document.getElementById('custom-dept-box').style.display = (r.scope === 'custom') ? 'block' : 'none';
+  }
+
+  document.querySelectorAll('.role-item').forEach(function(item){
+    item.addEventListener('click', function(){
+      document.querySelectorAll('.role-item').forEach(function(i){ i.classList.remove('active'); });
+      item.classList.add('active');
+      currentRole = parseInt(item.getAttribute('data-role'));
+      renderRolePerm();
+    });
+  });
+
+  // 权限矩阵勾选实时回写
+  document.querySelectorAll('.perm-check').forEach(function(cb){
+    cb.addEventListener('change', function(){
+      var row = parseInt(cb.getAttribute('data-row'));
+      var col = parseInt(cb.getAttribute('data-col'));
+      if(!rolesData[currentRole].perms[row]) rolesData[currentRole].perms[row] = [0,0,0];
+      rolesData[currentRole].perms[row][col] = cb.checked ? 1 : 0;
+    });
+  });
+
+  // 数据权限范围切换
+  document.querySelectorAll('input[name="scope"]').forEach(function(radio){
+    radio.addEventListener('change', function(){
+      rolesData[currentRole].scope = radio.value;
+      document.getElementById('custom-dept-box').style.display = (radio.value === 'custom') ? 'block' : 'none';
+    });
+  });
+
+  document.getElementById('btn-save-perm').addEventListener('click', function(){
+    showToast('「' + rolesData[currentRole].name + '」权限配置已保存', 'success');
+  });
+  document.getElementById('btn-reset-perm').addEventListener('click', function(){
+    renderRolePerm();
+    showToast('已恢复当前角色的权限配置', 'info');
+  });
+  document.getElementById('btn-add-role').addEventListener('click', function(){
+    showToast('添加角色功能：请前往角色管理完善信息', 'info');
+  });
+
+  // ========== 审计日志 ==========
+  var avatarColors = {'张管理':'linear-gradient(135deg,#378ADD 0%,#7F77DD 100%)','李安全':'linear-gradient(135deg,#1D9E75 0%,#0D9488 100%)','王运维':'linear-gradient(135deg,#EF9F27 0%,#D85A30 100%)','赵审计':'linear-gradient(135deg,#7F77DD 0%,#378ADD 100%)','系统':'linear-gradient(135deg,#8c8c8c 0%,#595959 100%)'};
+  var typeBadgeMap = {'创建':'badge-create','修改':'badge-modify','删除':'badge-delete','登录':'badge-login','导出':'badge-export'};
+
+  var logData = [
+    {time:'2026-08-15 09:42:18', user:'张管理', type:'登录', module:'系统', content:'管理员登录后台管理系统', ip:'10.20.3.21', result:'success', params:{username:'zhangadmin', method:'SSO', browser:'Chrome 124'}, resp:{code:200, msg:'登录成功', token:'eyJhbGciOi***'}},
+    {time:'2026-08-15 09:35:02', user:'张管理', type:'创建', module:'演练管理', content:'创建钓鱼演练「Q3全员防钓鱼演练」并完成7步向导配置', ip:'10.20.3.21', result:'success', params:{name:'Q3全员防钓鱼演练', template:'邮件账单模板', target:'研发中心+安全部 共 4200 人', sendTime:'2026-08-20 09:30'}, resp:{code:200, drillId:'DRILL-2026-0815', status:'pending'}},
+    {time:'2026-08-15 09:18:44', user:'李安全', type:'修改', module:'素材模板', content:'编辑邮件模板「企业邮箱密码过期」正文内容与落地页链接', ip:'10.20.3.55', result:'success', params:{templateId:'TPL-0042', fields:['body','landingUrl']}, resp:{code:200, version:'v3'}},
+    {time:'2026-08-15 08:55:30', user:'系统', type:'登录', module:'系统', content:'检测到异常登录尝试（连续 3 次密码错误）', ip:'203.95.27.66', result:'fail', params:{username:'lisan', attempts:3, reason:'密码错误'}, resp:{code:401, msg:'账号已临时锁定 15 分钟'}},
+    {time:'2026-08-14 18:12:09', user:'张管理', type:'导出', module:'数据报表', content:'导出「2026年7月钓鱼演练月报」PDF 报表', ip:'10.20.3.21', result:'success', params:{reportType:'monthly', month:'2026-07', format:'pdf'}, resp:{code:200, file:'report-2026-07.pdf', size:'2.4MB'}},
+    {time:'2026-08-14 16:48:33', user:'王运维', type:'修改', module:'发送配置', content:'更新 SMTP 发件配置「安全邮箱通道」的发送速率限制', ip:'10.20.3.88', result:'success', params:{configId:'SMTP-02', rateLimit:'500/h', concurrency:20}, resp:{code:200}},
+    {time:'2026-08-14 15:20:11', user:'李安全', type:'删除', module:'用户和组', content:'删除已离职员工账号「陈测试」并清理关联数据', ip:'10.20.3.55', result:'success', params:{userId:'U-1029', name:'陈测试', cascade:true}, resp:{code:200, removedRelations:8}},
+    {time:'2026-08-14 14:05:27', user:'赵审计', type:'导出', module:'审计日志', content:'导出近 30 天审计日志 CSV 文件用于合规审查', ip:'10.20.3.40', result:'success', params:{range:'30d', format:'csv'}, resp:{code:200, rows:2156}},
+    {time:'2026-08-14 11:33:50', user:'系统', type:'修改', module:'系统', content:'定时任务自动清理超过 1 年留存期限的历史演练数据', ip:'127.0.0.1', result:'success', params:{task:'auto_clean', retention:'1y'}, resp:{code:200, cleaned:23}},
+    {time:'2026-08-14 10:08:15', user:'张管理', type:'修改', module:'系统设置', content:'更新单点登录(SSO)配置，切换协议为 SAML 2.0 并上传新证书', ip:'10.20.3.21', result:'success', params:{protocol:'saml', cert:'idp-cert.pem'}, resp:{code:200}},
+    {time:'2026-08-13 17:42:03', user:'王运维', type:'创建', module:'安全培训', content:'发布安全意识培训课程「识别钓鱼邮件的5个技巧」', ip:'10.20.3.88', result:'success', params:{courseId:'C-018', title:'识别钓鱼邮件的5个技巧', duration:'15min'}, resp:{code:200}},
+    {time:'2026-08-13 16:15:38', user:'李安全', type:'删除', module:'素材模板', content:'删除过期的钓鱼页面模板「仿冒网银登录页」', ip:'10.20.3.55', result:'fail', params:{templateId:'TPL-0019'}, resp:{code:409, msg:'该模板被进行中演练引用，无法删除'}},
+    {time:'2026-08-13 14:50:22', user:'赵审计', type:'登录', module:'系统', content:'审计员登录系统查看本月演练合规数据', ip:'10.20.3.40', result:'success', params:{username:'zhaoaudit', method:'password+2FA'}, resp:{code:200}},
+    {time:'2026-08-13 09:28:46', user:'系统', type:'修改', module:'邮件举报', content:'自动将 3 封举报邮件标记为「钓鱼确认」并关联到对应演练', ip:'127.0.0.1', result:'success', params:{reports:['R-3301','R-3302','R-3303'], drillId:'DRILL-2026-0812'}, resp:{code:200, matched:3}},
+    {time:'2026-08-12 19:05:14', user:'张管理', type:'导出', module:'用户和组', content:'导出全部部门与员工数据 Excel 明细', ip:'10.20.3.21', result:'success', params:{scope:'all', format:'xlsx'}, resp:{code:200, file:'users-20260812.xlsx', rows:4280}}
+  ];
+
+  var currentLogType = 'all';
+  var currentPage = 1;
+  var pageSize = 8;
+
+  function getFilteredLogs(){
+    return logData.filter(function(d){
+      if(currentLogType !== 'all'){
+        if(currentLogType === '操作日志' && ['创建','修改','删除','导出'].indexOf(d.type) < 0) return false;
+        if(currentLogType === '登录日志' && d.type !== '登录') return false;
+        if(currentLogType === '系统日志' && d.user !== '系统') return false;
+      }
+      var op = document.getElementById('filter-operator').value;
+      if(op && d.user !== op) return false;
+      var kw = document.getElementById('audit-search').value.trim().toLowerCase();
+      if(kw){
+        var hay = (d.content + ' ' + d.ip + ' ' + d.module + ' ' + d.user).toLowerCase();
+        if(hay.indexOf(kw) < 0) return false;
+      }
+      return true;
+    });
+  }
+
+  function renderAuditTable(){
+    var tbody = document.getElementById('audit-tbody');
+    var data = getFilteredLogs();
+    var total = data.length;
+    var totalPages = Math.max(1, Math.ceil(total / pageSize));
+    if(currentPage > totalPages) currentPage = totalPages;
+    var start = (currentPage - 1) * pageSize;
+    var pageData = data.slice(start, start + pageSize);
+
+    tbody.innerHTML = pageData.map(function(d, idx){
+      var initial = d.user === '系统' ? '系' : d.user.charAt(0);
+      var bg = avatarColors[d.user] || 'linear-gradient(135deg,#8c8c8c 0%,#595959 100%)';
+      var resultBadge = d.result === 'success'
+        ? '<span class="badge badge-success">成功</span>'
+        : '<span class="badge badge-fail">失败</span>';
+      return '<tr data-idx="' + (start + idx) + '">' +
+        '<td style="font-size:11px;color:var(--color-text-secondary);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">' + d.time + '</td>' +
+        '<td><div style="display:flex;align-items:center;gap:6px;"><span class="avatar-sm" style="background:' + bg + ';">' + initial + '</span><span>' + d.user + '</span></div></td>' +
+        '<td><span class="badge ' + (typeBadgeMap[d.type] || 'badge-create') + '">' + d.type + '</span></td>' +
+        '<td style="color:var(--color-text-secondary);">' + d.module + '</td>' +
+        '<td><span class="text-truncate" title="' + d.content.replace(/"/g,'&quot;') + '">' + d.content + '</span></td>' +
+        '<td style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;color:var(--color-text-secondary);">' + d.ip + '</td>' +
+        '<td>' + resultBadge + '</td>' +
+        '<td><button class="btn-link btn-view-log" data-idx="' + (start + idx) + '">查看详情</button></td>' +
+        '</tr>';
+    }).join('');
+
+    document.getElementById('audit-page-info').textContent = '共 ' + total + ' 条，第 ' + currentPage + ' / ' + totalPages + ' 页';
+
+    // 分页按钮
+    var pag = document.getElementById('audit-pagination');
+    var html = '<button class="page-btn" ' + (currentPage===1?'disabled':'') + ' data-page="prev">‹</button>';
+    for(var i=1; i<=totalPages; i++){
+      html += '<button class="page-btn ' + (i===currentPage?'active':'') + '" data-page="' + i + '">' + i + '</button>';
+    }
+    html += '<button class="page-btn" ' + (currentPage===totalPages?'disabled':'') + ' data-page="next">›</button>';
+    pag.innerHTML = html;
+
+    // 绑定详情查看
+    tbody.querySelectorAll('.btn-view-log').forEach(function(btn){
+      btn.addEventListener('click', function(e){
+        e.stopPropagation();
+        openLogModal(parseInt(btn.getAttribute('data-idx')));
+      });
+    });
+    tbody.querySelectorAll('tr').forEach(function(tr){
+      tr.addEventListener('click', function(){
+        openLogModal(parseInt(tr.getAttribute('data-idx')));
+      });
+    });
+  }
+
+  // 分页点击
+  document.getElementById('audit-pagination').addEventListener('click', function(e){
+    var btn = e.target.closest('.page-btn');
+    if(!btn || btn.disabled) return;
+    var p = btn.getAttribute('data-page');
+    var data = getFilteredLogs();
+    var totalPages = Math.max(1, Math.ceil(data.length / pageSize));
+    if(p === 'prev') currentPage = Math.max(1, currentPage - 1);
+    else if(p === 'next') currentPage = Math.min(totalPages, currentPage + 1);
+    else currentPage = parseInt(p);
+    renderAuditTable();
+  });
+
+  // 筛选事件
+  document.querySelectorAll('[data-logtype]').forEach(function(tag){
+    tag.addEventListener('click', function(){
+      document.querySelectorAll('[data-logtype]').forEach(function(t){ t.classList.remove('active'); });
+      tag.classList.add('active');
+      currentLogType = tag.getAttribute('data-logtype');
+      currentPage = 1;
+      renderAuditTable();
+    });
+  });
+  document.getElementById('filter-operator').addEventListener('change', function(){ currentPage = 1; renderAuditTable(); });
+  document.getElementById('filter-range').addEventListener('change', function(){ currentPage = 1; renderAuditTable(); });
+  var auditSearchTimer = null;
+  document.getElementById('audit-search').addEventListener('input', function(){
+    clearTimeout(auditSearchTimer);
+    auditSearchTimer = setTimeout(function(){ currentPage = 1; renderAuditTable(); }, 250);
+  });
+
+  // 日志详情弹窗
+  function openLogModal(idx){
+    var d = logData[idx];
+    if(!d) return;
+    var initial = d.user === '系统' ? '系' : d.user.charAt(0);
+    var bg = avatarColors[d.user] || 'linear-gradient(135deg,#8c8c8c 0%,#595959 100%)';
+    var resultBadge = d.result === 'success'
+      ? '<span class="badge badge-success">成功</span>'
+      : '<span class="badge badge-fail">失败</span>';
+    var html =
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px 24px;margin-bottom:16px;">' +
+        '<div><div class="stat-label">时间</div><div style="font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">' + d.time + '</div></div>' +
+        '<div><div class="stat-label">结果</div>' + resultBadge + '</div>' +
+        '<div><div class="stat-label">操作人</div><div style="display:flex;align-items:center;gap:6px;"><span class="avatar-sm" style="background:' + bg + ';">' + initial + '</span>' + d.user + '</div></div>' +
+        '<div><div class="stat-label">操作类型 / 模块</div><div style="font-size:12px;"><span class="badge ' + (typeBadgeMap[d.type]||'badge-create') + '">' + d.type + '</span> <span style="color:var(--color-text-secondary);">' + d.module + '</span></div></div>' +
+        '<div><div class="stat-label">IP 地址</div><div style="font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">' + d.ip + '</div></div>' +
+        '<div><div class="stat-label">日志 ID</div><div style="font-size:12px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">LOG-' + (10000 + idx) + '</div></div>' +
+      '</div>' +
+      '<div class="stat-label" style="margin-bottom:6px;">完整操作内容</div>' +
+      '<div style="font-size:12px;color:var(--color-text-primary);margin-bottom:16px;line-height:1.6;">' + d.content + '</div>' +
+      '<div class="stat-label" style="margin-bottom:6px;">请求参数</div>' +
+      '<pre class="code-block" style="margin-bottom:16px;">' + JSON.stringify(d.params, null, 2) + '</pre>' +
+      '<div class="stat-label" style="margin-bottom:6px;">响应结果</div>' +
+      '<pre class="code-block">' + JSON.stringify(d.resp, null, 2) + '</pre>';
+    document.getElementById('log-modal-body').innerHTML = html;
+    document.getElementById('log-modal').style.display = 'flex';
+  }
+  function closeLogModal(){ document.getElementById('log-modal').style.display = 'none'; }
+  document.getElementById('log-close').addEventListener('click', closeLogModal);
+  document.getElementById('log-close-btn').addEventListener('click', closeLogModal);
+  document.getElementById('log-modal').addEventListener('click', function(e){ if(e.target === this) closeLogModal(); });
+
+  // ========== 系统集成 ==========
+  document.getElementById('btn-test-sso').addEventListener('click', function(){
+    if(!document.getElementById('sso-switch').checked){ showToast('SSO 集成未启用，请先开启', 'error'); return; }
+    showToast('SSO 连接测试中…', 'info');
+    setTimeout(function(){ showToast('SSO 连接测试成功，已成功获取 IdP 元数据', 'success'); }, 1200);
+  });
+  document.getElementById('btn-test-siem').addEventListener('click', function(){
+    if(!document.getElementById('siem-switch').checked){ showToast('SIEM 推送未启用，请先开启', 'error'); return; }
+    showToast('正在向 SIEM 发送测试事件…', 'info');
+    setTimeout(function(){ showToast('测试事件推送成功，请到 SIEM 控制台确认接收', 'success'); }, 1200);
+  });
+  document.getElementById('btn-upload-cert').addEventListener('click', function(){
+    showToast('证书文件已选择：idp-cert.pem（演示）', 'info');
+  });
+
+  // 消息推送测试
+  document.querySelectorAll('.btn-test-msg').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var name = btn.getAttribute('data-name');
+      var sw = document.querySelector('.msg-switch[data-name="' + name + '"]');
+      if(sw && !sw.checked){ showToast(name + ' 未启用，请先开启开关', 'error'); return; }
+      showToast('正在向 ' + name + ' 发送测试消息…', 'info');
+      setTimeout(function(){ showToast(name + ' 测试消息推送成功', 'success'); }, 1000);
+    });
+  });
+  // 消息推送开关切换
+  document.querySelectorAll('.msg-switch').forEach(function(sw){
+    sw.addEventListener('change', function(){
+      showToast(sw.getAttribute('data-name') + (sw.checked ? ' 已启用' : ' 已停用'), sw.checked ? 'success' : 'info');
+    });
+  });
+  // SSO / SIEM 开关
+  document.getElementById('sso-switch').addEventListener('change', function(e){
+    showToast('SSO 集成已' + (e.target.checked ? '启用' : '停用'), e.target.checked ? 'success' : 'info');
+  });
+  document.getElementById('siem-switch').addEventListener('change', function(e){
+    showToast('SIEM 推送已' + (e.target.checked ? '启用' : '停用'), e.target.checked ? 'success' : 'info');
+  });
+
+  // 多选标签切换样式
+  document.querySelectorAll('.check-tag input').forEach(function(inp){
+    inp.addEventListener('change', function(){
+      inp.closest('.check-tag').classList.toggle('checked', inp.checked);
+    });
+  });
+
+  // ========== 基础参数：Logo 上传预览 ==========
+  document.getElementById('btn-upload-logo').addEventListener('click', function(){
+    document.getElementById('logo-file').click();
+  });
+  document.getElementById('logo-file').addEventListener('change', function(e){
+    var file = e.target.files[0];
+    if(!file) return;
+    if(file.size > 200 * 1024){ showToast('文件超过 200KB 限制', 'error'); return; }
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      document.getElementById('logo-preview').innerHTML = '<img src="' + ev.target.result + '" alt="logo">';
+      showToast('Logo 上传成功：' + file.name, 'success');
+    };
+    reader.readAsDataURL(file);
+  });
+
+  // IP 白名单标签输入
+  var ipInput = document.getElementById('ip-input');
+  var ipBox = document.getElementById('ip-whitelist');
+  function addIpTag(val){
+    val = val.trim();
+    if(!val) return;
+    var exists = false;
+    ipBox.querySelectorAll('.tag-chip').forEach(function(c){
+      if(c.getAttribute('data-ip-val') === val) exists = true;
+    });
+    if(exists){ showToast('该 IP 已存在', 'error'); return; }
+    var chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.setAttribute('data-ip-val', val);
+    chip.innerHTML = val + '<span class="tag-close">×</span>';
+    chip.querySelector('.tag-close').addEventListener('click', function(){ chip.remove(); });
+    ipBox.insertBefore(chip, ipInput);
+  }
+  ipInput.addEventListener('keydown', function(e){
+    if(e.key === 'Enter' || e.key === ','){
+      e.preventDefault();
+      addIpTag(ipInput.value);
+      ipInput.value = '';
+    }
+  });
+  ipBox.querySelectorAll('.tag-close').forEach(function(c){
+    c.addEventListener('click', function(){ c.closest('.tag-chip').remove(); });
+  });
+
+  // 保存所有设置
+  document.getElementById('btn-save-all').addEventListener('click', function(){
+    showToast('所有基础参数设置已保存', 'success');
+  });
+  document.getElementById('btn-reset-basic').addEventListener('click', function(){
+    showToast('已恢复默认设置（演示）', 'info');
+  });
+
+  // ========== 侧边栏导航提示（演示，不跳转） ==========
+  document.querySelectorAll('.sidebar .nav-item').forEach(function(n){
+    if(n.classList.contains('active')) return;
+    n.addEventListener('click', function(){
+      showToast('「' + n.textContent.trim() + '」页面演示暂未包含，请切换上方 Tab', 'info');
+    });
+  });
+
+  // ========== 授权管理交互 ==========
+  // 复制授权 Key
+  document.getElementById('btn-copy-key').addEventListener('click', function(){
+    var keyInput = document.getElementById('license-key-input');
+    keyInput.select();
+    try { document.execCommand('copy'); } catch(e) {}
+    window.getSelection && window.getSelection().removeAllRanges && window.getSelection().removeAllRanges();
+    showToast('授权 Key 已复制到剪贴板', 'success');
+  });
+
+  // 授权文件上传区（点击触发文件选择 + 拖拽）
+  function bindLicUpload(areaId, inputId, msg){
+    var area = document.getElementById(areaId);
+    var input = document.getElementById(inputId);
+    if(!area || !input) return;
+    area.addEventListener('click', function(){ input.click(); });
+    area.addEventListener('dragover', function(e){ e.preventDefault(); area.style.borderColor='#378ADD'; area.style.background='var(--color-background-info)'; });
+    area.addEventListener('dragleave', function(e){ e.preventDefault(); area.style.borderColor='#d1d5db'; area.style.background='var(--color-background-secondary)'; });
+    area.addEventListener('drop', function(e){
+      e.preventDefault();
+      area.style.borderColor='#d1d5db'; area.style.background='var(--color-background-secondary)';
+      var f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if(f){ showToast(msg + '：' + f.name, 'success'); }
+    });
+    input.addEventListener('change', function(){
+      if(input.files && input.files[0]){ showToast(msg + '：' + input.files[0].name, 'success'); }
+    });
+  }
+  bindLicUpload('lic-upload-area', 'lic-file', '授权文件已上传');
+  bindLicUpload('offline-lic-upload', 'offline-lic-file', '离线激活文件已导入');
+
+  // 在线验证
+  document.getElementById('btn-verify-online').addEventListener('click', function(){
+    var code = document.getElementById('activate-code-input').value.trim();
+    if(!code){ showToast('请输入激活码', 'error'); return; }
+    showToast('正在联网验证激活码…', 'info');
+    setTimeout(function(){ showToast('激活码验证成功，授权已续期至 2027-08-15', 'success'); }, 1200);
+  });
+
+  // 联系销售
+  document.getElementById('btn-contact-sales').addEventListener('click', function(){
+    showToast('已为您接通销售顾问，电话：400-888-XXXX（工作时间 9:00-18:00）', 'info');
+  });
+
+  // 初始渲染
+  renderRolePerm();
+  renderAuditTable();
+})();
+</script>
+
+<!-- Copilot FAB -->
+<div class="copilot-fab" id="copilotFab" onclick="Copilot.open()">
+  <span class="fab-pulse"></span>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg>
+</div>
+<!-- Copilot Drawer -->
+<div class="copilot-overlay" id="copilotOverlay" onclick="Copilot.close()"></div>
+<div class="copilot-drawer" id="copilotDrawer" data-page="系统设置">
+  <div class="copilot-header">
+    <div class="copilot-header-left">
+      <div class="copilot-header-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v1H7a3 3 0 0 0-3 3v3a3 3 0 0 0 3 3h1v3a3 3 0 0 0 3 3 3 3 0 0 0 3-3v-3h1a3 3 0 0 0 3-3V9a3 3 0 0 0-3-3h-2V5a3 3 0 0 0-3-3z"/></svg></div>
+      <div>
+        <div class="copilot-header-title">AI Copilot</div>
+        <div class="copilot-header-sub" id="copilotContext">当前上下文：系统设置</div>
+      </div>
+    </div>
+    <button class="copilot-close" onclick="Copilot.close()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="copilot-sessions">
+    <div class="copilot-session-btn active" onclick="Copilot.switchSession(this,'current')">当前会话</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s1')">演练分析</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s2')">模板生成</div>
+    <div class="copilot-session-btn" onclick="Copilot.switchSession(this,'s3')">风险报告</div>
+    <div class="copilot-session-btn" onclick="Copilot.newSession()">+ 新建</div>
+  </div>
+  <div class="copilot-messages" id="copilotMessages">
+    <div class="copilot-empty" id="copilotEmpty">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <h4>AI Copilot 智能助手</h4>
+      <p>我是您的安全演练AI助手，可以帮您分析演练数据、生成模板、撰写报告等。<br/>下方快捷问题可直接点击使用。</p>
+    </div>
+  </div>
+  <div class="copilot-draft-banner" id="copilotDraftBanner" style="display:none">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+    <span>AI生成内容处于草稿态，需人工确认后生效。审核记录将进入审计日志。</span>
+  </div>
+  <div class="copilot-input-area">
+    <div class="copilot-quick-tags" id="copilotQuickTags">
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">安全配置检查</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">审计日志分析</span>
+      <span class="copilot-quick-tag" onclick="Copilot.quickAsk(this.textContent)">权限优化建议</span>
+    </div>
+    <div class="copilot-input-wrap">
+      <textarea class="copilot-input" id="copilotInput" placeholder="输入您的问题..." rows="1" onkeydown="Copilot.onKeydown(event)" oninput="Copilot.autoResize(this)"></textarea>
+      <button class="copilot-send" id="copilotSend" onclick="Copilot.send()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+if(typeof showToast!=='function'){function showToast(msg,type){var t=document.createElement('div');t.className='toast '+(type||'info');t.textContent=msg;document.body.appendChild(t);setTimeout(function(){t.remove();},3000);}}
+
+// ===== Copilot 全局AI助手 =====
+var Copilot=(function(){
+  var drawer=document.getElementById('copilotDrawer');
+  var overlay=document.getElementById('copilotOverlay');
+  var messagesEl=document.getElementById('copilotMessages');
+  var inputEl=document.getElementById('copilotInput');
+  var sendBtn=document.getElementById('copilotSend');
+  var emptyEl=document.getElementById('copilotEmpty');
+  var draftBanner=document.getElementById('copilotDraftBanner');
+  var pageContext=drawer?drawer.getAttribute('data-page'):'';
+  var isGenerating=false;
+  var messages=[];
+
+  function open(){if(!drawer)return;drawer.classList.add('open');overlay.classList.add('show');setTimeout(function(){inputEl&&inputEl.focus();},350);}
+  function close(){if(!drawer)return;drawer.classList.remove('open');overlay.classList.remove('show');}
+  function switchSession(btn,key){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');btn.classList.add('active');showToast('已切换到会话：'+btn.textContent,'info');}
+  function newSession(){var btns=document.querySelectorAll('.copilot-session-btn');for(var i=0;i<btns.length;i++)btns[i].classList.remove('active');messages=[];if(emptyEl)emptyEl.style.display='block';messagesEl.innerHTML='';messagesEl.appendChild(emptyEl);showToast('已创建新会话','info');}
+  function quickAsk(text){if(!inputEl)return;inputEl.value=text;autoResize(inputEl);send();}
+  function onKeydown(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}}
+  function autoResize(el){el.style.height='38px';el.style.height=Math.min(el.scrollHeight,100)+'px';}
+  function addMessage(role,content,opts){
+    opts=opts||{};
+    if(emptyEl)emptyEl.style.display='none';
+    var msg=document.createElement('div');msg.className='copilot-msg '+role;
+    var avatar=document.createElement('div');avatar.className='copilot-msg-avatar';avatar.textContent=role==='ai'?'AI':'我';
+    var bubble=document.createElement('div');bubble.className='copilot-msg-bubble';
+    if(role==='ai'){bubble.innerHTML=renderMarkdown(content);}else{bubble.textContent=content;}
+    msg.appendChild(avatar);msg.appendChild(bubble);
+    if(role==='ai'&&opts.showContext){var badge=document.createElement('div');badge.className='copilot-context-badge';badge.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>上下文：'+pageContext;bubble.appendChild(badge);}
+    if(role==='ai'&&opts.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';opts.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}
+    if(role==='ai'&&opts.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+opts.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+opts.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}
+    messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;return bubble;
+  }
+  function showTyping(){if(emptyEl)emptyEl.style.display='none';var msg=document.createElement('div');msg.className='copilot-msg ai';msg.id='copilotTypingMsg';msg.innerHTML='<div class="copilot-msg-avatar">AI</div><div class="copilot-msg-bubble"><div class="copilot-typing"><span></span><span></span><span></span></div></div>';messagesEl.appendChild(msg);messagesEl.scrollTop=messagesEl.scrollHeight;}
+  function hideTyping(){var t=document.getElementById('copilotTypingMsg');if(t)t.remove();}
+  function typewriter(el,text,opts){opts=opts||{};var i=0;var speed=15;el.innerHTML='';function type(){if(i<text.length){el.innerHTML=renderMarkdown(text.substring(0,i+1));i++;messagesEl.scrollTop=messagesEl.scrollHeight;setTimeout(type,speed);}else{isGenerating=false;sendBtn.disabled=false;if(opts.onComplete)opts.onComplete();}}type();}
+  function renderMarkdown(text){var html=text;html=html.replace(/```([\s\S]*?)```/g,function(m,c){return '<pre style="background:#1a1a1a;color:#0f0;padding:8px 12px;border-radius:6px;font-size:12px;overflow-x:auto;margin:8px 0"><code>'+c.replace(/</g,'&lt;')+'</code></pre>';});html=html.replace(/`([^`]+)`/g,'<code>$1</code>');html=html.replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>');html=html.replace(/^### (.+)$/gm,'<h4>$1</h4>');html=html.replace(/^- (.+)$/gm,'<li>$1</li>');html=html.replace(/(<li>.*?<\/li>\n?)+/g,function(m){return '<ul>'+m+'</ul>';});html=html.replace(/^\d+\. (.+)$/gm,'<li>$1</li>');html=html.replace(/\n/g,'<br>');return html;}
+  function send(){if(isGenerating)return;var text=inputEl.value.trim();if(!text)return;addMessage('user',text);inputEl.value='';inputEl.style.height='38px';isGenerating=true;sendBtn.disabled=true;showTyping();setTimeout(function(){hideTyping();var response=generateResponse(text);var bubble=addMessage('ai','',{showContext:messages.length<=1});typewriter(bubble,response.text,{onComplete:function(){if(response.actions){var actDiv=document.createElement('div');actDiv.className='copilot-msg-actions';response.actions.forEach(function(act){var btn=document.createElement('button');btn.className='copilot-action-btn';btn.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>'+act.label;btn.onclick=function(){showToast('执行：'+act.label,'info');};actDiv.appendChild(btn);});bubble.appendChild(actDiv);}if(response.draft){draftBanner.style.display='flex';var reviewCard=document.createElement('div');reviewCard.className='copilot-review-card';reviewCard.innerHTML='<div class="copilot-review-card-header"><span class="copilot-review-card-title">'+response.draft.title+'</span><span class="copilot-review-badge draft">草稿待审核</span></div><div class="copilot-review-content">'+response.draft.content+'</div><div class="copilot-review-actions"><button class="copilot-review-btn preview" onclick="showToast(\'预览草稿内容\',\'info\')">预览</button><button class="copilot-review-btn confirm" onclick="Copilot.confirmDraft(this)">确认入库</button><button class="copilot-review-btn discard" onclick="Copilot.discardDraft(this)">丢弃</button></div>';bubble.appendChild(reviewCard);}messagesEl.scrollTop=messagesEl.scrollHeight;}});},800);}
+  function generateResponse(text){
+    var pageResponses={
+      '数据概览':{text:'**当前页面：数据概览**\n\n根据最新数据分析：\n\n- 本月中招率 **18.5%**，较上月下降3.2%，趋势向好\n- **财务部**中招率最高（32.1%），建议优先安排培训\n- 举报率22.3%，员工安全意识在提升\n- 培训通过率86.2%，仍有提升空间\n\n### 建议措施\n1. 针对财务部开展专项钓鱼演练\n2. 推送财务类钓鱼识别培训课程\n3. 对连续中招人员启动一对一辅导',actions:[{label:'一键生成报告'},{label:'创建财务部演练'},{label:'推荐培训课程'}]},
+      '演练管理':{text:'**当前页面：演练管理**\n\n最近一次演练「Q3财务钓鱼演练」分析：\n\n| 指标 | 数值 | 评价 |\n|------|------|------|\n| 发送数 | 580 | - |\n| 打开率 | 72.3% | 偏高 |\n| 点击率 | 28.1% | 风险高 |\n| 中招率 | 18.6% | 需关注 |\n| 举报率 | 15.2% | 正常 |\n\n### 关键发现\n- **邮件主题**「紧急：财务报销确认」点击率异常高\n- 发送后2小时内集中中招，说明员工缺乏犹豫期\n- 3人重复中招（已标记为高风险）',actions:[{label:'查看详情'},{label:'生成演练报告'},{label:'标记高危人员'}]},
+      '素材模板':{text:'**当前页面：素材模板**\n\n根据历史演练数据，为您推荐模板生成方案：\n\n### 高效模板特征\n- **场景**：节假日福利领取（点击率平均34.2%）\n- **语气**：紧急+友好混合（打开率提升25%）\n- **发件人**：伪装HR部门（信任度高）\n\n已为您生成草稿模板，请审核确认后入库：',draft:{title:'AI生成模板：节假日福利领取',content:'主题：【福利】2026年中秋礼品领取通知\n发件人：HR-福利管理 <hr-welfare@company.com>\n正文：尊敬的同事，2026年中秋节礼品领取通道已开放，请点击下方链接选择您的礼品...\n预估点击率：32%',actions:true}},
+      '发送配置':{text:'**当前页面：发送配置**\n\n发送通道健康度检查：\n\n- **平台默认SMTP** — 送达率 98.2% ✅\n- **Office365 (EWS)** — 送达率 95.7% ✅\n- **阿里云短信** — 送达率 99.1% ✅\n\n### DNS记录状态\n- SPF ✅ 已配置\n- DKIM ✅ 已配置\n- DMARC ⚠️ 建议添加`p=quarantine`策略\n\n建议：为提升送达率可信度，请完善DMARC记录。',actions:[{label:'查看DMARC配置指引'}]},
+      '用户和组':{text:'**当前页面：用户和组**\n\n高风险人员分析（共86人）：\n\n### 风险分布\n- **极高危险**（风险值>80）：12人\n- **高危险**（风险值60-80）：28人\n- **中危险**（风险值40-60）：46人\n\n### Top 3 高危人员\n1. **王某某**（财务部）— 3次中招，风险值92\n2. **李某**（市场部）— 2次中招+1次误报，风险值87\n3. **张某**（行政部）— 2次中招，风险值85\n\n建议立即安排专项培训。',actions:[{label:'查看风险画像'},{label:'分配培训计划'},{label:'创建针对演练'}]},
+      '安全培训':{text:'**当前页面：安全培训**\n\n培训效果分析：\n\n- 课程完成率：**86.2%**\n- 考试通过率：**78.5%**\n- 培训后中招率下降：**42.3%**\n\n### 薄弱知识点\n1. 邮件头信息识别（错误率61%）\n2. 短链接安全判断（错误率48%）\n3. 附件安全检查（错误率35%）\n\n已为您生成针对性题库草稿，请审核：',draft:{title:'AI生成题库：邮件头识别专项',content:'1. 以下哪项邮件头字段可用于验证发件人身份？\nA. Subject  B. X-Powered-By  C. Received-SPF  D. Date\n答案：C\n\n2. DKIM签名验证失败说明什么？\nA. 邮件被篡改  B. 发件人未认证  C. 服务器宕机  D. 以上都对\n答案：A',actions:true}},
+      '数据报表':{text:'**当前页面：数据报表**\n\n跨演练趋势分析：\n\n### 中招率变化趋势\n- 2026 Q1平均中招率：**24.5%**\n- 2026 Q2平均中招率：**21.2%**\n- 2026 Q3平均中招率：**18.5%**\n\n**整体下降趋势明显**，季度环比下降约14%。\n\n### 最有效改进场景\n- 系统升级类：中招率从31%→18%（下降42%）\n- 财务类：中招率从28%→22%（下降21%）\n\n### 仍需关注\n- 节假日类中招率仅下降8%，建议加强场景化培训',actions:[{label:'导出分析报告'},{label:'生成趋势图表'},{label:'生成改进方案'}]},
+      '邮件举报':{text:'**当前页面：邮件举报**\n\n举报数据分析：\n\n- 本月举报总数：**186次**\n- 演练邮件举报：**142次**（76.3%）\n- 真实钓鱼举报：**32次**（17.2%）\n- 误报：**12次**（6.5%）\n\n### 举报响应时间\n- 平均响应：**4.2分钟**（优秀）\n- 最快：**47秒**\n- 最慢：**23分钟**\n\n举报率持续提升，说明员工安全意识在增强。建议对Top举报者给予积分奖励。',actions:[{label:'查看积分排行'},{label:'生成举报报告'}]},
+      '系统设置':{text:'**当前页面：系统设置**\n\n系统安全配置检查：\n\n### 检查结果\n- 两步验证：✅ 已启用\n- 密码策略：✅ 满足复杂度要求\n- IP白名单：✅ 已配置12个IP\n- 数据加密：✅ 已启用\n- 审计模式：✅ 已启用\n\n### 建议优化\n- ⚠️ 会话超时设置为60分钟，建议缩短至30分钟\n- ⚠️ 数据留存期限为1年，建议根据合规要求调整为2年\n- 💡 建议启用SIEM推送，实现实时告警',actions:[{label:'应用安全建议'}]},
+      '智能助手':{text:'**当前页面：智能助手**\n\nAI能力使用统计：\n\n- 本月API调用：**3,420次**\n- Token消耗：**2.1M**\n- 费用预估：**¥186**\n\n### 各功能使用占比\n1. AI对话助手：48%\n2. 智能分析报告：28%\n3. AI模板生成：18%\n4. 培训推荐：6%\n\n所有AI生成内容均已进入审核队列，确保安全合规。',actions:[{label:'查看审核队列'},{label:'优化AI配置'}]},
+      'API开放平台':{text:'**当前页面：API开放平台**\n\nAPI调用分析：\n\n- 本月总调用：**12,580次**\n- 成功率：**99.2%**\n- 平均响应：**128ms**\n\n### Top 3 调用API\n1. `POST /api/v1/drills` — 4,200次\n2. `GET /api/v1/reports/drills/{id}` — 3,150次\n3. `GET /api/v1/users/risk` — 2,830次\n\n### 异常调用\n- ⚠️ AppID `app_xxxx` 在凌晨3点有异常高频调用，建议检查\n- ⚠️ 2次401认证失败来自IP `10.12.34.56`',actions:[{label:'查看异常日志'},{label:'设置调用限制'}]}
+    };
+    if(text.indexOf('报告')>-1||text.indexOf('分析')>-1){return pageResponses[pageContext]||pageResponses['数据概览'];}
+    if(text.indexOf('生成')>-1||text.indexOf('模板')>-1||text.indexOf('创建')>-1){return pageResponses[pageContext]||pageResponses['素材模板'];}
+    if(text.indexOf('风险')>-1||text.indexOf('高危')>-1){return pageResponses[pageContext]||pageResponses['用户和组'];}
+    return pageResponses[pageContext]||{text:'我是您的AI Copilot助手。当前页面上下文：**'+pageContext+'**。\n\n我可以帮您：\n- 分析当前页面数据\n- 生成报告和建议\n- 创建模板和课程\n- 风险评估和预警\n\n请问有什么可以帮您的？',actions:[]};
+  }
+  function confirmDraft(btn){var card=btn.closest('.copilot-review-card');var badge=card.querySelector('.copilot-review-badge');badge.className='copilot-review-badge confirmed';badge.textContent='已确认入库';var actions=card.querySelector('.copilot-review-actions');actions.innerHTML='<span style="font-size:11px;color:#1D9E75">✓ 审核通过 · 操作人：张管理 · '+new Date().toLocaleString()+'</span>';showToast('草稿已确认入库，审核记录已写入审计日志','success');draftBanner.style.display='none';}
+  function discardDraft(btn){var card=btn.closest('.copilot-review-card');card.style.opacity='0.5';card.querySelector('.copilot-review-actions').innerHTML='<span style="font-size:11px;color:#8c8c8c">已丢弃</span>';showToast('草稿已丢弃','info');}
+  return{open:open,close:close,switchSession:switchSession,newSession:newSession,quickAsk:quickAsk,onKeydown:onKeydown,autoResize:autoResize,send:send,confirmDraft:confirmDraft,discardDraft:discardDraft};
+})();
+</script>
+</content>
+</invoke>
