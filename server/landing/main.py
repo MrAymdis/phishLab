@@ -26,7 +26,7 @@ _EDU_POPUP = """<!DOCTYPE html>
 </div></body></html>"""
 
 
-def _render_login_page(title: str, fields: list[dict], token: str = "") -> str:
+def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "") -> str:
     """渲染仿冒登录页：标题 + 表单字段（口径类字段标注不落库说明仅在演练端）。"""
     inputs = []
     for f in fields:
@@ -49,7 +49,7 @@ def _render_login_page(title: str, fields: list[dict], token: str = "") -> str:
 <div style="width:360px;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:32px">
   <h2 style="text-align:center;color:#333;margin:0 0 8px">{title}</h2>
   <p style="text-align:center;color:#888;font-size:12px;margin:0 0 20px">统一身份认证中心</p>
-  <form method="post" action="submit" style="display:flex;flex-direction:column">
+  <form method="post" action="/p/{slug}/submit" style="display:flex;flex-direction:column">
     {fields_html}
     <input type="hidden" name="token" value="{token}" />
     <button type="submit" style="margin-top:12px;padding:10px;background:#378ADD;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">登 录</button>
@@ -99,7 +99,7 @@ def serve(slug: str, token: str = ""):
     """渲染仿冒登录页（字段来自落地页素材库；追踪 token 随表单提交回传）。"""
     title, fields = _load_page_fields(slug)
     # TODO(一期)：注入指纹采集 JS（Canvas/WebGL/字体），写入 fingerprint 表
-    return _render_login_page(title, fields, token=token)
+    return _render_login_page(title, fields, slug, token=token)
 
 
 @app.post("/p/{slug}/submit")
