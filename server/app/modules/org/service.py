@@ -439,3 +439,21 @@ def list_tags(db: Session, account) -> list[dict]:
         {"id": t.id, "name": t.name, "color": t.color or "", "user_count": int(cnt)}
         for t, cnt in rows
     ]
+
+
+def create_tag(db: Session, account, payload: dict) -> int:
+    """创建标签：名称唯一校验 + 审计。"""
+    name = (payload.get("name") or "").strip()
+    if not name:
+        raise BizError(ErrorCode.PARAM_INVALID, "标签名称不能为空")
+    exists = db.scalar(select(EmpTag).where(EmpTag.name == name))
+    if exists:
+        raise BizError(ErrorCode.PARAM_INVALID, f"标签「{name}」已存在")
+    tag = EmpTag(name=name, color=payload.get("color") or None)
+    db.add(tag)
+    db.commit()
+    record_audit(
+        db, account=account, module="org", action="create_tag",
+        target_type="emp_tag", target_id=str(tag.id), detail={"name": name},
+    )
+    return tag.id

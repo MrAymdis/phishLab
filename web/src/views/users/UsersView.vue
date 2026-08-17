@@ -669,6 +669,7 @@ async function loadUsers(deptId?: number) {
 onMounted(() => {
   loadDepts()
   loadUsers()
+  loadTags()
 })
 
 // 选中部门时，允许命中所选节点或其任一子部门（含父部门名称命中员工 dept 字段）
@@ -698,6 +699,23 @@ const employeeRows = ref<Employee[]>([
 const tagOptions = ref<string[]>(['高管', '研发', '运维', '财务', '新员工'])
 const tagColorMap: Record<string, string> = {
   高管: '#E6A23C', 研发: '#378ADD', 运维: '#0D9488', 财务: '#A05B8C', 新员工: '#67C23A',
+}
+/** 后端标签库（name → id 映射，保存员工时用） */
+const tagListData = ref<{ id: number; name: string; color: string; user_count: number }[]>([])
+
+async function loadTags() {
+  try {
+    const list = (await orgApi.tags()) as { id: number; name: string; color: string; user_count: number }[]
+    if (Array.isArray(list) && list.length) {
+      tagListData.value = list
+      tagOptions.value = list.map((t) => t.name)
+      for (const t of list) {
+        if (t.color) tagColorMap[t.name] = t.color
+      }
+    }
+  } catch {
+    // 加载失败保留默认标签
+  }
 }
 const tagDialogVisible = ref(false)
 const newTagName = ref('')
@@ -898,7 +916,7 @@ function openTagDialog() {
   tagDialogVisible.value = true
 }
 
-function createTag() {
+async function createTag() {
   const name = newTagName.value.trim()
   if (!name) {
     ElMessage.warning('请输入标签名称')
@@ -908,27 +926,36 @@ function createTag() {
     ElMessage.warning('标签已存在')
     return
   }
-  tagOptions.value.push(name)
-  tagColorMap[name] = newTagColor.value
-  ElMessage.success(`标签「${name}」创建成功`)
-  tagDialogVisible.value = false
+  try {
+    await orgApi.createTag({ name, color: newTagColor.value })
+    await loadTags() // 刷新标签库与颜色映射
+    ElMessage.success(`标签「${name}」创建成功`)
+    tagDialogVisible.value = false
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
-function createInlineTag() {
+async function createInlineTag() {
   const name = inlineTagName.value.trim()
   if (!name) {
     inlineTagInputVisible.value = false
     return
   }
-  if (!tagOptions.value.includes(name)) {
-    tagOptions.value.push(name)
-    tagColorMap[name] = '#378ADD'
+  try {
+    if (!tagOptions.value.includes(name)) {
+      await orgApi.createTag({ name, color: '#378ADD' })
+      await loadTags()
+    }
+    if (!empForm.tags.includes(name)) {
+      empForm.tags.push(name)
+    }
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    inlineTagName.value = ''
+    inlineTagInputVisible.value = false
   }
-  if (!empForm.tags.includes(name)) {
-    empForm.tags.push(name)
-  }
-  inlineTagName.value = ''
-  inlineTagInputVisible.value = false
 }
 
 /** 按「技术部 / 研发组」路径逐级匹配部门树；失败回退根部门，仍无则 1 */
@@ -950,6 +977,10 @@ async function saveEmp() {
     ElMessage.warning('请填写姓名、工号和邮箱')
     return
   }
+  // 标签名 → 标签 id（未匹配的忽略，不阻断保存）
+  const tagIds = empForm.tags
+    .map((name) => tagListData.value.find((t) => t.name === name)?.id)
+    .filter((x): x is number => x !== undefined)
   const payload = {
     name: empForm.name,
     emp_no: empForm.no,
@@ -957,7 +988,7 @@ async function saveEmp() {
     mobile: empForm.phone,
     dept_id: findDeptId(empForm.dept),
     position: empForm.pos,
-    tag_ids: [], // TODO: 标签暂未与后端标签体系映射，待接入 orgApi.tags()
+    tag_ids: tagIds,
     initial_risk: empForm.riskScore,
   }
   try {

@@ -61,6 +61,8 @@ export const orgApi = {
   riskProfile: (uid: number) => get(`/api/v1/emp-users/${uid}/risk-profile`),
   groups: () => get('/api/v1/groups'),
   tags: () => get('/api/v1/tags'),
+  createTag: (payload: Record<string, unknown>) =>
+    post<{ id: number }>('/api/v1/tags', payload),
 }
 
 // ---- 素材模板 ----

@@ -93,6 +93,16 @@ def list_groups(account=Depends(get_current_account), db: Session = Depends(get_
     return resp.ok(service.list_groups(db, account))
 
 
+class TagCreate(BaseModel):
+    name: str
+    color: str | None = None
+
+
 @tags.get("", summary="标签列表")
 def list_tags(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.list_tags(db, account))
+
+
+@tags.post("", summary="创建标签（名称唯一）")
+def create_tag(payload: TagCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"id": service.create_tag(db, account, payload.model_dump())})
