@@ -67,6 +67,7 @@ def list_email_templates(db, account, scene=None) -> list[dict]:
             "used": t.used_count,
             "click": float(t.click_rate or 0),
             "preview": f"{t.subject[:24]}…" if len(t.subject) > 24 else t.subject,
+            "created_at": t.created_at.strftime("%Y-%m-%d") if t.created_at else "",
             "track_pixel": bool(t.track_pixel),
             "track_link": bool(t.track_link),
             "track_attach": bool(t.track_attach),
@@ -197,6 +198,7 @@ def list_landing_pages(db, account) -> list[dict]:
                 "fields": fields,
                 "collect": collect,
                 "used": p.used_count,
+                "created_at": p.created_at.strftime("%Y-%m-%d") if p.created_at else "",
             }
         )
     return result
@@ -466,6 +468,7 @@ def list_attachments(db, account) -> list[dict]:
                 "used": a.used_count,
                 "status": a.status,
                 "icon": a.icon or "📄",
+                "created_at": a.created_at.strftime("%Y-%m-%d") if a.created_at else "",
             }
         )
     return result

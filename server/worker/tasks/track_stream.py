@@ -19,7 +19,7 @@ logger = logging.getLogger("phishlab.track")
 _EVENT_CN = {
     "open": "打开了邮件",
     "click": "点击了邮件中的链接",
-    "submit": "在登录页提交了账号密码",
+    "submit": "在登录页提交了敏感数据",
     "report": "举报了可疑邮件",
     "attach_run": "运行了附件",
     "bounce": "邮件被退回",

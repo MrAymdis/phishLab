@@ -728,6 +728,7 @@ interface EmailTemplate {
   used: number
   click: number
   preview: string
+  created_at?: string
 }
 
 interface LandingPage {
@@ -738,6 +739,7 @@ interface LandingPage {
   fields: number
   collect: number
   used: number
+  created_at?: string
 }
 
 interface PayloadItem {
@@ -751,6 +753,7 @@ interface PayloadItem {
   used: number
   status: 'enabled' | 'disabled'
   icon: string
+  created_at?: string
 }
 
 interface FilterItem {
@@ -769,22 +772,34 @@ const tabLabel = computed(() =>
 const starText: Record<number, string> = { 1: '初级', 2: '初级', 3: '中级', 4: '高级', 5: '专家' }
 
 // ============ Tab1: 邮件模板 ============
-const emailStats: StatItem[] = [
-  { accent: 'blue', title: '邮件模板总数', value: '48', sub: '↑ 6 本月新增', subTone: 'success' },
-  { accent: 'green', title: '本月新增', value: '6', valueColor: 'var(--accent-green)', sub: '含 2 个高难度', subTone: 'secondary' },
-  { accent: 'orange', title: '使用次数最多', value: 'OA密码过期提醒', valueSm: true, sub: '累计使用 28 次', subTone: 'secondary' },
-  { accent: 'teal', title: '平均点击率', value: '21.4', suffix: '%', sub: '较上月 ↓ 2.1%', subTone: 'tertiary' },
-]
+// 统计卡片与筛选计数均由真实数据实时计算
+const emailCatLabels: Record<string, string> = {
+  holiday: '节假日', upgrade: '系统升级', lottery: '中奖', hr: 'HR通知', finance: '财务报销', alert: '安全告警',
+}
 
-const emailFilters: FilterItem[] = [
-  { key: 'all', label: '全部', count: 48 },
-  { key: 'holiday', label: '节假日', count: 8 },
-  { key: 'upgrade', label: '系统升级', count: 6 },
-  { key: 'lottery', label: '中奖', count: 5 },
-  { key: 'hr', label: 'HR通知', count: 9 },
-  { key: 'finance', label: '财务报销', count: 11 },
-  { key: 'alert', label: '安全告警', count: 9 },
-]
+const emailStats = computed<StatItem[]>(() => {
+  const data = emailData.value
+  const month = new Date().toISOString().slice(0, 7)
+  const newThisMonth = data.filter((d) => (d.created_at || '').startsWith(month)).length
+  const top = data.reduce<EmailTemplate | null>((m, d) => (d.used > (m?.used ?? -1) ? d : m), null)
+  const avgClick = data.length ? data.reduce((s, d) => s + d.click, 0) / data.length : 0
+  return [
+    { accent: 'blue', title: '邮件模板总数', value: String(data.length), sub: `↑ ${newThisMonth} 本月新增`, subTone: 'success' },
+    { accent: 'green', title: '本月新增', value: String(newThisMonth), valueColor: 'var(--accent-green)', sub: '按创建时间实时统计', subTone: 'secondary' },
+    { accent: 'orange', title: '使用次数最多', value: top?.name || '-', valueSm: true, sub: top ? `累计使用 ${top.used} 次` : '暂无使用记录', subTone: 'secondary' },
+    { accent: 'teal', title: '平均点击率', value: avgClick.toFixed(1), suffix: '%', sub: '全模板均值', subTone: 'tertiary' },
+  ]
+})
+
+const emailFilters = computed<FilterItem[]>(() => {
+  const data = emailData.value
+  const items: FilterItem[] = [{ key: 'all', label: '全部', count: data.length }]
+  for (const [key, label] of Object.entries(emailCatLabels)) {
+    const n = data.filter((d) => d.cat === key).length
+    if (n > 0) items.push({ key, label, count: n })
+  }
+  return items
+})
 
 // 场景分类 → 主题色（统一走 CSS 变量，避免硬编码）
 const emailCatColor: Record<string, string> = {
@@ -812,7 +827,7 @@ const emailKw = ref('')
 const emailPage = ref(1)
 const emailPageSize = 6
 
-const emailCatOptions = computed(() => emailFilters.filter((f) => f.key !== 'all'))
+const emailCatOptions = computed(() => emailFilters.value.filter((f) => f.key !== 'all'))
 
 const filteredEmails = computed(() => {
   const kw = emailKw.value.trim().toLowerCase()
@@ -953,21 +968,31 @@ async function saveEmail(mode: 'draft' | 'test') {
 }
 
 // ============ Tab2: 落地页 ============
-const landingStats: StatItem[] = [
-  { accent: 'blue', title: '落地页总数', value: '22', sub: '↑ 3 本月新增', subTone: 'success' },
-  { accent: 'purple', title: '克隆页面数', value: '14', valueColor: 'var(--accent-purple)', sub: '含 3 个移动端', subTone: 'secondary' },
-  { accent: 'green', title: '自定义页面数', value: '8', valueColor: 'var(--accent-green)', sub: '可视化构建', subTone: 'secondary' },
-  { accent: 'orange', title: '平均停留时长', value: '38', suffix: 's', sub: '表单提交率 42%', subTone: 'tertiary' },
-]
+const landingStats = computed<StatItem[]>(() => {
+  const data = landingData.value
+  const cloned = data.filter((d) => d.type === 'cloned').length
+  const custom = data.filter((d) => d.type === 'custom').length
+  return [
+    { accent: 'blue', title: '落地页总数', value: String(data.length), sub: '实时统计', subTone: 'success' },
+    { accent: 'purple', title: '克隆页面数', value: String(cloned), valueColor: 'var(--accent-purple)', sub: 'URL 克隆工具产出', subTone: 'secondary' },
+    { accent: 'green', title: '自定义页面数', value: String(custom), valueColor: 'var(--accent-green)', sub: '手动新建', subTone: 'secondary' },
+    { accent: 'orange', title: '平均停留时长', value: '-', sub: '未接入停留追踪', subTone: 'tertiary' },
+  ]
+})
 
-const landingFilters: FilterItem[] = [
-  { key: 'all', label: '全部', count: 22 },
-  { key: 'mail', label: '邮箱登录', count: 6 },
-  { key: 'oa', label: 'OA系统', count: 5 },
-  { key: 'pan', label: '网盘认证', count: 4 },
-  { key: 'pay', label: '支付页面', count: 3 },
-  { key: 'custom', label: '自定义', count: 4 },
-]
+const landingTypeLabels: Record<string, string> = {
+  mail: '邮箱登录', oa: 'OA系统', pan: '网盘认证', pay: '支付页面', custom: '自定义', cloned: '克隆页面',
+}
+
+const landingFilters = computed<FilterItem[]>(() => {
+  const data = landingData.value
+  const items: FilterItem[] = [{ key: 'all', label: '全部', count: data.length }]
+  for (const [key, label] of Object.entries(landingTypeLabels)) {
+    const n = data.filter((d) => d.type === key).length
+    if (n > 0) items.push({ key, label, count: n })
+  }
+  return items
+})
 
 const ltypeColor: Record<string, string> = {
   mail: 'var(--accent-blue)',
@@ -1147,19 +1172,31 @@ async function saveLanding() {
 }
 
 // ============ Tab3: 附件与载荷 ============
-const payloadStats: StatItem[] = [
-  { accent: 'blue', title: '附件总数', value: '35', sub: '↑ 4 本月新增', subTone: 'success' },
-  { accent: 'green', title: '本月新增', value: '4', valueColor: 'var(--accent-green)', sub: '含 2 个二维码', subTone: 'secondary' },
-  { accent: 'orange', title: '平均检测逃逸率', value: '76.3', suffix: '%', valueColor: 'var(--accent-orange)', sub: '覆盖 12 款主流AV', subTone: 'tertiary' },
-]
+const payloadStats = computed<StatItem[]>(() => {
+  const data = payloadData.value
+  const month = new Date().toISOString().slice(0, 7)
+  const newThisMonth = data.filter((d) => (d.created_at || '').startsWith(month)).length
+  const avgEvade = data.length ? data.reduce((s, d) => s + d.evade, 0) / data.length : 0
+  return [
+    { accent: 'blue', title: '附件总数', value: String(data.length), sub: `↑ ${newThisMonth} 本月新增`, subTone: 'success' },
+    { accent: 'green', title: '本月新增', value: String(newThisMonth), valueColor: 'var(--accent-green)', sub: '按创建时间实时统计', subTone: 'secondary' },
+    { accent: 'orange', title: '平均检测逃逸率', value: avgEvade.toFixed(1), suffix: '%', valueColor: 'var(--accent-orange)', sub: '全量载荷均值', subTone: 'tertiary' },
+  ]
+})
 
-const payloadFilters: FilterItem[] = [
-  { key: 'all', label: '全部', count: 35 },
-  { key: 'macro', label: '宏文档', count: 11 },
-  { key: 'exe', label: '可执行文件', count: 8 },
-  { key: 'qr', label: '二维码', count: 9 },
-  { key: 'other', label: '其他', count: 7 },
-]
+const payloadTypeLabels: Record<string, string> = {
+  macro: '宏文档', exe: '可执行文件', qr: '二维码', other: '其他',
+}
+
+const payloadFilters = computed<FilterItem[]>(() => {
+  const data = payloadData.value
+  const items: FilterItem[] = [{ key: 'all', label: '全部', count: data.length }]
+  for (const [key, label] of Object.entries(payloadTypeLabels)) {
+    const n = data.filter((d) => d.type === key).length
+    if (n > 0) items.push({ key, label, count: n })
+  }
+  return items
+})
 
 const ptypeColor: Record<string, string> = {
   macro: 'var(--accent-blue)',
