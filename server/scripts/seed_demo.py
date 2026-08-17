@@ -197,6 +197,81 @@ def seed_license(db):
     db.flush()
 
 
+TEMPLATE_BODIES = {
+    1: """
+<div style="font-family:'Microsoft YaHei',sans-serif;font-size:14px;color:#333;line-height:1.8">
+  <p>{{.FirstName}}，您好：</p>
+  <p>系统检测到您的 OA 账号密码将于 <b style="color:#d93025">24 小时后过期</b>，过期后将无法登录 OA 系统处理待办事项。</p>
+  <p>为保障您的正常工作，请尽快点击下方链接完成密码重置：</p>
+  <p style="margin:16px 0"><a href="{{.ResetURL}}" style="background:#378ADD;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">立即重置密码</a></p>
+  <p>如非本人操作，请忽略本邮件并及时联系 IT 运维部。</p>
+  <p style="color:#888;font-size:12px;margin-top:24px">此邮件由系统自动发送，请勿直接回复。<br>IT 运维部 · 系统通知</p>
+</div>""",
+        2: """
+<div style="font-family:'Microsoft YaHei',sans-serif;font-size:14px;color:#333;line-height:1.8">
+  <p>{{.FirstName}}，您好：</p>
+  <p>提醒您：<b>Q2 差旅报销</b>将于本周五 18:00 截止。经核查，您名下仍有 <b>3 笔差旅单据</b>未完成提交。</p>
+  <p>逾期未提交的单据将顺延至下季度报销，请点击下方链接登录 OA 完成单据提交：</p>
+  <p style="margin:16px 0"><a href="{{.ResetURL}}" style="background:#378ADD;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">前往提交报销单</a></p>
+  <p>如有疑问请联系财务部报销组（分机 8801）。</p>
+  <p style="color:#888;font-size:12px;margin-top:24px">此邮件由系统自动发送，请勿直接回复。<br>财务部 · 报销管理组</p>
+</div>""",
+        3: """
+<div style="font-family:'Microsoft YaHei',sans-serif;font-size:14px;color:#333;line-height:1.8">
+  <p>{{.FirstName}}，您好：</p>
+  <p>2026 年度员工满意度调查现已开启，您的意见将直接帮助我们改进工作环境与福利体系。</p>
+  <p>问卷预计耗时 5 分钟，<b>8 月 20 日前</b>完成可参与抽奖赢取京东卡：</p>
+  <p style="margin:16px 0"><a href="{{.ResetURL}}" style="background:#378ADD;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">开始填写问卷</a></p>
+  <p>本次调查匿名进行，请放心填写。</p>
+  <p style="color:#888;font-size:12px;margin-top:24px">此邮件由系统自动发送，请勿直接回复。<br>人力资源部 · 员工服务组</p>
+</div>""",
+        4: """
+<div style="font-family:'Microsoft YaHei',sans-serif;font-size:14px;color:#333;line-height:1.8">
+  <p>{{.FirstName}}，您好：</p>
+  <p>为提升邮箱系统稳定性，我们将于<b>本周六凌晨 2:00 - 6:00</b>进行企业邮箱系统升级维护。</p>
+  <p>升级完成后，您的邮箱账号需<b>重新验证</b>方可正常收发邮件，请提前点击下方链接完成验证预约：</p>
+  <p style="margin:16px 0"><a href="{{.ResetURL}}" style="background:#378ADD;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">立即验证账户</a></p>
+  <p>升级期间不影响已收取的邮件，给您带来不便敬请谅解。</p>
+  <p style="color:#888;font-size:12px;margin-top:24px">此邮件由系统自动发送，请勿直接回复。<br>IT 运维部 · 系统通知</p>
+</div>""",
+        5: """
+<div style="font-family:'Microsoft YaHei',sans-serif;font-size:14px;color:#333;line-height:1.8">
+  <p>{{.FirstName}}，您好：</p>
+  <p>🎉 恭喜您！在公司 10 周年庆典抽奖活动中，您幸运地获得了<b style="color:#d93025">一等奖 iPhone 16 Pro</b>！</p>
+  <p>请于 <b>3 个工作日内</b>点击下方链接填写领奖信息，逾期视为自动放弃：</p>
+  <p style="margin:16px 0"><a href="{{.ResetURL}}" style="background:#378ADD;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">填写领奖信息</a></p>
+  <p>奖品将在信息确认后 7 个工作日内发放。</p>
+  <p style="color:#888;font-size:12px;margin-top:24px">此邮件由系统自动发送，请勿直接回复。<br>行政部 · 员工活动组</p>
+</div>""",
+        6: """
+<div style="font-family:'Microsoft YaHei',sans-serif;font-size:14px;color:#333;line-height:1.8">
+  <p>{{.FirstName}}，您好：</p>
+  <p>端午将至，公司为每位员工准备了<b>粽子礼盒</b>一份，请点击下方链接登记收货信息：</p>
+  <p style="margin:16px 0"><a href="{{.ResetURL}}" style="background:#378ADD;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">登记收货地址</a></p>
+  <p>我们将于 5 月 30 日前统一寄出，请确保地址信息准确。</p>
+  <p style="color:#888;font-size:12px;margin-top:24px">此邮件由系统自动发送，请勿直接回复。<br>行政部 · 员工福利组</p>
+</div>""",
+        7: """
+<div style="font-family:'Microsoft YaHei',sans-serif;font-size:14px;color:#333;line-height:1.8">
+  <p>{{.FirstName}}，您好：</p>
+  <p>财务部重要通知：由于供应商账户调整，<b>即日起原 XX 公司付款账户变更为新账户</b>。</p>
+  <p>请点击下方链接查看并确认最新付款信息，以免影响后续款项支付：</p>
+  <p style="margin:16px 0"><a href="{{.ResetURL}}" style="background:#378ADD;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">查看变更详情</a></p>
+  <p style="color:#d93025">如收到非本渠道的付款信息变更通知，请立即联系财务部核实。</p>
+  <p style="color:#888;font-size:12px;margin-top:24px">此邮件由系统自动发送，请勿直接回复。<br>财务部 · 资金管理组</p>
+</div>""",
+        8: """
+<div style="font-family:'Microsoft YaHei',sans-serif;font-size:14px;color:#333;line-height:1.8">
+  <p>{{.FirstName}}，您好：</p>
+  <p style="color:#d93025"><b>【紧急】</b>系统检测到您的 VPN 账号存在异常登录行为，账号将于 <b>24 小时后冻结</b>。</p>
+  <p>如非本人操作，请立即点击下方链接完成身份验证并重置密码：</p>
+  <p style="margin:16px 0"><a href="{{.ResetURL}}" style="background:#d93025;color:#fff;padding:10px 24px;border-radius:4px;text-decoration:none">立即验证并解冻</a></p>
+  <p>冻结期间将无法访问公司内网资源。</p>
+  <p style="color:#888;font-size:12px;margin-top:24px">此邮件由系统自动发送，请勿直接回复。<br>IT 运维部 · 安全响应组</p>
+</div>""",
+}
+
+
 def seed_template(db):
     """4. 素材：8 邮件模板、6 落地页 + 表单字段、8 载荷、2 二维码。"""
     templates = [
@@ -209,14 +284,16 @@ def seed_template(db):
         (7, "供应商付款信息变更", "finance", "供应商付款信息变更（重要）", "财务部", 5, 43, Decimal("26.7")),
         (8, "VPN账号即将冻结", "alert", "【紧急】VPN账号即将冻结，请点击完成验证", "IT运维部", 4, 31, Decimal("33.5")),
     ]
+
     for tid, name, scene, subject, sender, stars, used, click in templates:
         db.add(EmailTemplate(
             id=tid, name=name, scene=scene, subject=subject,
-            html_body=f"<div>{name}：{{{{.FirstName}}}}，请点击 <a href='{{{{.ResetURL}}}}'>链接</a> 处理。</div>",
-            variables=["{{.FirstName}}", "{{.ResetURL}}"],
+            html_body=TEMPLATE_BODIES[tid],
+            variables=["{{.FirstName}}", "{{.Department}}", "{{.ResetURL}}"],
             source="builtin", status="approved", sender=sender,
             stars=stars, used_count=used, click_rate=click,
         ))
+
 
     landings = [
         (1, "企业邮箱登录页", "mail_login", "#378ADD"),
