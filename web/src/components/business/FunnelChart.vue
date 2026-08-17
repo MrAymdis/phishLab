@@ -14,6 +14,8 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
+
 export interface FunnelItem {
   name: string
   value: number
@@ -26,9 +28,10 @@ const props = withDefaults(defineProps<{ items: FunnelItem[]; height?: string }>
 
 const colors = ['#378ADD', '#7F77DD', '#D85A30', '#A32D2D', '#1D9E75', '#EF9F27']
 
-const max = Math.max(...props.items.map((i) => i.value), 1)
+// 随 items 变化重算（接口加载后刷新比例）
+const max = computed(() => Math.max(...props.items.map((i) => i.value), 1))
 function barWidth(val: number): string {
-  return Math.max(8, (val / max) * 100) + '%'
+  return Math.max(8, (val / max.value) * 100) + '%'
 }
 </script>
 
