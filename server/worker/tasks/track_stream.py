@@ -107,33 +107,38 @@ def consume():
                 created_at=ts,  # 事件原始时间（去重窗口与时间轴均按此比较，而非落库时间）
             ))
 
-            # 目标明细计数
+            # 目标明细计数（事件次数）
+            first_open = first_click = first_submit = first_report = False
             if event_type == "open":
+                first_open = target.open_count == 0
                 target.open_count += 1
                 target.first_open_at = target.first_open_at or ts
                 target.last_open_at = ts
             elif event_type == "click":
+                first_click = target.click_count == 0
                 target.click_count += 1
                 target.first_click_at = target.first_click_at or ts
             elif event_type == "submit":
+                first_submit = target.submit_flag == 0
                 target.submit_flag = 1
                 target.submit_at = target.submit_at or ts
             elif event_type == "report":
+                first_report = target.report_flag == 0
                 target.report_flag = 1
                 target.report_at = target.report_at or ts
 
-            # 冗余计数
+            # 冗余计数：人数字径（仅首次行为计入，重复打开/点击不重复计数）
             stat = db.get(CampaignStat, campaign.id)
             if stat is None:
                 stat = CampaignStat(campaign_id=campaign.id)
                 db.add(stat)
-            if event_type == "open":
+            if event_type == "open" and first_open:
                 stat.open_cnt += 1
-            elif event_type == "click":
+            elif event_type == "click" and first_click:
                 stat.click_cnt += 1
-            elif event_type == "submit":
+            elif event_type == "submit" and first_submit:
                 stat.submit_cnt += 1
-            elif event_type == "report":
+            elif event_type == "report" and first_report:
                 stat.report_cnt += 1
 
             # 提交事件 → 高危预警
