@@ -227,6 +227,13 @@ def _smtp_send(
     username = cfg.get("smtp_username") or cfg.get("smtp_user")
     if not username:
         raise BizError(ErrorCode.PARAM_INVALID, "通道未配置发送账号")
+    # 公共邮箱自投递（发件账号 == 收件人）可能被静默丢弃：SMTP 返回 250 但邮件不达
+    if username.lower() == (to or "").lower():
+        import logging as _logging
+
+        _logging.getLogger("phishlab.delivery").warning(
+            "自发自收邮件：发件账号与收件人相同（%s），公共邮箱可能静默丢弃（SMTP 仍返回 250）", to,
+        )
     # 兼容两种键名：库表列名 smtp_username/smtp_password/smtp_encrypt 与前端表单键 smtp_user/smtp_pass/smtp_encryption
     password = cfg.get("smtp_password") or cfg.get("smtp_pass") or ""
     encrypt = (cfg.get("smtp_encrypt") or cfg.get("smtp_encryption") or "").lower()
@@ -255,12 +262,17 @@ def _smtp_send(
             server = smtplib.SMTP(host, int(port), timeout=10)
             if encrypt == "starttls":
                 server.starttls()
+        # 记录完整 SMTP 会话（reply: 250 ... 即服务器接受响应），供投递追踪排障
+        server.set_debuglevel(1)
         if password:
             server.login(username, password)
-        server.sendmail(username, [to], msg.as_string())
+        refused = server.sendmail(username, [to], msg.as_string())
         latency = int((time.perf_counter() - t0) * 1000)
+        if refused:
+            return {"ok": False, "score": 40, "latency_ms": latency,
+                    "message": f"发送被拒收：{refused}"}
         return {"ok": True, "score": 100, "latency_ms": latency,
-                "message": f"测试邮件已发送至 {to}（{latency}ms）"}
+                "message": f"邮件已发送至 {to}（{latency}ms）"}
     except smtplib.SMTPAuthenticationError:
         return {"ok": False, "score": 40, "latency_ms": None,
                 "message": "认证失败：请使用 SMTP 授权码（QQ/163 邮箱需在设置中生成授权码，不能用登录密码）"}

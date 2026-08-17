@@ -178,6 +178,7 @@ def deliver_one(self, target_id: int):
             t.send_status = "failed"
             db.commit()
             return False
+        logger.info("投递开始 target=%s to=%s subject=%s via=%s", t.id, to, subject, ch.name)
         ok = _send_via_channel(db, ch, to, subject, html, sender_name)
 
         t.send_status = "sent" if ok else "failed"
@@ -189,6 +190,7 @@ def deliver_one(self, target_id: int):
                 db.add(stat)
             stat.delivered_cnt += 1
         db.commit()
+        logger.info("投递完成 target=%s ok=%s", t.id, ok)
         return ok
     except Exception as exc:  # 发送异常指数退避重试（任务级）
         db.rollback()
