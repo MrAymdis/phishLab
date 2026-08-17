@@ -203,7 +203,7 @@
               <span class="card-title-text">风险画像</span>
               <span class="card-title-extra">
                 综合评分
-                <span class="risk-total" :style="{ color: riskMap[selectedEmp.risk].color }">{{ selectedEmp.riskScore }}</span>
+                <span class="risk-total" :style="{ color: riskMap[selectedEmp.risk].color }">{{ profileTotalScore }}</span>
                 /100
               </span>
             </div>
@@ -244,7 +244,7 @@
             <div class="card-title">
               <span class="card-title-text">历史演练行为轨迹</span>
               <span class="card-title-extra">
-                历史中招 <span class="num-danger">{{ selectedEmp.clicks }}</span> 次 · 举报
+                历史中招 <span class="num-danger">{{ profilePhishCount }}</span> 次 · 举报
                 <span class="num-success">{{ selectedReportCount }}</span> 次
               </span>
             </div>
@@ -768,15 +768,37 @@ watch([tagFilter, riskFilter, empKw, selectedDept], () => {
 })
 
 // ============ 选中员工（右侧风险画像联动） ============
-// TODO: 可接入 orgApi.riskProfile(row.id) 用后端五维画像替换下方派生计算
 const selectedEmp = ref<Employee | null>(employeeRows.value[0])
+
+/** 后端风险画像（接口数据优先，派生计算兜底） */
+interface RiskProfileData {
+  dims: { label: string; val: number; color: string }[]
+  total: number
+  riskLevel: number
+  phishCount: number
+  reportCount: number
+  trainingCompletion: number
+  history: { time: string; type: 'primary' | 'success' | 'warning' | 'danger'; title: string; desc: string }[]
+}
+const riskProfileData = ref<RiskProfileData | null>(null)
 
 function selectEmp(row: Employee) {
   selectedEmp.value = row
+  riskProfileData.value = null
+  orgApi.riskProfile(row.id)
+    .then((data) => { riskProfileData.value = data as RiskProfileData })
+    .catch(() => { riskProfileData.value = null }) // 失败保留派生兜底
 }
 
-// 风险画像 5 维：邮件识别 / 链接点击 / 密码提交 / 附件下载 / 举报意识
+const profileTotalScore = computed(() =>
+  riskProfileData.value?.total ?? selectedEmp.value?.riskScore ?? 0,
+)
+
+/** 风险画像 5 维：后端五维画像优先，员工行数据派生兜底 */
 const selectedRiskDims = computed<RiskDim[]>(() => {
+  if (riskProfileData.value?.dims?.length) {
+    return riskProfileData.value.dims
+  }
   const emp = selectedEmp.value
   if (!emp) return []
   const s = emp.riskScore
@@ -795,6 +817,7 @@ const selectedRiskDims = computed<RiskDim[]>(() => {
 })
 
 const trainingPct = computed(() => {
+  if (riskProfileData.value) return `${riskProfileData.value.trainingCompletion}%`
   const s = selectedEmp.value?.training
   if (s === 'completed') return '100%'
   if (s === 'progress') return '60%'
@@ -811,10 +834,20 @@ const selectedCourses = computed(() => {
   ]
 })
 
-const selectedReportCount = computed(() => (selectedEmp.value && selectedEmp.value.clicks > 0 ? 2 : 0))
+const selectedReportCount = computed(() =>
+  riskProfileData.value?.reportCount ?? (selectedEmp.value && selectedEmp.value.clicks > 0 ? 2 : 0),
+)
 
-// 历史行为轨迹：按员工中招 / 培训状态动态拼装，对齐 demo 时间轴内容
+/** 历史中招次数：后端 phishCount 优先 */
+const profilePhishCount = computed(() =>
+  riskProfileData.value?.phishCount ?? selectedEmp.value?.clicks ?? 0,
+)
+
+// 历史行为轨迹：后端真实事件轨迹优先，员工行数据派生兜底
 const selectedTimeline = computed<TimelineEvent[]>(() => {
+  if (riskProfileData.value?.history?.length) {
+    return riskProfileData.value.history as TimelineEvent[]
+  }
   const emp = selectedEmp.value
   if (!emp) return []
   const events: TimelineEvent[] = []

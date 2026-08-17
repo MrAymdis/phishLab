@@ -145,6 +145,32 @@ def consume():
                 ))
                 logger.info("high-risk submit campaign=%s user=%s", campaign.id, user.name)
 
+            # 员工风险画像实时更新（每日全量重算由 risk_recalc 兜底）
+            from app.modules.org.models import EmpRiskProfile
+
+            profile = db.get(EmpRiskProfile, target.user_id)
+            if profile is None:
+                profile = EmpRiskProfile(user_id=target.user_id)
+                db.add(profile)
+                db.flush()
+            if event_type == "submit":
+                profile.phish_count += 1
+                profile.pwd_submit = min(100, profile.pwd_submit + 15)
+            elif event_type == "click":
+                profile.link_click = min(100, profile.link_click + 8)
+            elif event_type == "open":
+                profile.email_recognize = min(100, profile.email_recognize + 3)
+            elif event_type == "report":
+                profile.report_count += 1
+                profile.report_awareness = min(100, profile.report_awareness + 10)
+            risk_aware = max(0, 100 - profile.report_awareness)
+            total = round((
+                profile.email_recognize + profile.link_click + profile.pwd_submit
+                + profile.attach_run + risk_aware
+            ) / 5)
+            profile.total_score = max(0, min(100, total))
+            profile.risk_level = 1 if profile.total_score <= 30 else (3 if profile.total_score > 70 else 2)
+
         db.commit()
         ack(r, acked)
         logger.info("track consume: %d events processed", len(events))
