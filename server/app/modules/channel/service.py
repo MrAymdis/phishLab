@@ -207,8 +207,16 @@ def delete_channel(db, account, channel_id: int) -> None:
     )
 
 
-def _smtp_send(name: str, cfg: dict, to: str) -> dict:
-    """纯发信：按 SMTP 配置真实发送一封测试邮件（不触碰数据库）。"""
+def _smtp_send(
+    name: str, cfg: dict, to: str,
+    subject: str | None = None, html_body: str | None = None,
+    sender_name: str | None = None,
+) -> dict:
+    """纯发信：按 SMTP 配置真实发送一封测试邮件（不触碰数据库）。
+
+    subject/html_body 传入时按指定内容发送（向导预览真实演练邮件样式），
+    否则发送通用通道测试邮件。
+    """
     import smtplib
     from email.mime.text import MIMEText
     from email.utils import formataddr
@@ -224,14 +232,18 @@ def _smtp_send(name: str, cfg: dict, to: str) -> dict:
     encrypt = (cfg.get("smtp_encrypt") or cfg.get("smtp_encryption") or "").lower()
     port = cfg.get("smtp_port") or (465 if encrypt == "ssl" else 587)
 
-    msg = MIMEText(
-        f"这是一封来自 PhishLab 的测试邮件。\n\n发送通道：{name}\n"
-        f"SMTP 服务器：{host}:{port}\n发送时间：{datetime.now():%Y-%m-%d %H:%M:%S}\n\n"
-        "收到此邮件表示该通道可以正常发信。",
-        "plain", "utf-8",
-    )
-    msg["Subject"] = "【PhishLab】发送通道测试邮件"
-    msg["From"] = formataddr((name, username))
+    if html_body is not None:
+        msg = MIMEText(html_body, "html", "utf-8")
+        msg["Subject"] = subject or "【PhishLab】演练邮件预览"
+    else:
+        msg = MIMEText(
+            f"这是一封来自 PhishLab 的测试邮件。\n\n发送通道：{name}\n"
+            f"SMTP 服务器：{host}:{port}\n发送时间：{datetime.now():%Y-%m-%d %H:%M:%S}\n\n"
+            "收到此邮件表示该通道可以正常发信。",
+            "plain", "utf-8",
+        )
+        msg["Subject"] = "【PhishLab】发送通道测试邮件"
+    msg["From"] = formataddr((sender_name or name, username))
     msg["To"] = to
 
     t0 = time.perf_counter()
@@ -319,6 +331,93 @@ def send_test_email_draft(db, account, payload: dict) -> dict:
         db, account=account, module="channel", action="send_test_email_draft",
         target_type="send_channel", target_id=None,
         detail={"name": name, "to": payload.get("to"), "ok": result["ok"]},
+    )
+    return result
+
+
+def send_test_email_with_content(db, account, channel_id: int, payload: dict) -> dict:
+    """演练向导预览发送：按所选邮件模板 + 落地页 + 伪装发件人发送真实样式测试邮件。
+
+    模板变量替换为演示值：{{.FirstName}}→测试收件人、{{.ResetURL}}→落地页链接等。
+    """
+    from app.core.config import settings
+    from app.core.security import decrypt_secret
+    from app.modules.template.models import EmailTemplate, LandingPage
+
+    ch = db.get(SendChannel, channel_id)
+    if ch is None:
+        raise BizError(ErrorCode.NOT_FOUND)
+    if ch.type != "smtp":
+        raise BizError(ErrorCode.PARAM_INVALID, "仅 SMTP 通道支持测试邮件发送")
+
+    to = payload.get("to") or ""
+    tpl = db.get(EmailTemplate, payload["template_id"]) if payload.get("template_id") else None
+    lp = db.get(LandingPage, payload["landing_page_id"]) if payload.get("landing_page_id") else None
+    landing_url = f"{settings.landing_base_url.rstrip('/')}/p/{lp.slug}" if lp else ""
+
+    # 变量替换（演示值；真实演练按目标员工档案逐人渲染）
+    var_map = {
+        "{{.FirstName}}": "测试收件人",
+        "{{.LastName}}": "演示",
+        "{{.Department}}": "安全演练测试",
+        "{{.Email}}": to,
+        "{{.Date}}": datetime.now().strftime("%Y-%m-%d"),
+        "{{.ResetURL}}": landing_url,
+    }
+
+    if tpl:
+        subject = tpl.subject or ""
+        html = tpl.html_body or ""
+    else:
+        subject = "【PhishLab】演练邮件预览"
+        html = (
+            "<div style='font-family:sans-serif;line-height:1.8'>"
+            "<p>这是一封演练邮件预览（未选择模板）。</p>"
+            f"<p><a href='{landing_url or '#'}'>点击此处查看落地页 →</a></p></div>"
+        )
+    for k, v in var_map.items():
+        subject = subject.replace(k, v)
+        html = html.replace(k, v)
+
+    # 落地页未被模板引用时，追加一个明显的落地页链接（模拟真实演练邮件的钩子）
+    if lp and "{{.ResetURL}}" not in html and landing_url not in html:
+        html += (
+            f"<div style='font-family:sans-serif;margin-top:16px'>"
+            f"<a href='{landing_url}'>立即处理 →</a></div>"
+        )
+    # 测试邮件水印，避免与真实演练邮件混淆
+    html += (
+        "<div style='margin-top:24px;padding-top:8px;border-top:1px dashed #ccc;"
+        "font-size:11px;color:#999'>"
+        "【测试邮件】来自演练向导预览 · 仅用于验证通道与内容呈现效果</div>"
+    )
+
+    password = ""
+    if ch.smtp_password_enc:
+        try:
+            password = decrypt_secret(ch.smtp_password_enc)
+        except Exception:
+            password = ""
+    cfg = {
+        "smtp_host": ch.smtp_host,
+        "smtp_port": ch.smtp_port,
+        "smtp_encrypt": ch.smtp_encrypt,
+        "smtp_username": ch.smtp_username,
+        "smtp_password": password,
+    }
+    sender_name = payload.get("sender_name") or ch.name
+    result = _smtp_send(ch.name, cfg, to, subject=subject, html_body=html, sender_name=sender_name)
+
+    ch.last_test_result = result
+    ch.last_test_at = datetime.now()
+    if ch.status != "disabled":
+        ch.status = "normal" if result["ok"] else ch.status
+    db.commit()
+    record_audit(
+        db, account=account, module="channel", action="send_test_email_with_content",
+        target_type="send_channel", target_id=ch.id,
+        detail={"to": to, "template_id": payload.get("template_id"),
+                "landing_page_id": payload.get("landing_page_id"), "ok": result["ok"]},
     )
     return result
 

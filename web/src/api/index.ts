@@ -96,6 +96,14 @@ export const channelApi = {
     post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
       `/api/v1/channels/${id}/send-test`, { to },
     ),
+  /** 演练向导预览发送：模板 + 落地页 + 伪装发件人的真实样式测试邮件 */
+  sendTestEmailWithContent: (
+    id: number,
+    payload: { to: string; template_id?: number; landing_page_id?: number; sender_name?: string },
+  ) =>
+    post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
+      `/api/v1/channels/${id}/send-test-email`, payload,
+    ),
   /** 用尚未保存的通道配置发测试邮件（不落库） */
   sendTestEmailDraft: (payload: Record<string, unknown>) =>
     post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(

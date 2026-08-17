@@ -76,9 +76,22 @@ class DraftSendTestRequest(BaseModel):
     config: dict = {}
 
 
+class ContentSendTestRequest(BaseModel):
+    """演练向导预览发送：模板 + 落地页 + 伪装发件人的真实样式测试邮件。"""
+    to: str
+    template_id: int | None = None
+    landing_page_id: int | None = None
+    sender_name: str | None = None
+
+
 @channels.post("/send-test", summary="用未保存的通道配置发送测试邮件（不落库）")
 def send_test_email_draft(req: DraftSendTestRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.send_test_email_draft(db, account, req.model_dump()))
+
+
+@channels.post("/{cid}/send-test-email", summary="发送模板+落地页样式的演练预览测试邮件")
+def send_test_email_with_content(cid: int, req: ContentSendTestRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.send_test_email_with_content(db, account, cid, req.model_dump()))
 
 
 @channels.post("/{cid}/send-test", summary="发送测试邮件（真实 SMTP 发信）")

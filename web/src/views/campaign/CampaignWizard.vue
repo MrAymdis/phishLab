@@ -676,9 +676,15 @@ async function sendWizardTest() {
   wizardTestLoading.value = true
   testResult.value = ''
   try {
-    const res = await channelApi.sendTestEmail(sendChannelId.value, to)
+    // 按所选模板 + 落地页 + 伪装发件人发送真实样式预览邮件
+    const res = await channelApi.sendTestEmailWithContent(sendChannelId.value, {
+      to,
+      template_id: tplForm.template_id || undefined,
+      landing_page_id: landingForm.page_id || undefined,
+      sender_name: tplForm.sender_name || undefined,
+    })
     testResult.value = res.ok ? `✓ ${res.message}` : `✗ ${res.message}`
-    if (res.ok) ElMessage.success('测试邮件已发送')
+    if (res.ok) ElMessage.success('测试邮件已发送（含所选模板与落地页链接）')
   } catch {
     // 失败提示由 http 拦截器统一弹出
   } finally {
