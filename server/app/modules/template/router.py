@@ -21,6 +21,10 @@ class EmailTemplateCreate(BaseModel):
     subject: str
     html_body: str
     source: str = "custom"
+    # 追踪选项（投递时生效）
+    track_pixel: bool = True
+    track_link: bool = True
+    track_attach: bool = False
 
 
 class LandingPageCreate(BaseModel):

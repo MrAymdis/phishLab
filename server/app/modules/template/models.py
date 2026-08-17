@@ -25,6 +25,10 @@ class EmailTemplate(Base, TimestampMixin):
     stars: Mapped[int] = mapped_column(Integer, default=2, comment="难度星级 1-5")
     used_count: Mapped[int] = mapped_column(Integer, default=0)
     click_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, comment="平均点击率%")
+    # 追踪选项（投递时生效）：像素/链接/附件
+    track_pixel: Mapped[int] = mapped_column(Integer, default=1, comment="嵌入1x1像素统计打开")
+    track_link: Mapped[int] = mapped_column(Integer, default=1, comment="链接携带追踪token")
+    track_attach: Mapped[int] = mapped_column(Integer, default=0, comment="附件打开追踪")
 
 
 class LandingPage(Base, TimestampMixin):

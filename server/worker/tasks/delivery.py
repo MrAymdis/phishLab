@@ -33,7 +33,11 @@ def _render_email(db, target, campaign) -> tuple[str, str, str, str] | None:
     domain = db.get(PhishDomain, campaign.domain_id) if campaign.domain_id else None
     domain_name = domain.domain if domain else "drill-domain.com"
     slug = lp.slug if lp else "demo"
-    landing_url = f"http://{domain_name}:{settings.landing_port}/p/{slug}?token={target.token}"
+    # 链接追踪开关（track_link=0 时链接不携带 token，点击不计入追踪）
+    track_link = tpl.track_link if tpl else 1
+    landing_url = f"http://{domain_name}:{settings.landing_port}/p/{slug}"
+    if track_link:
+        landing_url += f"?token={target.token}"
 
     dept = db.get(EmpDept, user.dept_id)
     var_map = {
@@ -49,9 +53,11 @@ def _render_email(db, target, campaign) -> tuple[str, str, str, str] | None:
     for k, v in var_map.items():
         subject = subject.replace(k, v)
         html = html.replace(k, v)
-    # 打开追踪像素：邮件被查看（客户端加载图片）时记录 open 事件
-    pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{target.token}.gif"
-    html += f'<img src="{pixel_url}" width="1" height="1" style="display:none" />'
+    # 打开追踪像素（track_pixel=1 时注入）：邮件被查看（客户端加载图片）时记录 open 事件
+    track_pixel = tpl.track_pixel if tpl else 1
+    if track_pixel:
+        pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{target.token}.gif"
+        html += f'<img src="{pixel_url}" width="1" height="1" style="display:none" />'
 
     sender_name = tpl.sender if tpl and tpl.sender else ch.name
     if campaign.sender_profile_id:

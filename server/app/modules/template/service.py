@@ -67,6 +67,9 @@ def list_email_templates(db, account, scene=None) -> list[dict]:
             "used": t.used_count,
             "click": float(t.click_rate or 0),
             "preview": f"{t.subject[:24]}…" if len(t.subject) > 24 else t.subject,
+            "track_pixel": bool(t.track_pixel),
+            "track_link": bool(t.track_link),
+            "track_attach": bool(t.track_attach),
         }
         for t in rows
     ]
@@ -86,6 +89,9 @@ def create_email_template(db, account, payload: dict) -> int:
         created_by=account.id,
         sender=None,
         stars=2,
+        track_pixel=int(payload.get("track_pixel", True)),
+        track_link=int(payload.get("track_link", True)),
+        track_attach=int(payload.get("track_attach", False)),
     )
     db.add(tpl)
     db.commit()
@@ -117,6 +123,9 @@ def get_email_template(db, template_id: int) -> dict:
         "variables": t.variables or [],
         "source": t.source,
         "status": t.status,
+        "track_pixel": bool(t.track_pixel),
+        "track_link": bool(t.track_link),
+        "track_attach": bool(t.track_attach),
         "created_at": t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
     }
 
@@ -139,6 +148,9 @@ def update_email_template(db, account, template_id: int, payload: dict) -> None:
         t.sender = payload["sender"]
     if "stars" in payload:
         t.stars = payload["stars"]
+    for key in ("track_pixel", "track_link", "track_attach"):
+        if key in payload:
+            setattr(t, key, int(payload[key]))
     db.commit()
     record_audit(
         db, account=account, module="template", action="update_template",

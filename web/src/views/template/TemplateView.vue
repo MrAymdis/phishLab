@@ -904,6 +904,9 @@ async function openEmailDialog(row?: EmailTemplate) {
       emailForm.body = (detail.body as string) || (detail.html_body as string) || ''
       emailForm.sender = (detail.sender as string) || emailForm.sender
       emailForm.stars = (detail.stars as number) || emailForm.stars
+      if (typeof detail.track_pixel === 'boolean') emailForm.trackPixel = detail.track_pixel
+      if (typeof detail.track_link === 'boolean') emailForm.trackLink = detail.track_link
+      if (typeof detail.track_attach === 'boolean') emailForm.trackAttach = detail.track_attach
     } catch {
       // 失败时由拦截器提示
     }
@@ -932,6 +935,9 @@ async function saveEmail(mode: 'draft' | 'test') {
       subject: emailForm.subject,
       html_body: emailForm.body,
       source: 'custom',
+      track_pixel: emailForm.trackPixel,
+      track_link: emailForm.trackLink,
+      track_attach: emailForm.trackAttach,
     }
     if (!emailForm.id) {
       await templateApi.createEmailTemplate(payload)
