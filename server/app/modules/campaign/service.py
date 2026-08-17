@@ -411,7 +411,7 @@ def terminate(db, account, campaign_id: int):
 def dashboard(db, account, campaign_id: int) -> dict:
     """监控大屏：指标卡 + 漏斗 + 预警。
 
-    口径：已打开/已点击/中招/举报均为「人数」（去重目标），
+    口径：已阅读/已点击/中招/举报均为「人数」（去重目标），
     打开过即计 1 人，重复打开不重复计数；投递成功为实际送达目标数。
     """
     c = _get_or_404(db, campaign_id)
@@ -438,7 +438,7 @@ def dashboard(db, account, campaign_id: int) -> dict:
     metrics = [
         {"label": "投递总数", "value": target, "suffix": "", "accent": "blue"},
         {"label": "投递成功", "value": delivered, "suffix": "", "accent": "purple"},
-        {"label": "已打开", "value": opened, "suffix": "", "accent": "teal"},
+        {"label": "已阅读", "value": opened, "suffix": "", "accent": "teal"},
         {"label": "已点击", "value": clicked, "suffix": "", "accent": "orange"},
         {"label": "中招人数", "value": submitted, "suffix": "", "accent": "red"},
         {"label": "已举报", "value": reported, "suffix": "", "accent": "green"},
@@ -449,7 +449,7 @@ def dashboard(db, account, campaign_id: int) -> dict:
     funnel = [
         {"name": "投递总数", "value": target, "rate": "100%"},
         {"name": "投递成功", "value": delivered, "rate": f"{delivered / target * 100:.1f}%"},
-        {"name": "已打开", "value": opened, "rate": f"{opened / base * 100:.1f}%"},
+        {"name": "已阅读", "value": opened, "rate": f"{opened / base * 100:.1f}%"},
         {"name": "已点击", "value": clicked, "rate": f"{clicked / base * 100:.1f}%"},
         {"name": "输入数据", "value": submitted, "rate": f"{submitted / base * 100:.1f}%"},
         {"name": "已举报", "value": reported, "rate": f"{reported / base * 100:.1f}%"},
