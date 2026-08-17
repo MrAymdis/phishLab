@@ -104,6 +104,7 @@ def consume():
                 ua=fields.get("ua") or None,
                 fingerprint_id=fingerprint_id,
                 detail=detail,
+                created_at=ts,  # 事件原始时间（去重窗口与时间轴均按此比较，而非落库时间）
             ))
 
             # 目标明细计数
