@@ -298,15 +298,13 @@
         <el-row :gutter="16">
           <el-col :span="12">
             <el-form-item label="部门" required>
-              <el-select v-model="empForm.dept" style="width: 100%">
-                <el-option label="技术部 / 研发组" value="技术部 / 研发组" />
-                <el-option label="技术部 / 运维组" value="技术部 / 运维组" />
-                <el-option label="技术部 / 安全组" value="技术部 / 安全组" />
-                <el-option label="财务部 / 会计组" value="财务部 / 会计组" />
-                <el-option label="财务部 / 出纳组" value="财务部 / 出纳组" />
-                <el-option label="人力资源部" value="人力资源部" />
-                <el-option label="市场部" value="市场部" />
-                <el-option label="行政部" value="行政部" />
+              <el-select v-model="empForm.dept" filterable style="width: 100%" placeholder="选择部门">
+                <el-option
+                  v-for="d in deptPathOptions"
+                  :key="d.id"
+                  :label="d.label"
+                  :value="d.label"
+                />
               </el-select>
             </el-form-item>
           </el-col>
@@ -957,6 +955,20 @@ async function createInlineTag() {
     inlineTagInputVisible.value = false
   }
 }
+
+/** 部门下拉选项：部门树展平为「技术部 / 研发组」路径标签（含新建部门） */
+const deptPathOptions = computed(() => {
+  const options: { id: number; label: string }[] = []
+  const walk = (nodes: DeptNode[], prefix: string) => {
+    for (const n of nodes) {
+      const label = prefix ? `${prefix} / ${n.label}` : n.label
+      options.push({ id: n.id, label })
+      if (n.children?.length) walk(n.children, label)
+    }
+  }
+  walk(deptTree.value, '')
+  return options
+})
 
 /** 按「技术部 / 研发组」路径逐级匹配部门树；失败回退根部门，仍无则 1 */
 function findDeptId(pathLabel: string): number {
