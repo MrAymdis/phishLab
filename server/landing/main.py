@@ -27,7 +27,7 @@ _EDU_POPUP = """<!DOCTYPE html>
 
 
 def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "") -> str:
-    """渲染仿冒登录页：标题 + 表单字段（口径类字段标注不落库说明仅在演练端）。"""
+    """渲染仿冒登录页：标题 + 表单字段 + 轻量指纹采集 JS（提交时回传）。"""
     inputs = []
     for f in fields:
         key = f.get("field_key") or f.get("label") or "field"
@@ -49,13 +49,31 @@ def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "
 <div style="width:360px;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:32px">
   <h2 style="text-align:center;color:#333;margin:0 0 8px">{title}</h2>
   <p style="text-align:center;color:#888;font-size:12px;margin:0 0 20px">统一身份认证中心</p>
-  <form method="post" action="/p/{slug}/submit" style="display:flex;flex-direction:column">
+  <form method="post" action="/p/{slug}/submit" id="login-form" style="display:flex;flex-direction:column">
     {fields_html}
     <input type="hidden" name="token" value="{token}" />
+    <input type="hidden" name="fp" id="fp-input" value="" />
     <button type="submit" style="margin-top:12px;padding:10px;background:#378ADD;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">登 录</button>
   </form>
   <p style="text-align:center;color:#aaa;font-size:11px;margin-top:16px">© 企业信息安全中心 · 内部系统</p>
 </div>
+<script>
+// 轻量浏览器指纹：提交时采集（组件仅用于演练环境识别，不含个人敏感信息）
+(function () {{
+  var n = navigator || {{}};
+  var s = window.screen || {{}};
+  var fp = {{
+    ua: n.userAgent || '',
+    lang: n.language || '',
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    screen: (s.width || 0) + 'x' + (s.height || 0) + 'x' + (s.colorDepth || 0),
+    cores: (n.hardwareConcurrency || 0),
+    touch: ('ontouchstart' in window) ? 1 : 0,
+    mem: (n.deviceMemory || 0)
+  }};
+  document.getElementById('fp-input').value = JSON.stringify(fp);
+}})();
+</script>
 </body></html>"""
 
 
@@ -128,9 +146,36 @@ def serve(slug: str, request: Request, token: str = ""):
     return _render_login_page(title, fields, slug, token=token)
 
 
+def _mask_value(value: str) -> str | None:
+    """账号类字段脱敏掩码：首字符 + *** + 末字符（邮箱保留域名）。口令类字段不调用本函数。"""
+    v = (value or "").strip()
+    if not v:
+        return None
+    if "@" in v:
+        local, _, domain = v.partition("@")
+        if len(local) <= 2:
+            return f"{local[0]}***@{domain}" if local else f"***@{domain}"
+        return f"{local[0]}***{local[-1]}@{domain}"
+    if len(v) <= 2:
+        return f"{v[0]}***"
+    return f"{v[0]}***{v[-1]}"
+
+
+def _fp_hash(fp_json: str) -> str | None:
+    """指纹组件 JSON → md5 指纹哈希（fp_hash 列 VARCHAR(32)，与模型设计一致）。"""
+    import hashlib
+
+    if not fp_json.strip():
+        return None
+    try:
+        return hashlib.md5(fp_json.encode("utf-8")).hexdigest()
+    except Exception:
+        return None
+
+
 @app.post("/p/{slug}/submit")
 async def submit(slug: str, request: Request):
-    """表单捕获：敏感字段只存 字段名+长度；SUBMIT 事件进 evt:stream → 高危预警。
+    """表单捕获：口令字段只存长度（红线）；账号存脱敏掩码；指纹组件哈希入库。
 
     TODO(一期)：token 反查 campaign → training_policy：redirect(302 培训页)/popup/none
     """
@@ -138,16 +183,23 @@ async def submit(slug: str, request: Request):
 
     form = await request.form()
     token = str(form.get("token") or "")
-    masked = {
-        key: {"len": len(value or "")} if "pass" in key.lower() else {"present": True}
-        for key, value in form.items()
-        if key != "token"
-    }
+    detail: dict = {}
+    for key, value in form.items():
+        if key in ("token", "fp"):
+            continue
+        v = str(value or "")
+        if "pass" in key.lower():  # 口令：只记长度，绝不存明文/掩码
+            detail[key] = {"len": len(v)}
+        else:  # 账号等非口令字段：脱敏掩码
+            detail[f"{key}_mask"] = _mask_value(v)
+    fp_hash = _fp_hash(str(form.get("fp") or ""))
+    if fp_hash:
+        detail["fp_hash"] = fp_hash
     push_event(
         token=token, event_type="submit",
         ip=request.client.host if request.client else "",
         ua=request.headers.get("user-agent", ""),
-        detail=masked,  # 口令只记长度，不落明文
+        detail=detail,
     )
-    logger.info("submit captured slug=%s fields=%s", slug, list(masked))
+    logger.info("submit captured slug=%s fields=%s fp=%s", slug, list(detail), (fp_hash or "")[:8])
     return HTMLResponse(_EDU_POPUP)

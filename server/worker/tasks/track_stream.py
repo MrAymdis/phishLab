@@ -77,6 +77,23 @@ def consume():
             if dup is not None:
                 continue
 
+            # 指纹：detail 携带 fp_hash 时 upsert fingerprint 表并关联
+            fingerprint_id = None
+            fp_hash = detail.get("fp_hash") if isinstance(detail, dict) else None
+            if fp_hash:
+                fp_hash = str(fp_hash)[:32]  # fp_hash 列 VARCHAR(32)，防御超长
+                from app.modules.tracking.models import Fingerprint
+
+                fp = db.scalar(select(Fingerprint).where(Fingerprint.fp_hash == fp_hash))
+                if fp is None:
+                    fp = Fingerprint(fp_hash=fp_hash, first_seen_at=ts, last_seen_at=ts, seen_count=1)
+                    db.add(fp)
+                    db.flush()
+                else:
+                    fp.last_seen_at = ts
+                    fp.seen_count += 1
+                fingerprint_id = fp.id
+
             db.add(TrackEvent(
                 campaign_id=campaign.id,
                 user_id=target.user_id,
@@ -84,6 +101,7 @@ def consume():
                 event_type=event_type,
                 ip=fields.get("ip") or None,
                 ua=fields.get("ua") or None,
+                fingerprint_id=fingerprint_id,
                 detail=detail,
             ))
 

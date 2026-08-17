@@ -123,6 +123,7 @@ interface TimelineDataItem {
   fingerprint?: string | null
   danger?: boolean
   good?: boolean
+  detail?: Record<string, unknown> | null
 }
 
 async function load() {
@@ -163,6 +164,7 @@ async function load() {
       fingerprint: t.fingerprint || undefined,
       danger: t.danger,
       good: t.good,
+      detail: t.detail || undefined,
     }))
   } catch {
     // 仅在接口失败时保留演示数据

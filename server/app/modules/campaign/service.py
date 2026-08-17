@@ -457,8 +457,47 @@ def dashboard(db, account, campaign_id: int) -> dict:
     return {"metrics": metrics, "funnel": funnel, "alerts": alerts}
 
 
+def _parse_ua(ua: str | None) -> str:
+    """User-Agent → 「浏览器 版本 · 系统」简写；无法识别时返回原始 UA。"""
+    import re
+
+    if not ua:
+        return ""
+    browser = ""
+    os = ""
+    if "Edg/" in ua:
+        m = re.search(r"Edg/([\d.]+)", ua)
+        browser = f"Edge {m.group(1) if m else ''}".strip()
+    elif "Chrome/" in ua:
+        m = re.search(r"Chrome/([\d.]+)", ua)
+        browser = f"Chrome {m.group(1) if m else ''}".strip()
+    elif "Firefox/" in ua:
+        m = re.search(r"Firefox/([\d.]+)", ua)
+        browser = f"Firefox {m.group(1) if m else ''}".strip()
+    elif "Safari/" in ua and "Version/" in ua:
+        m = re.search(r"Version/([\d.]+)", ua)
+        browser = f"Safari {m.group(1) if m else ''}".strip()
+    if "Windows NT 10" in ua:
+        os = "Windows 10/11"
+    elif "Windows NT 6" in ua:
+        os = "Windows 7/8"
+    elif "Mac OS X" in ua:
+        os = "macOS"
+    elif "iPhone" in ua:
+        os = "iOS"
+    elif "Android" in ua:
+        os = "Android"
+    elif "Linux" in ua:
+        os = "Linux"
+    if browser and os:
+        return f"{browser} · {os}"
+    if browser:
+        return browser
+    return ua.split()[0]
+
+
 def timeline(db, account, campaign_id: int, page: int, page_size: int):
-    """用户行为时间轴：track_event left join emp_user/emp_dept，附 IP/UA/指纹。"""
+    """用户行为时间轴：track_event left join emp_user/emp_dept，附 IP/UA/指纹/提交脱敏详情。"""
     base = (
         select(TrackEvent, EmpUser.name, EmpDept.name)
         .outerjoin(EmpUser, EmpUser.id == TrackEvent.user_id)
@@ -469,6 +508,17 @@ def timeline(db, account, campaign_id: int, page: int, page_size: int):
     rows = db.execute(
         base.order_by(TrackEvent.id.desc()).offset((page - 1) * page_size).limit(page_size)
     ).all()
+
+    # 指纹哈希批量联查（fp_hash 32 位完整展示）
+    fp_ids = {ev.fingerprint_id for ev, *_ in rows if ev.fingerprint_id}
+    fp_map = {}
+    if fp_ids:
+        from app.modules.tracking.models import Fingerprint
+
+        fp_map = {
+            f.id: f.fp_hash
+            for f in db.scalars(select(Fingerprint).where(Fingerprint.id.in_(fp_ids))).all()
+        }
 
     items = []
     for ev, user_name, dept_name in rows:
@@ -482,8 +532,9 @@ def timeline(db, account, campaign_id: int, page: int, page_size: int):
             "action": _ACTION_TEXT.get(ev.event_type, ev.event_type),
             "icon": _ACTION_ICON.get(ev.event_type, "•"),
             "ip": ev.ip or "",
-            "browser": ev.ua.split()[0] if ev.ua else "",
-            "fingerprint": f"{ev.fingerprint_id:x}"[:8] if ev.fingerprint_id else "",
+            "browser": _parse_ua(ev.ua),
+            "fingerprint": fp_map.get(ev.fingerprint_id, ""),
+            "detail": ev.detail or {},
             "danger": ev.event_type == "submit",
             "good": ev.event_type == "report",
         })
