@@ -66,12 +66,13 @@ def consume():
             user = db.get(EmpUser, target.user_id)
             dept = db.get(EmpDept, user.dept_id) if user else None
 
-            # 事件去重：同 token+event_type 10 分钟窗口内只计一次
+            # 事件去重：同 token+event_type 60 秒窗口内只计一次
+            # （防邮件客户端/图片代理同一时刻重复请求像素导致统计虚高）
             dup = db.scalar(
                 select(TrackEvent.id).where(
                     TrackEvent.token == token,
                     TrackEvent.event_type == event_type,
-                    TrackEvent.created_at >= ts - timedelta(minutes=10),
+                    TrackEvent.created_at >= ts - timedelta(seconds=60),
                 ).limit(1)
             )
             if dup is not None:
