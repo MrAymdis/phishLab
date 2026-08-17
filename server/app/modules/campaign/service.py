@@ -420,18 +420,20 @@ def dashboard(db, account, campaign_id: int) -> dict:
     target = c.target_count or 1
 
     metrics = [
-        {"label": "发送成功", "value": delivered, "suffix": "", "accent": "blue"},
+        {"label": "投递总数", "value": target, "suffix": "", "accent": "blue"},
+        {"label": "投递成功", "value": delivered, "suffix": "", "accent": "purple"},
         {"label": "已打开", "value": opened, "suffix": "", "accent": "teal"},
         {"label": "已点击", "value": clicked, "suffix": "", "accent": "orange"},
         {"label": "中招人数", "value": submitted, "suffix": "", "accent": "red"},
-        {"label": "已举报", "value": reported, "suffix": "", "accent": "purple"},
+        {"label": "已举报", "value": reported, "suffix": "", "accent": "green"},
         {"label": "送达率", "value": f"{delivered / target * 100:.1f}", "suffix": "%", "accent": "green"},
     ]
 
-    # 漏斗各环节相对送达数折算
+    # 漏斗：投递总数 → 投递成功 → 行为环节；投递成功相对总数折算，后续相对投递成功折算
     base = delivered or 1
     funnel = [
-        {"name": "发送成功", "value": delivered, "rate": "100%"},
+        {"name": "投递总数", "value": target, "rate": "100%"},
+        {"name": "投递成功", "value": delivered, "rate": f"{delivered / target * 100:.1f}%"},
         {"name": "已打开", "value": opened, "rate": f"{opened / base * 100:.1f}%"},
         {"name": "已点击", "value": clicked, "rate": f"{clicked / base * 100:.1f}%"},
         {"name": "输入数据", "value": submitted, "rate": f"{submitted / base * 100:.1f}%"},
