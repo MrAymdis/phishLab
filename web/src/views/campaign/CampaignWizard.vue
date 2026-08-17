@@ -189,11 +189,14 @@
           <div class="form-group">
             <label class="form-label">欺骗性域名<span class="required">*</span></label>
             <el-select v-model="tplForm.spoof_domain" class="form-input">
-              <el-option label="finance-company-notice.com" value="finance-company-notice.com" />
-              <el-option label="oa-system-update.cn" value="oa-system-update.cn" />
-              <el-option label="hr-benefits-claim.com" value="hr-benefits-claim.com" />
+              <el-option
+                v-for="d in spoofDomains"
+                :key="d.id"
+                :label="d.domain"
+                :value="d.domain"
+              />
             </el-select>
-            <p class="form-hint">SPF/DKIM已配置 ✓</p>
+            <p class="form-hint">{{ domainDnsHint }}</p>
           </div>
         </div>
       </template>
@@ -231,65 +234,64 @@
       <template v-else-if="step === 4">
         <div class="form-group">
           <label class="form-label">选择发送配置方案<span class="required">*</span></label>
-          <p class="form-hint" style="margin-bottom:12px;">从已配置的发送方案中选择，如需新增或修改请前往「素材模板 → 发件配置管理」</p>
+          <p class="form-hint" style="margin-bottom:12px;">从已配置的 SMTP 通道中选择，如需新增或修改请前往「发送配置」页</p>
           <div class="option-grid cols-2">
-            <div class="option-card" :class="{ selected: sendForm.profile === 'default' }" @click="sendForm.profile = 'default'">
+            <div
+              v-for="ch in sendChannels"
+              :key="ch.id"
+              class="option-card"
+              :class="{ selected: sendChannelId === ch.id }"
+              @click="sendChannelId = ch.id"
+            >
               <div class="option-card-header">
                 <div class="option-card-icon" style="background:#378ADD;">📧</div>
-                <div class="option-card-title">平台默认SMTP</div>
-                <span class="badge badge-info" style="margin-left:auto;">默认</span>
+                <div class="option-card-title">{{ ch.name }}</div>
+                <span v-if="ch.is_default" class="badge badge-info" style="margin-left:auto;">默认</span>
+                <span
+                  v-else
+                  class="badge"
+                  :class="ch.status === 'ok' ? 'badge-success' : 'badge-warning'"
+                  style="margin-left:auto;"
+                >{{ ch.status === 'ok' ? '运行中' : '异常' }}</span>
               </div>
               <div class="send-meta">
-                <div>📧 发件域名：<strong>finance-company-notice.com</strong></div>
-                <div>🖥️ SMTP：smtp.phish-platform.com:587</div>
-                <div>📦 每日上限：5,000 封</div>
-                <div class="dns-badges">
-                  <span class="badge badge-success">SPF ✓</span>
-                  <span class="badge badge-success">DKIM ✓</span>
-                  <span class="badge badge-success">DMARC ✓</span>
-                </div>
-              </div>
-            </div>
-            <div class="option-card" :class="{ selected: sendForm.profile === 'custom' }" @click="sendForm.profile = 'custom'">
-              <div class="option-card-header">
-                <div class="option-card-icon" style="background:#7F77DD;">🖥️</div>
-                <div class="option-card-title">企业自建SMTP</div>
-              </div>
-              <div class="send-meta">
-                <div>📧 发件域名：<strong>oa-system-update.cn</strong></div>
-                <div>🖥️ SMTP：mail.company.com:465</div>
-                <div>📦 每日上限：10,000 封</div>
-                <div class="dns-badges">
-                  <span class="badge badge-success">SPF ✓</span>
-                  <span class="badge badge-success">DKIM ✓</span>
-                  <span class="badge badge-warning">DMARC ✗</span>
+                <div>🖥️ SMTP：{{ ch.server || '-' }}:{{ ch.port || '-' }}</div>
+                <div>🔐 加密：{{ ch.ssl ? 'SSL/TLS' : 'STARTTLS' }}</div>
+                <div>📦 每日上限：{{ ch.daily_limit.toLocaleString() }} 封</div>
+                <div>📊 送达评分：{{ ch.score }} 分 · 最近测试：{{ ch.last_test }}</div>
+                <div class="dns-badges" v-if="selectedDomain">
+                  <span class="badge" :class="selectedDomain.spf === 'OK' ? 'badge-success' : 'badge-warning'">SPF {{ selectedDomain.spf === 'OK' ? '✓' : '✗' }}</span>
+                  <span class="badge" :class="selectedDomain.dkim === 'OK' ? 'badge-success' : 'badge-warning'">DKIM {{ selectedDomain.dkim === 'OK' ? '✓' : '✗' }}</span>
+                  <span class="badge" :class="selectedDomain.dmarc === 'OK' ? 'badge-success' : 'badge-warning'">DMARC {{ selectedDomain.dmarc === 'OK' ? '✓' : '✗' }}</span>
                 </div>
               </div>
             </div>
           </div>
+          <p v-if="!sendChannels.length" class="form-hint">暂无可用的 SMTP 通道，请先在「发送配置」页添加</p>
         </div>
         <div class="form-group">
           <label class="form-label">送达率预估</label>
           <div class="deliver-box">
             <div class="deliver-ring">
-              <div class="deliver-ring-inner">98%</div>
+              <div class="deliver-ring-inner">{{ selectedChannel?.score ?? 0 }}</div>
             </div>
             <div class="deliver-info">
-              <div style="font-size:12px;font-weight:500;">邮件送达率：98%</div>
-              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;">DNS三项记录均已配置，不易被网关拦截</div>
+              <div style="font-size:12px;font-weight:500;">送达评分：{{ selectedChannel?.score ?? 0 }} 分</div>
+              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;">{{ domainDnsHint }}</div>
             </div>
-            <span class="badge badge-success">优秀</span>
+            <span class="badge" :class="(selectedChannel?.score ?? 0) >= 80 ? 'badge-success' : 'badge-warning'">{{ (selectedChannel?.score ?? 0) >= 80 ? '优秀' : '待检测' }}</span>
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">发送测试（可选）</label>
           <div class="test-row">
             <el-input v-model="sendForm.test_email" placeholder="输入测试接收邮箱..." class="form-input" />
-            <el-button type="primary" @click="testResult = 'ok'">发送测试</el-button>
+            <el-button type="primary" :loading="wizardTestLoading" @click="sendWizardTest">发送测试</el-button>
           </div>
+          <p v-if="testResult" class="form-hint" :style="{ color: testResult.startsWith('✓') ? '#1D9E75' : '#D85A30' }">{{ testResult }}</p>
         </div>
         <div class="info-tip">
-          ℹ️ <span>如需配置新的SMTP服务器、域名或DNS记录，请前往 <el-link type="primary" :underline="false" style="font-size:11px;">素材模板 → 发件配置管理</el-link></span>
+          ℹ️ <span>如需配置新的SMTP服务器、域名或DNS记录，请前往 <el-link type="primary" :underline="false" style="font-size:11px;" @click="router.push('/send-config')">发送配置</el-link></span>
         </div>
       </template>
 
@@ -432,7 +434,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElLink } from 'element-plus'
 import type { ElTree, UploadFile } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
-import { campaignApi, orgApi } from '@/api'
+import { campaignApi, orgApi, templateApi, channelApi } from '@/api'
 
 const router = useRouter()
 const step = ref(0)
@@ -472,6 +474,7 @@ onMounted(() => {
   orgApi.tags()
     .then((list) => { if (Array.isArray(list)) tagList.value = list as TagRow[] })
     .catch(() => {})
+  loadWizardAssets()
 })
 
 // 部门树扁平映射：id → {label, count}
@@ -554,23 +557,95 @@ const targetCount = computed(() =>
   selectedTargets.value.reduce((sum, t) => sum + t.count, 0),
 )
 
-const templates = [
-  { id: 1, subject: '财务报销通知', scene: '系统类', color: '#378ADD', icon: 'mail' },
-  { id: 2, subject: 'OA密码重置', scene: '系统类', color: '#1D9E75', icon: 'oa' },
-  { id: 3, subject: '中秋福利领取', scene: '节假日', color: '#EF9F27', icon: 'gift' },
-  { id: 4, subject: 'HR入职材料提交', scene: 'HR类', color: '#7F77DD', icon: 'user' },
+/** 模板/落地页/域名/发送通道全部来自素材库与发送配置（接口加载） */
+const templateColors = ['#378ADD', '#1D9E75', '#EF9F27', '#7F77DD']
+const sceneIconMap: Record<string, string> = {
+  upgrade: 'oa', system: 'oa', finance: 'mail', lottery: 'gift',
+  holiday: 'gift', hr: 'user', alert: 'mail', prize: 'gift', security: 'mail',
+}
+const landingBgPalette = [
+  'linear-gradient(135deg,#378ADD22,#1D9E7522)',
+  'linear-gradient(135deg,#EF9F2722,#D85A3022)',
+  'linear-gradient(135deg,#7F77DD22,#378ADD22)',
+  'linear-gradient(135deg,#0D948822,#378ADD22)',
 ]
+
+const templates = ref<{ id: number; subject: string; scene: string; color: string; icon: string; sender?: string }[]>([])
+const landingPages = ref<{ id: number; name: string; tag: string; label: string; bg: string }[]>([])
+const spoofDomains = ref<{ id: number; domain: string; spf: string; dkim: string; dmarc: string }[]>([])
+const sendChannels = ref<{ id: number; name: string; type: string; type_label: string; server?: string; port?: number; ssl?: boolean; daily_limit: number; score: number; status: string; is_default?: boolean; last_test?: string }[]>([])
+
 const tplForm = reactive({
-  template_id: 1 as number,
-  sender_name: '财务部-报销系统通知',
-  spoof_domain: 'finance-company-notice.com',
+  template_id: 0 as number,
+  sender_name: '',
+  spoof_domain: '',
 })
 
-const landingPages = [
-  { id: 1, name: '邮箱登录页', tag: '已适配品牌', label: '企业邮箱登录页', bg: 'linear-gradient(135deg,#378ADD22,#1D9E7522)' },
-  { id: 2, name: 'OA登录页', tag: '已适配品牌', label: 'OA系统', bg: 'linear-gradient(135deg,#EF9F2722,#D85A3022)' },
-  { id: 3, name: '企业网盘认证', tag: '通用版', label: '网盘认证', bg: 'linear-gradient(135deg,#7F77DD22,#378ADD22)' },
-]
+async function loadWizardAssets() {
+  try {
+    const list = (await templateApi.emailTemplates()) as {
+      id: number; subject: string; catText: string; cat: string; sender?: string
+    }[]
+    if (Array.isArray(list) && list.length) {
+      templates.value = list.map((t, i) => ({
+        id: t.id,
+        subject: t.subject,
+        scene: t.catText || t.cat,
+        color: templateColors[i % templateColors.length],
+        icon: sceneIconMap[t.cat] || 'mail',
+        sender: t.sender,
+      }))
+      const first = templates.value[0]
+      if (!tplForm.template_id && first) {
+        tplForm.template_id = first.id
+        tplForm.sender_name = first.sender || ''
+      }
+    }
+  } catch {
+    ElMessage.warning('邮件模板加载失败，请稍后在「素材模板」页确认模板状态')
+  }
+  try {
+    const list = (await templateApi.landingPages()) as {
+      id: number; name: string; typeText: string
+    }[]
+    if (Array.isArray(list) && list.length) {
+      landingPages.value = list.map((p, i) => ({
+        id: p.id,
+        name: p.name,
+        tag: p.typeText,
+        label: p.name,
+        bg: landingBgPalette[i % landingBgPalette.length],
+      }))
+      if (!landingForm.page_id && landingPages.value.length) landingForm.page_id = landingPages.value[0].id
+    }
+  } catch {
+    ElMessage.warning('落地页加载失败，请稍后在「素材模板」页确认')
+  }
+  try {
+    const list = (await channelApi.domains()) as { id: number; domain: string; spf: string; dkim: string; dmarc: string }[]
+    if (Array.isArray(list) && list.length) {
+      spoofDomains.value = list
+      if (!tplForm.spoof_domain && list[0]) tplForm.spoof_domain = list[0].domain
+    }
+  } catch { /* 域名加载失败不阻断 */ }
+  try {
+    const list = (await channelApi.list()) as typeof sendChannels.value
+    if (Array.isArray(list)) {
+      sendChannels.value = list.filter((ch) => ch.type === 'smtp')
+      if (!sendChannelId.value && sendChannels.value.length) sendChannelId.value = sendChannels.value[0].id
+    }
+  } catch { /* 通道加载失败不阻断 */ }
+}
+
+const selectedDomain = computed(() =>
+  spoofDomains.value.find((d) => d.domain === tplForm.spoof_domain),
+)
+const domainDnsHint = computed(() => {
+  const d = selectedDomain.value
+  if (!d) return 'DNS 状态未知'
+  const parts = [`SPF ${d.spf}`, `DKIM ${d.dkim}`, `DMARC ${d.dmarc}`]
+  return parts.join(' · ')
+})
 const fieldOptions = ref([
   { val: 'account', label: '收集用户名/邮箱', checked: true },
   { val: 'password', label: '收集登录密码（不存储明文）', checked: true },
@@ -579,8 +654,37 @@ const fieldOptions = ref([
 ])
 const landingForm = reactive({ page_id: 1 })
 
-const sendForm = reactive({ profile: 'default' as 'default' | 'custom', test_email: '' })
+const sendChannelId = ref(0) // 选中的 SMTP 发送通道 id
+const selectedChannel = computed(() =>
+  sendChannels.value.find((ch) => ch.id === sendChannelId.value),
+)
+const sendForm = reactive({ test_email: '' })
 const testResult = ref('')
+const wizardTestLoading = ref(false)
+
+/** 向导内发送测试：走所选 SMTP 通道真实发信 */
+async function sendWizardTest() {
+  const to = sendForm.test_email.trim()
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    ElMessage.warning('请填写正确的测试接收邮箱')
+    return
+  }
+  if (!sendChannelId.value) {
+    ElMessage.warning('请先选择发送通道')
+    return
+  }
+  wizardTestLoading.value = true
+  testResult.value = ''
+  try {
+    const res = await channelApi.sendTestEmail(sendChannelId.value, to)
+    testResult.value = res.ok ? `✓ ${res.message}` : `✗ ${res.message}`
+    if (res.ok) ElMessage.success('测试邮件已发送')
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    wizardTestLoading.value = false
+  }
+}
 
 const triggerForm = reactive({
   mode: 'schedule' as 'schedule' | 'now',
@@ -599,9 +703,9 @@ const summaryRows = computed(() => [
   { key: '演练名称', val: form.name },
   { key: '演练类型', val: types.find(t => t.value === form.type)?.label || '邮件钓鱼' },
   { key: '目标人数', val: `${targetCount.value.toLocaleString()} 人` },
-  { key: '邮件模板', val: templates.find(t => t.id === tplForm.template_id)?.subject || '-' },
-  { key: '落地页', val: landingPages.find(p => p.id === landingForm.page_id)?.name || '-' },
-  { key: '发送配置', val: sendForm.profile === 'default' ? '内置SMTP · SPF/DKIM/DMARC ✓' : '企业自建SMTP' },
+  { key: '邮件模板', val: templates.value.find(t => t.id === tplForm.template_id)?.subject || '-' },
+  { key: '落地页', val: landingPages.value.find(p => p.id === landingForm.page_id)?.name || '-' },
+  { key: '发送配置', val: sendChannels.value.find((ch) => ch.id === sendChannelId.value)?.name || '-' },
   { key: '发送时间', val: triggerForm.mode === 'schedule' ? `${triggerForm.schedule_time}（分3批）` : '立即发送' },
   { key: '培训设置', val: `立即跳转《钓鱼识别与防范》` },
 ])
@@ -651,6 +755,8 @@ async function submit() {
       },
       template_id: tplForm.template_id,
       landing_page_id: landingForm.page_id,
+      channel_id: sendChannelId.value || null,
+      domain_id: selectedDomain.value?.id || null,
       schedule_type: triggerForm.mode === 'now' ? 'now' : 'timed',
       schedule_at: triggerForm.mode === 'schedule' ? triggerForm.schedule_time : null,
       batch_count: 3,
