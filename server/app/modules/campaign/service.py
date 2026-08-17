@@ -104,6 +104,14 @@ def _expand_target_ids(db, target_mode: str, snapshot: dict) -> list[int]:
             )
     if target_mode in ("csv", "mix"):
         ids.update(int(x) for x in (snapshot.get("user_ids") or []))
+        # CSV 导入名单：按邮箱解析为员工 id（未匹配的邮箱忽略）
+        emails = {str(e).strip().lower() for e in (snapshot.get("emails") or []) if e}
+        if emails:
+            ids.update(
+                u for u in db.scalars(
+                    select(EmpUser.id).where(EmpUser.email.in_(emails), EmpUser.status == 1)
+                ).all()
+            )
     if not ids:
         return []
     # 统一过滤：仅在职员工

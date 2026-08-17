@@ -72,17 +72,91 @@
             </div>
           </div>
         </div>
+
+        <!-- 按部门选择 -->
+        <div class="form-group" v-if="targetMode === 'dept'">
+          <label class="form-label">组织架构（勾选父级自动包含子部门）</label>
+          <div class="card dept-select-box">
+            <el-tree
+              ref="deptTreeRef"
+              :data="deptTree"
+              node-key="id"
+              show-checkbox
+              default-expand-all
+              :props="{ label: 'label', children: 'children' }"
+              @check="onDeptCheck"
+            >
+              <template #default="{ data }">
+                <span class="tree-node-row">
+                  <span>{{ data.label }}</span>
+                  <el-tag size="small" effect="plain" style="margin-left:8px">{{ data.count }}</el-tag>
+                </span>
+              </template>
+            </el-tree>
+          </div>
+          <p v-if="!deptTree.length" class="form-hint">组织架构加载失败，请稍后重试</p>
+        </div>
+
+        <!-- 按标签选择 -->
+        <div class="form-group" v-else-if="targetMode === 'tag'">
+          <label class="form-label">选择标签（可多选）</label>
+          <div class="field-box">
+            <label v-for="t in tagList" :key="t.id" class="field-item">
+              <el-checkbox
+                :model-value="checkedTagIds.includes(t.id)"
+                @change="onTagCheck(t.id, $event)"
+              />
+              <span>{{ t.name }}（{{ t.user_count }} 人）</span>
+            </label>
+          </div>
+          <p v-if="!tagList.length" class="form-hint">标签库为空，请先在「用户和组」页维护员工标签</p>
+        </div>
+
+        <!-- CSV 导入 -->
+        <div class="form-group" v-else>
+          <label class="form-label">上传人员名单 CSV（格式：工号,姓名,邮箱）</label>
+          <el-upload
+            drag
+            action="#"
+            :auto-upload="false"
+            :show-file-list="false"
+            accept=".csv"
+            :on-change="onCsvChange"
+            style="width: 100%"
+          >
+            <el-icon :size="36" color="var(--color-text-tertiary)"><UploadFilled /></el-icon>
+            <div style="font-size:13px;margin-top:6px">拖拽 CSV 文件到此处，或 <em>点击上传</em></div>
+            <template #tip>
+              <div style="font-size:11px;color:var(--color-text-tertiary)">自动识别邮箱列，未匹配平台员工档案的邮箱将被忽略</div>
+            </template>
+          </el-upload>
+          <p v-if="csvEmails.length" class="form-hint">已解析 {{ csvEmails.length }} 个邮箱</p>
+        </div>
+
+        <!-- 已选目标汇总 -->
         <div class="form-group">
           <label class="form-label">
-            已选目标 <span class="badge badge-info">共 3,580 人</span>
+            已选目标 <span class="badge badge-info">共 {{ targetCount.toLocaleString() }} 人</span>
           </label>
           <div class="selected-tags-box">
-            <span class="badge" style="background:#378ADD22;color:#378ADD;">全公司 (3,580) <span style="margin-left:4px;cursor:pointer">✕</span></span>
-            <span class="badge" style="background:#1D9E7522;color:#1D9E75;">研发部 (420) <span style="margin-left:4px;cursor:pointer">✕</span></span>
-            <span class="badge" style="background:#EF9F2722;color:#EF9F27;">新员工组 (30) <span style="margin-left:4px;cursor:pointer">✕</span></span>
-            <span class="badge badge-add">+ 添加部门</span>
+            <span
+              v-for="t in selectedTargets"
+              :key="t.key"
+              class="badge"
+              :style="`background:${t.color}22;color:${t.color};`"
+            >
+              {{ t.label }} ({{ t.count.toLocaleString() }})
+              <span style="margin-left:4px;cursor:pointer" @click="t.remove()">✕</span>
+            </span>
+            <span v-if="!selectedTargets.length" class="form-hint">尚未选择目标</span>
           </div>
-          <p class="form-hint">⚠️ 请确认已获得充分授权对上述人员开展钓鱼演练，相关数据将严格保密</p>
+        </div>
+
+        <!-- 授权确认（红线：无授权不可启动） -->
+        <div class="form-group">
+          <el-checkbox v-model="authConfirmed">
+            我已获得企业充分授权，仅对自有员工开展模拟钓鱼演练（教育为主，数据严格保密，演练数据按留存策略处置）
+          </el-checkbox>
         </div>
       </template>
 
@@ -344,7 +418,7 @@
         <span class="wizard-progress">第 {{ step + 1 }} 步 / 共 7 步</span>
         <div class="footer-btns">
           <el-button :disabled="step === 0" @click="step--">上一步</el-button>
-          <el-button v-if="step < 6" type="primary" @click="step++">下一步 →</el-button>
+          <el-button v-if="step < 6" type="primary" @click="nextStep">下一步 →</el-button>
           <el-button v-else type="primary" @click="submit">✓ 确认发起演练</el-button>
         </div>
       </div>
@@ -353,11 +427,12 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed } from 'vue'
+import { reactive, ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElLink } from 'element-plus'
+import type { ElTree, UploadFile } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
-import { campaignApi } from '@/api'
+import { campaignApi, orgApi } from '@/api'
 
 const router = useRouter()
 const step = ref(0)
@@ -375,7 +450,109 @@ const types = [
   { value: 'usb' as const, label: 'USB实物', desc: '实地投放测试', color: '#7F77DD', icon: '⚡' },
 ]
 
-const targetMode = ref('dept')
+// ============ 目标选择 ============
+const targetMode = ref<'dept' | 'tag' | 'csv'>('dept')
+
+interface DeptNode { id: number; label: string; count: number; children?: DeptNode[] }
+interface TagRow { id: number; name: string; color: string; user_count: number }
+
+const deptTree = ref<DeptNode[]>([])
+const tagList = ref<TagRow[]>([])
+const deptTreeRef = ref<InstanceType<typeof ElTree>>()
+/** 勾选的叶子部门（父级勾选由树级联，叶子计数不重复） */
+const checkedLeafDeptIds = ref<number[]>([])
+const checkedTagIds = ref<number[]>([])
+const csvEmails = ref<string[]>([])
+const authConfirmed = ref(false)
+
+onMounted(() => {
+  orgApi.deptTree()
+    .then((list) => { if (Array.isArray(list)) deptTree.value = list as DeptNode[] })
+    .catch(() => ElMessage.warning('组织架构加载失败，请稍后重试'))
+  orgApi.tags()
+    .then((list) => { if (Array.isArray(list)) tagList.value = list as TagRow[] })
+    .catch(() => {})
+})
+
+// 部门树扁平映射：id → {label, count}
+const deptMap = computed(() => {
+  const m = new Map<number, { label: string; count: number }>()
+  const walk = (nodes: DeptNode[]) => {
+    for (const n of nodes) {
+      m.set(n.id, { label: n.label, count: n.count })
+      if (n.children?.length) walk(n.children)
+    }
+  }
+  walk(deptTree.value)
+  return m
+})
+
+function onDeptCheck() {
+  // 只收集叶子节点（含父级级联勾选的叶子），人数按叶子累加不重复
+  const leaves: number[] = []
+  const walk = (nodes: DeptNode[]) => {
+    for (const n of nodes) {
+      if (n.children?.length) walk(n.children)
+      else leaves.push(n.id)
+    }
+  }
+  walk(deptTree.value)
+  const checked = new Set((deptTreeRef.value?.getCheckedKeys(true) || []) as number[])
+  checkedLeafDeptIds.value = leaves.filter((id) => checked.has(id))
+}
+
+function onTagCheck(id: number, checked: boolean | string | number) {
+  const on = checked === true
+  checkedTagIds.value = on
+    ? [...checkedTagIds.value.filter((x) => x !== id), id]
+    : checkedTagIds.value.filter((x) => x !== id)
+}
+
+function onCsvChange(file: UploadFile) {
+  const raw = file.raw
+  if (!raw) return
+  const reader = new FileReader()
+  reader.onload = () => {
+    const text = String(reader.result || '')
+    const emails = new Set<string>()
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) continue
+      for (const cell of line.split(/[,;\t]/)) {
+        const hit = cell.trim().toLowerCase().match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)
+        if (hit) emails.add(hit[0])
+      }
+    }
+    csvEmails.value = [...emails]
+    if (emails.size) ElMessage.success(`已解析 ${emails.size} 个邮箱`)
+    else ElMessage.warning('未在文件中识别到邮箱列（格式：工号,姓名,邮箱）')
+  }
+  reader.readAsText(raw)
+}
+
+interface TargetChip { key: string; label: string; count: number; color: string; remove: () => void }
+
+const selectedTargets = computed<TargetChip[]>(() => {
+  const chips: TargetChip[] = []
+  for (const id of checkedLeafDeptIds.value) {
+    const d = deptMap.value.get(id)
+    if (d) chips.push({ key: `dept-${id}`, label: d.label, count: d.count, color: '#378ADD',
+      remove: () => { deptTreeRef.value?.setChecked(id, false, false); onDeptCheck() } })
+  }
+  for (const id of checkedTagIds.value) {
+    const t = tagList.value.find((x) => x.id === id)
+    if (t) chips.push({ key: `tag-${id}`, label: t.name, count: t.user_count, color: '#1D9E75',
+      remove: () => { checkedTagIds.value = checkedTagIds.value.filter((x) => x !== id) } })
+  }
+  if (csvEmails.value.length) {
+    chips.push({ key: 'csv', label: 'CSV名单', count: csvEmails.value.length, color: '#7F77DD',
+      remove: () => { csvEmails.value = [] } })
+  }
+  return chips
+})
+
+const targetCount = computed(() =>
+  selectedTargets.value.reduce((sum, t) => sum + t.count, 0),
+)
 
 const templates = [
   { id: 1, subject: '财务报销通知', scene: '系统类', color: '#378ADD', icon: 'mail' },
@@ -421,7 +598,7 @@ const trainForm = reactive({
 const summaryRows = computed(() => [
   { key: '演练名称', val: form.name },
   { key: '演练类型', val: types.find(t => t.value === form.type)?.label || '邮件钓鱼' },
-  { key: '目标人数', val: '3,580 人' },
+  { key: '目标人数', val: `${targetCount.value.toLocaleString()} 人` },
   { key: '邮件模板', val: templates.find(t => t.id === tplForm.template_id)?.subject || '-' },
   { key: '落地页', val: landingPages.find(p => p.id === landingForm.page_id)?.name || '-' },
   { key: '发送配置', val: sendForm.profile === 'default' ? '内置SMTP · SPF/DKIM/DMARC ✓' : '企业自建SMTP' },
@@ -429,12 +606,59 @@ const summaryRows = computed(() => [
   { key: '培训设置', val: `立即跳转《钓鱼识别与防范》` },
 ])
 
+/** 下一步：步骤 2 需校验目标与授权勾选（红线） */
+function nextStep() {
+  if (step.value === 1) {
+    if (!targetCount.value) {
+      ElMessage.warning('请先选择演练目标（部门/标签/CSV）')
+      return
+    }
+    if (!authConfirmed.value) {
+      ElMessage.warning('请勾选授权确认（未获得授权不可发起演练）')
+      return
+    }
+  }
+  step.value++
+}
+
+/** 目标来源模式：多来源并选时传 mix */
+function buildTargetMode(): 'dept' | 'tag' | 'csv' | 'mix' {
+  const sources = [checkedLeafDeptIds.value.length, checkedTagIds.value.length, csvEmails.value.length]
+    .filter((n) => n > 0).length
+  if (sources > 1) return 'mix'
+  if (checkedLeafDeptIds.value.length) return 'dept'
+  if (checkedTagIds.value.length) return 'tag'
+  return 'csv'
+}
+
 async function submit() {
+  if (!targetCount.value) {
+    ElMessage.warning('请先选择演练目标')
+    return
+  }
+  if (!authConfirmed.value) {
+    ElMessage.warning('请勾选授权确认（未获得授权不可发起演练）')
+    return
+  }
   try {
     await campaignApi.create({
-      ...form, auth_confirmed: true,
+      ...form,
+      target_mode: buildTargetMode(),
+      target_snapshot: {
+        dept_ids: checkedLeafDeptIds.value,
+        tag_ids: checkedTagIds.value,
+        emails: csvEmails.value,
+      },
+      template_id: tplForm.template_id,
+      landing_page_id: landingForm.page_id,
+      schedule_type: triggerForm.mode === 'now' ? 'now' : 'timed',
+      schedule_at: triggerForm.mode === 'schedule' ? triggerForm.schedule_time : null,
+      batch_count: 3,
+      training_policy: trainForm.mode as 'redirect' | 'popup' | 'none',
+      course_ids: trainForm.mode === 'train' ? [Number(trainForm.course_id)] : [],
+      auth_confirmed: true,
     })
-    ElMessage.success('演练创建成功，已进入调度队列')
+    ElMessage.success(`演练创建成功，目标 ${targetCount.value.toLocaleString()} 人已展开`)
     router.push('/campaign')
   } catch {
     // 失败提示由 http 拦截器统一弹出，停留本页便于修改后重试
@@ -632,6 +856,16 @@ async function submit() {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+.dept-select-box {
+  max-height: 320px;
+  overflow-y: auto;
+  :deep(.el-tree) { background: transparent; }
+}
+.tree-node-row {
+  display: inline-flex;
+  align-items: center;
+  font-size: 13px;
 }
 .badge-add {
   color: var(--color-text-secondary);
