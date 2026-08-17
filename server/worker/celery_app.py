@@ -13,6 +13,7 @@ celery_app = Celery(
     backend=settings.redis_url,
     include=[
         "worker.tasks.delivery",
+        "worker.tasks.track_stream",
         "worker.tasks.dns_patrol",
         "worker.tasks.stat_aggregate",
         "worker.tasks.retention_clean",
@@ -34,6 +35,11 @@ celery_app.conf.beat_schedule = {
     "dispatch-due-batches": {
         "task": "worker.tasks.delivery.dispatch_due_batches",
         "schedule": 30.0,
+    },
+    # 每 10s 消费追踪事件流（打开/点击/提交 → track_event + 计数 + 预警）
+    "track-consume": {
+        "task": "worker.tasks.track_stream.consume",
+        "schedule": 10.0,
     },
     # 每 6 小时 DNS 巡检（SPF/DKIM/DMARC + 送达评分）
     "dns-patrol": {

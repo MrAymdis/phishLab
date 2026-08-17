@@ -7,7 +7,7 @@
 import logging
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from app.core.config import settings
 
@@ -94,9 +94,35 @@ def health():
     return {"status": "up"}
 
 
+@app.get("/px/{token}.gif")
+def pixel(token: str, request: Request):
+    """打开追踪像素：记录 open 事件，返回 1x1 透明 GIF。"""
+    from app.modules.tracking.stream import push_event
+
+    push_event(
+        token=token, event_type="open",
+        ip=request.client.host if request.client else "",
+        ua=request.headers.get("user-agent", ""),
+    )
+    return Response(
+        b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00"
+        b"\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;",
+        media_type="image/gif",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/p/{slug}", response_class=HTMLResponse)
-def serve(slug: str, token: str = ""):
-    """渲染仿冒登录页（字段来自落地页素材库；追踪 token 随表单提交回传）。"""
+def serve(slug: str, request: Request, token: str = ""):
+    """渲染仿冒登录页；带 token 访问即记录 click 事件（点击邮件链接）。"""
+    from app.modules.tracking.stream import push_event
+
+    if token:
+        push_event(
+            token=token, event_type="click",
+            ip=request.client.host if request.client else "",
+            ua=request.headers.get("user-agent", ""),
+        )
     title, fields = _load_page_fields(slug)
     # TODO(一期)：注入指纹采集 JS（Canvas/WebGL/字体），写入 fingerprint 表
     return _render_login_page(title, fields, slug, token=token)
@@ -104,16 +130,24 @@ def serve(slug: str, token: str = ""):
 
 @app.post("/p/{slug}/submit")
 async def submit(slug: str, request: Request):
-    """表单捕获：敏感字段只存 字段名+长度，随后按演练培训策略跳转/弹窗。
+    """表单捕获：敏感字段只存 字段名+长度；SUBMIT 事件进 evt:stream → 高危预警。
 
-    TODO(一期)：
-    - token 反查 campaign → training_policy：redirect(302 培训页)/popup/none
-    - SUBMIT 事件写 evt:stream（含脱敏 detail）→ 触发高危预警判定
+    TODO(一期)：token 反查 campaign → training_policy：redirect(302 培训页)/popup/none
     """
+    from app.modules.tracking.stream import push_event
+
     form = await request.form()
+    token = str(form.get("token") or "")
     masked = {
         key: {"len": len(value or "")} if "pass" in key.lower() else {"present": True}
         for key, value in form.items()
+        if key != "token"
     }
+    push_event(
+        token=token, event_type="submit",
+        ip=request.client.host if request.client else "",
+        ua=request.headers.get("user-agent", ""),
+        detail=masked,  # 口令只记长度，不落明文
+    )
     logger.info("submit captured slug=%s fields=%s", slug, list(masked))
     return HTMLResponse(_EDU_POPUP)

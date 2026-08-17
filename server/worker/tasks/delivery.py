@@ -49,6 +49,9 @@ def _render_email(db, target, campaign) -> tuple[str, str, str, str] | None:
     for k, v in var_map.items():
         subject = subject.replace(k, v)
         html = html.replace(k, v)
+    # 打开追踪像素：邮件被查看（客户端加载图片）时记录 open 事件
+    pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{target.token}.gif"
+    html += f'<img src="{pixel_url}" width="1" height="1" style="display:none" />'
 
     sender_name = tpl.sender if tpl and tpl.sender else ch.name
     if campaign.sender_profile_id:
