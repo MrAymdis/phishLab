@@ -426,7 +426,6 @@ def dashboard(db, account, campaign_id: int) -> dict:
         {"label": "已点击", "value": clicked, "suffix": "", "accent": "orange"},
         {"label": "中招人数", "value": submitted, "suffix": "", "accent": "red"},
         {"label": "已举报", "value": reported, "suffix": "", "accent": "green"},
-        {"label": "送达率", "value": f"{delivered / target * 100:.1f}", "suffix": "%", "accent": "green"},
     ]
 
     # 漏斗：投递总数 → 投递成功 → 行为环节；投递成功相对总数折算，后续相对投递成功折算
