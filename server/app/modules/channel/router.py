@@ -82,6 +82,7 @@ class ContentSendTestRequest(BaseModel):
     template_id: int | None = None
     landing_page_id: int | None = None
     sender_name: str | None = None
+    domain: str | None = None  # 欺骗性域名（链接域名，与真实演练邮件一致）
 
 
 @channels.post("/send-test", summary="用未保存的通道配置发送测试邮件（不落库）")

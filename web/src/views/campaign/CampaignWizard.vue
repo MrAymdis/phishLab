@@ -682,6 +682,7 @@ async function sendWizardTest() {
       template_id: tplForm.template_id || undefined,
       landing_page_id: landingForm.page_id || undefined,
       sender_name: tplForm.sender_name || undefined,
+      domain: tplForm.spoof_domain || undefined,
     })
     testResult.value = res.ok ? `✓ ${res.message}` : `✗ ${res.message}`
     if (res.ok) ElMessage.success('测试邮件已发送（含所选模板与落地页链接）')

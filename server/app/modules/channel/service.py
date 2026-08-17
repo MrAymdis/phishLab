@@ -353,7 +353,12 @@ def send_test_email_with_content(db, account, channel_id: int, payload: dict) ->
     to = payload.get("to") or ""
     tpl = db.get(EmailTemplate, payload["template_id"]) if payload.get("template_id") else None
     lp = db.get(LandingPage, payload["landing_page_id"]) if payload.get("landing_page_id") else None
-    landing_url = f"{settings.landing_base_url.rstrip('/')}/p/{lp.slug}" if lp else ""
+    # 链接域名优先用向导选择的欺骗性域名（与真实演练邮件一致）；未选时退回独立落地页域名
+    spoof_domain = (payload.get("domain") or "").strip().rstrip("/")
+    if spoof_domain:
+        landing_url = f"https://{spoof_domain}/p/{lp.slug}" if lp else ""
+    else:
+        landing_url = f"{settings.landing_base_url.rstrip('/')}/p/{lp.slug}" if lp else ""
 
     # 变量替换（演示值；真实演练按目标员工档案逐人渲染）
     var_map = {

@@ -99,7 +99,7 @@ export const channelApi = {
   /** 演练向导预览发送：模板 + 落地页 + 伪装发件人的真实样式测试邮件 */
   sendTestEmailWithContent: (
     id: number,
-    payload: { to: string; template_id?: number; landing_page_id?: number; sender_name?: string },
+    payload: { to: string; template_id?: number; landing_page_id?: number; sender_name?: string; domain?: string },
   ) =>
     post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
       `/api/v1/channels/${id}/send-test-email`, payload,
