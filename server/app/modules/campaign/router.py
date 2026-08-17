@@ -43,6 +43,11 @@ def detail(cid: int, account=Depends(get_current_account), db: Session = Depends
     return resp.ok(service.get_campaign(db, account, cid))
 
 
+@campaigns.delete("/{cid}", summary="删除演练（仅草稿/已终止）")
+def delete(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.delete_campaign(db, account, cid))
+
+
 @campaigns.put("/{cid}/draft", summary="向导草稿暂存")
 def save_draft(cid: int, payload: schemas.CampaignCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.update_draft(db, account, cid, payload))

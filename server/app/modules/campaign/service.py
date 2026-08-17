@@ -5,7 +5,7 @@
 import secrets
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete as sa_delete, func, select
 
 from app.core.audit import record_audit
 from app.core.deps import apply_data_scope
@@ -570,12 +570,13 @@ def test_send(db, account, campaign_id: int, to: list[str]):
 
 
 def delete_campaign(db, account, campaign_id: int) -> None:
-    """删除演练：仅 draft 状态可删；关联数据级联删除。"""
+    """删除演练：仅 draft/terminated 状态可删；关联数据（含行为事件）级联删除。"""
     c = db.get(Campaign, campaign_id)
     if c is None:
-        raise ValueError("演练不存在")
-    if c.status != "draft":
-        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿状态可删除演练")
+        raise BizError(ErrorCode.NOT_FOUND, "演练不存在")
+    if c.status not in ("draft", "terminated"):
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿或已终止的演练可删除")
+    db.execute(TrackEvent.__table__.delete().where(TrackEvent.campaign_id == campaign_id))
     db.execute(CampaignTarget.__table__.delete().where(CampaignTarget.campaign_id == campaign_id))
     db.execute(CampaignBatch.__table__.delete().where(CampaignBatch.campaign_id == campaign_id))
     db.execute(CampaignStat.__table__.delete().where(CampaignStat.campaign_id == campaign_id))

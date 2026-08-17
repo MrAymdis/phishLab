@@ -102,14 +102,12 @@
                 <el-button v-if="row.status === 'paused'" link type="primary" size="small" @click="doResume(row)">恢复</el-button>
                 <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
                            link type="danger" size="small" @click="doTerminate(row)">终止</el-button>
-                <el-button v-if="['draft', 'scheduled', 'running', 'paused'].includes(row.status)"
-                           link size="small" @click="doTestSend(row)">测试</el-button>
                 <el-button v-if="['completed', 'terminated'].includes(row.status)" link size="small" @click="doCopy(row)">复制</el-button>
                 <el-button v-if="['completed', 'terminated'].includes(row.status)"
                            link size="small" @click="$router.push(`/campaign/${row.id}`)">报表</el-button>
                 <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
                            link size="small" @click="$router.push(`/campaign/${row.id}`)">监控</el-button>
-                <el-button v-if="row.status === 'draft'"
+                <el-button v-if="['draft', 'terminated'].includes(row.status)"
                            link type="danger" size="small" @click="doDelete(row)">删除</el-button>
               </template>
             </el-table-column>
@@ -338,25 +336,11 @@ function doCopy(row: CampaignRow) {
   navigator.clipboard?.writeText(text).catch(() => {})
   ElMessage.success(`已复制演练「${row.name}」的数据，可用于创建新演练`)
 }
-async function doTestSend(row: CampaignRow) {
-  const { value: to } = await ElMessageBox.prompt(
-    `请输入测试收件邮箱地址，将发送与演练「${row.name}」相同的邮件内容`,
-    '发送测试邮件',
-    { confirmButtonText: '发送', cancelButtonText: '取消', inputPattern: /\S+@\S+\.\S+/, inputErrorMessage: '请输入有效邮箱地址' },
-  )
-  if (!to) return
-  try {
-    await campaignApi.testSend(row.id, [to])
-    ElMessage.success(`测试邮件已发送至 ${to}`)
-  } catch {
-    // 失败提示由 http 拦截器统一弹出
-  }
-}
 async function doDelete(row: CampaignRow) {
   try {
     await ElMessageBox.confirm(
-      `确认删除草稿「${row.name}」？此操作不可恢复。`,
-      '删除草稿',
+      `确认删除演练「${row.name}」？将级联清除其目标、统计与行为事件，此操作不可恢复。`,
+      '删除演练',
       { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
     )
   } catch {
@@ -364,7 +348,7 @@ async function doDelete(row: CampaignRow) {
   }
   try {
     await campaignApi.deleteCampaign(row.id)
-    ElMessage.success(`草稿「${row.name}」已删除`)
+    ElMessage.success(`演练「${row.name}」已删除`)
     await load()
   } catch {
     // 失败提示由 http 拦截器统一弹出
