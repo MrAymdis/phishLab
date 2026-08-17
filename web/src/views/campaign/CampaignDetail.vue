@@ -3,8 +3,9 @@
     <PageHeader :title="campaignName" :parents="['演练管理']">
       <template #actions>
         <StatusBadge :status="campaignStatus" />
-        <el-button size="small" type="warning">暂停</el-button>
-        <el-button size="small" type="danger">终止</el-button>
+        <el-button v-if="campaignStatus === 'running'" size="small" type="warning" :loading="actionLoading" @click="doPause">暂停</el-button>
+        <el-button v-if="campaignStatus === 'paused'" size="small" type="primary" :loading="actionLoading" @click="doResume">恢复</el-button>
+        <el-button v-if="['running', 'paused', 'scheduled', 'draft'].includes(campaignStatus)" size="small" type="danger" :loading="actionLoading" @click="doTerminate">终止</el-button>
       </template>
     </PageHeader>
 
@@ -26,7 +27,7 @@
         <div class="card card-red">
           <div class="card-title">
             高危中招预警
-            <el-tag type="danger" size="small">3 条新</el-tag>
+            <el-tag v-if="alerts.length" type="danger" size="small">{{ alerts.length }} 条</el-tag>
           </div>
           <div v-for="a in alerts" :key="a.msg" class="alert-row">
             <el-icon color="#A32D2D"><WarningFilled /></el-icon>
@@ -35,6 +36,7 @@
               <div class="alert-meta">{{ a.time }} · {{ a.advice }}</div>
             </div>
           </div>
+          <el-empty v-if="!alerts.length" description="暂无高危预警" :image-size="48" />
         </div>
       </el-col>
     </el-row>
@@ -44,7 +46,8 @@
         实时用户行为时间轴
         <el-tag size="small" effect="plain"><span class="live-dot" style="margin-right:4px" />实时更新</el-tag>
       </div>
-      <BehaviorTimeline :events="timeline" />
+      <BehaviorTimeline v-if="timeline.length" :events="timeline" />
+      <el-empty v-else description="暂无行为数据（邮件投递后打开/点击将实时出现）" :image-size="48" />
     </div>
   </div>
 </template>
@@ -130,46 +133,84 @@ async function load() {
       campaignApi.dashboard(id),
       campaignApi.timeline(id, 1),
     ])
+    // 接口成功即覆盖（新演练为空数据 → 展示空状态而非演示数据）
     const dt = detail as CampaignDetailData | null
-    if (dt?.name) campaignName.value = dt.name
-    if (dt?.status) campaignStatus.value = dt.status
+    campaignName.value = dt?.name || `演练 #${id}`
+    campaignStatus.value = dt?.status || 'draft'
 
     const d = dash as CampaignDashData | null
-    if (d?.metrics?.length) {
-      metrics.value = d.metrics.map((m) => ({
-        label: m.label,
-        value: m.value,
-        sub: m.suffix ?? '',
-        accent: m.accent as Accent,
-      }))
-    }
-    if (d?.funnel?.length) {
-      funnel.value = d.funnel.map((f) => ({
-        name: f.name,
-        value: f.value,
-        rate: f.rate == null ? undefined : String(f.rate),
-      }))
-    }
-    if (d?.alerts?.length) {
-      alerts.value = d.alerts.map((a) => ({ msg: a.msg, time: a.time, advice: a.advice }))
-    }
+    metrics.value = (d?.metrics ?? []).map((m) => ({
+      label: m.label,
+      value: m.value,
+      sub: m.suffix ?? '',
+      accent: m.accent as Accent,
+    }))
+    funnel.value = (d?.funnel ?? []).map((f) => ({
+      name: f.name,
+      value: f.value,
+      rate: f.rate == null ? undefined : String(f.rate),
+    }))
+    alerts.value = (d?.alerts ?? []).map((a) => ({ msg: a.msg, time: a.time, advice: a.advice }))
 
-    const list = (tl as { list?: TimelineDataItem[] } | null)?.list
-    if (list?.length) {
-      timeline.value = list.map((t) => ({
-        time: t.time,
-        user: t.user,
-        action: t.action,
-        icon: t.icon,
-        ip: t.ip,
-        browser: t.browser,
-        fingerprint: t.fingerprint || undefined,
-        danger: t.danger,
-        good: t.good,
-      }))
-    }
+    const list = (tl as { list?: TimelineDataItem[] } | null)?.list ?? []
+    timeline.value = list.map((t) => ({
+      time: t.time,
+      user: t.user,
+      action: t.action,
+      icon: t.icon,
+      ip: t.ip,
+      browser: t.browser,
+      fingerprint: t.fingerprint || undefined,
+      danger: t.danger,
+      good: t.good,
+    }))
   } catch {
+    // 仅在接口失败时保留演示数据
     ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+const actionLoading = ref(false)
+
+async function doPause() {
+  const id = Number(route.params.id)
+  actionLoading.value = true
+  try {
+    await campaignApi.pause(id)
+    ElMessage.success('演练已暂停')
+    await load()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function doResume() {
+  const id = Number(route.params.id)
+  actionLoading.value = true
+  try {
+    await campaignApi.resume(id)
+    ElMessage.success('演练已恢复')
+    await load()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    actionLoading.value = false
+  }
+}
+
+async function doTerminate() {
+  const id = Number(route.params.id)
+  actionLoading.value = true
+  try {
+    await campaignApi.terminate(id)
+    ElMessage.success('演练已终止')
+    await load()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    actionLoading.value = false
   }
 }
 

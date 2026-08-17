@@ -329,7 +329,7 @@ def update_draft(db, account, campaign_id: int, payload):
 
 
 def start(db, account, campaign_id: int):
-    """draft/scheduled → running：生成批次调度（TODO 一期：Worker 按 plan_at 投递）。"""
+    """draft/scheduled → running：生成批次调度并派发 Worker 投递。"""
     c = _get_or_404(db, campaign_id)
     if c.status not in ("draft", "scheduled"):
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始状态可启动")
@@ -351,6 +351,14 @@ def start(db, account, campaign_id: int):
         db, account=account, module="campaign", action="start",
         target_type="campaign", target_id=str(campaign_id),
     )
+
+    # 投递派发：Worker 在线时立即开始投递；离线时由 beat 每 30s 兜底扫描
+    try:
+        from worker.tasks.delivery import dispatch_due_batches
+
+        dispatch_due_batches.delay()
+    except Exception:
+        pass
     return None
 
 
@@ -491,3 +499,22 @@ def test_send(db, account, campaign_id: int, to: list[str]):
         detail={"recipients": len(to)},
     )
     return {"ok": True, "message": f"测试邮件已发送至 {len(to)} 个白名单收件人"}
+
+
+def delete_campaign(db, account, campaign_id: int) -> None:
+    """删除演练：仅 draft 状态可删；关联数据级联删除。"""
+    c = db.get(Campaign, campaign_id)
+    if c is None:
+        raise ValueError("演练不存在")
+    if c.status != "draft":
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿状态可删除演练")
+    db.execute(CampaignTarget.__table__.delete().where(CampaignTarget.campaign_id == campaign_id))
+    db.execute(CampaignBatch.__table__.delete().where(CampaignBatch.campaign_id == campaign_id))
+    db.execute(CampaignStat.__table__.delete().where(CampaignStat.campaign_id == campaign_id))
+    db.execute(CampaignAlert.__table__.delete().where(CampaignAlert.campaign_id == campaign_id))
+    db.delete(c)
+    db.commit()
+    record_audit(
+        db, account=account, module="campaign", action="delete_campaign",
+        target_type="campaign", target_id=str(campaign_id),
+    )

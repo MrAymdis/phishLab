@@ -99,3 +99,9 @@ async def stream(cid: int):
 @campaigns.post("/{cid}/test-send", summary="发送测试")
 def test_send(cid: int, to: list[str], account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.test_send(db, account, cid, to))
+
+
+@campaigns.delete("/{cid}", summary="删除演练（仅草稿）")
+def delete_campaign(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.delete_campaign(db, account, cid)
+    return resp.ok({"id": cid})

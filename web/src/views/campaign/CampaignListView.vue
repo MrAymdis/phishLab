@@ -94,21 +94,25 @@
         <el-table-column label="状态" width="90">
           <template #default="{ row }"><StatusBadge :status="row.status" /></template>
         </el-table-column>
-        <el-table-column label="操作" width="190" fixed="right">
-          <template #default="{ row }">
-            <el-button v-if="row.status === 'scheduled'" link type="primary" size="small" @click="doStart(row)">启动</el-button>
-            <el-button v-if="row.status === 'running'" link type="warning" size="small" @click="doPause(row)">暂停</el-button>
-            <el-button v-if="row.status === 'paused'" link type="primary" size="small" @click="doResume(row)">恢复</el-button>
-            <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
-                       link type="danger" size="small" @click="doTerminate(row)">终止</el-button>
-            <el-button v-if="row.status === 'scheduled'" link size="small" @click="doEdit(row)">编辑</el-button>
-            <el-button v-if="['completed', 'terminated'].includes(row.status)" link size="small" @click="doCopy(row)">复制</el-button>
-            <el-button v-if="['completed', 'terminated'].includes(row.status)"
-                       link size="small" @click="$router.push(`/campaign/${row.id}`)">报表</el-button>
-            <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
-                       link size="small" @click="$router.push(`/campaign/${row.id}`)">监控</el-button>
-          </template>
-        </el-table-column>
+        <el-table-column label="操作" width="220" fixed="right">
+              <template #default="{ row }">
+                <el-button v-if="row.status === 'draft' || row.status === 'scheduled'" link type="primary" size="small" @click="doEdit(row)">编辑</el-button>
+                <el-button v-if="row.status === 'draft' || row.status === 'scheduled'" link type="primary" size="small" @click="doStart(row)">启动</el-button>
+                <el-button v-if="row.status === 'running'" link type="warning" size="small" @click="doPause(row)">暂停</el-button>
+                <el-button v-if="row.status === 'paused'" link type="primary" size="small" @click="doResume(row)">恢复</el-button>
+                <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
+                           link type="danger" size="small" @click="doTerminate(row)">终止</el-button>
+                <el-button v-if="['draft', 'scheduled', 'running', 'paused'].includes(row.status)"
+                           link size="small" @click="doTestSend(row)">测试</el-button>
+                <el-button v-if="['completed', 'terminated'].includes(row.status)" link size="small" @click="doCopy(row)">复制</el-button>
+                <el-button v-if="['completed', 'terminated'].includes(row.status)"
+                           link size="small" @click="$router.push(`/campaign/${row.id}`)">报表</el-button>
+                <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
+                           link size="small" @click="$router.push(`/campaign/${row.id}`)">监控</el-button>
+                <el-button v-if="row.status === 'draft'"
+                           link type="danger" size="small" @click="doDelete(row)">删除</el-button>
+              </template>
+            </el-table-column>
       </el-table>
 
       <el-pagination
@@ -333,6 +337,38 @@ function doCopy(row: CampaignRow) {
   const text = JSON.stringify(row, null, 2)
   navigator.clipboard?.writeText(text).catch(() => {})
   ElMessage.success(`已复制演练「${row.name}」的数据，可用于创建新演练`)
+}
+async function doTestSend(row: CampaignRow) {
+  const { value: to } = await ElMessageBox.prompt(
+    `请输入测试收件邮箱地址，将发送与演练「${row.name}」相同的邮件内容`,
+    '发送测试邮件',
+    { confirmButtonText: '发送', cancelButtonText: '取消', inputPattern: /\S+@\S+\.\S+/, inputErrorMessage: '请输入有效邮箱地址' },
+  )
+  if (!to) return
+  try {
+    await campaignApi.testSend(row.id, [to])
+    ElMessage.success(`测试邮件已发送至 ${to}`)
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
+}
+async function doDelete(row: CampaignRow) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除草稿「${row.name}」？此操作不可恢复。`,
+      '删除草稿',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await campaignApi.deleteCampaign(row.id)
+    ElMessage.success(`草稿「${row.name}」已删除`)
+    await load()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 </script>
 
