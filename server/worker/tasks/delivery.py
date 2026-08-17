@@ -53,11 +53,15 @@ def _render_email(db, target, campaign) -> tuple[str, str, str, str] | None:
     for k, v in var_map.items():
         subject = subject.replace(k, v)
         html = html.replace(k, v)
-    # 打开追踪像素（track_pixel=1 时注入）：邮件被查看（客户端加载图片）时记录 open 事件
+    # 打开追踪像素（track_pixel=1 时注入）：邮件被查看（客户端加载图片）时记录 open 事件。
+    # 不用 display:none（部分邮箱反追踪会剔除），用 1px 透明图 + 0 透明度，视觉同样不可见。
     track_pixel = tpl.track_pixel if tpl else 1
     if track_pixel:
         pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{target.token}.gif"
-        html += f'<img src="{pixel_url}" width="1" height="1" style="display:none" />'
+        html += (
+            f'<img src="{pixel_url}" width="1" height="1" '
+            f'style="border:0;width:1px;height:1px;opacity:0" alt="" />'
+        )
 
     sender_name = tpl.sender if tpl and tpl.sender else ch.name
     if campaign.sender_profile_id:
