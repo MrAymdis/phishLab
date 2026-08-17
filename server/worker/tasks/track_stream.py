@@ -163,13 +163,14 @@ def consume():
             elif event_type == "report":
                 profile.report_count += 1
                 profile.report_awareness = min(100, profile.report_awareness + 10)
-            risk_aware = max(0, 100 - profile.report_awareness)
-            total = round((
-                profile.email_recognize + profile.link_click + profile.pwd_submit
-                + profile.attach_run + risk_aware
-            ) / 5)
-            profile.total_score = max(0, min(100, total))
-            profile.risk_level = 1 if profile.total_score <= 30 else (3 if profile.total_score > 70 else 2)
+            # 综合评分公式与 org 服务共享（五维风险均值，举报意识反向）
+            from app.modules.org.service import _risk_level_of, _total_from_dims
+
+            profile.total_score = _total_from_dims(
+                profile.email_recognize, profile.link_click, profile.pwd_submit,
+                profile.attach_run, profile.report_awareness,
+            )
+            profile.risk_level = _risk_level_of(profile.total_score)
 
         db.commit()
         ack(r, acked)

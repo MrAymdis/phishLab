@@ -47,6 +47,12 @@ def _risk_level_of(score: int) -> int:
     return 3
 
 
+def _total_from_dims(email: int, link: int, pwd: int, attach: int, awareness: int) -> int:
+    """综合评分 = 五维风险均值（举报意识为反向指标：风险贡献 = 100 - 意识分）。"""
+    risk_aware = max(0, 100 - awareness)
+    return max(0, min(100, round((email + link + pwd + attach + risk_aware) / 5)))
+
+
 def _mask_mobile(mobile_enc: bytes | None) -> str:
     """手机号掩码：前3 + **** + 后4；无值/解密失败返回空串。"""
     if not mobile_enc:
@@ -260,15 +266,17 @@ def create_user(db: Session, account, payload: dict) -> int:
 
     initial = min(max(int(payload.get("initial_risk") or 0), 0), 100)
     user.initial_risk = initial
+    dims = [min(max(initial + off, 0), 100) for off in _DIM_OFFSETS]
+    total = _total_from_dims(*dims)
     db.add(EmpRiskProfile(
         user_id=user.id,
-        total_score=initial,
-        email_recognize=min(max(initial + _DIM_OFFSETS[0], 0), 100),
-        link_click=min(max(initial + _DIM_OFFSETS[1], 0), 100),
-        pwd_submit=min(max(initial + _DIM_OFFSETS[2], 0), 100),
-        attach_run=min(max(initial + _DIM_OFFSETS[3], 0), 100),
-        report_awareness=min(max(initial + _DIM_OFFSETS[4], 0), 100),
-        risk_level=_risk_level_of(initial),
+        total_score=total,
+        email_recognize=dims[0],
+        link_click=dims[1],
+        pwd_submit=dims[2],
+        attach_run=dims[3],
+        report_awareness=dims[4],
+        risk_level=_risk_level_of(total),
     ))
     _bind_tags(db, user.id, payload.get("tag_ids") or [])
     db.commit()
@@ -323,8 +331,12 @@ def update_user(db: Session, account, user_id: int, payload: dict) -> dict:
         if profile is None:
             profile = EmpRiskProfile(user_id=user.id)
             db.add(profile)
-        profile.total_score = user.initial_risk
-        profile.risk_level = _risk_level_of(user.initial_risk)
+        dims = [min(max(user.initial_risk + off, 0), 100) for off in _DIM_OFFSETS]
+        profile.email_recognize, profile.link_click = dims[0], dims[1]
+        profile.pwd_submit, profile.attach_run = dims[2], dims[3]
+        profile.report_awareness = dims[4]
+        profile.total_score = _total_from_dims(*dims)
+        profile.risk_level = _risk_level_of(profile.total_score)
     db.commit()
     record_audit(
         db, account=account, module="org", action="update_user",
