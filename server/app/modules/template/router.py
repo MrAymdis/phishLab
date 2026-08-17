@@ -44,6 +44,17 @@ def create_template(payload: EmailTemplateCreate, account=Depends(get_current_ac
     return resp.ok({"id": service.create_email_template(db, account, payload.model_dump())})
 
 
+@email_templates.get("/{tid}", summary="邮件模板详情")
+def get_template(tid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.get_email_template(db, tid))
+
+
+@email_templates.put("/{tid}", summary="更新邮件模板")
+def update_template(tid: int, payload: EmailTemplateCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.update_email_template(db, account, tid, payload.model_dump())
+    return resp.ok({"id": tid})
+
+
 @email_templates.post("/{tid}/test-send", summary="模板测试发送（仅白名单）")
 def test_send(tid: int, to: list[str], account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.test_send_template(db, account, tid, to))
@@ -54,9 +65,20 @@ def list_pages(account=Depends(get_current_account), db: Session = Depends(get_d
     return resp.ok(service.list_landing_pages(db, account))
 
 
+@landing_pages.get("/{pid}", summary="落地页详情")
+def get_page(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.get_landing_page(db, pid))
+
+
 @landing_pages.post("", summary="新建落地页")
 def create_page(payload: LandingPageCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_landing_page(db, account, payload.model_dump())})
+
+
+@landing_pages.put("/{pid}", summary="更新落地页")
+def update_page(pid: int, payload: LandingPageCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.update_landing_page(db, account, pid, payload.model_dump())
+    return resp.ok({"id": pid})
 
 
 @landing_pages.post("/clone", summary="URL 克隆工具")

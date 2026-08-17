@@ -26,6 +26,8 @@ class Settings(BaseSettings):
 
     track_base_url: str = "https://t.phish-example.com"
     landing_base_url: str = "https://p.phish-example.com"
+    # 落地页服务演示端口：开发机用 http://{演练域名}:{port}/p/{slug} 直连（hosts 映射域名后即可点击演示）
+    landing_port: int = 8082
 
 
 @lru_cache

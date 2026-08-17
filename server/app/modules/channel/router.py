@@ -115,6 +115,12 @@ def dns_check(did: int, account=Depends(get_current_account), db: Session = Depe
     return resp.ok(service.check_dns(db, account, did))
 
 
+@domains.delete("/{did}", summary="删除域名")
+def delete_domain(did: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.delete_domain(db, account, did)
+    return resp.ok({"id": did})
+
+
 @sender_profiles.get("", summary="伪装发件人列表")
 def list_profiles(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.list_sender_profiles(db, account))

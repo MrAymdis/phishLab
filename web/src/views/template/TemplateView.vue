@@ -478,6 +478,49 @@
       </template>
     </el-dialog>
 
+    <!-- ====== 弹窗：邮件模板预览 ====== -->
+    <el-dialog v-model="emailPreviewVisible" :title="`预览：${emailPreviewData.name}`" width="780px" :close-on-click-modal="true">
+      <div v-loading="emailPreviewLoading" class="email-preview-container">
+        <div class="email-preview-header">
+          <div class="preview-row"><span class="preview-label">发件人：</span><span>{{ emailPreviewData.sender || '—' }}</span></div>
+          <div class="preview-row"><span class="preview-label">主题：</span><span>{{ emailPreviewData.subject || '—' }}</span></div>
+        </div>
+        <div class="email-preview-divider"></div>
+        <iframe
+          v-if="emailPreviewData.body"
+          :srcdoc="emailPreviewData.body"
+          class="email-preview-iframe"
+          sandbox="allow-same-origin"
+        />
+        <el-empty v-else description="暂无模板内容" />
+      </div>
+      <template #footer>
+        <el-button @click="emailPreviewVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ====== 弹窗：落地页预览 ====== -->
+    <el-dialog v-model="landingPreviewVisible" :title="`预览：${landingPreviewData.name}`" width="820px" :close-on-click-modal="true">
+      <div v-loading="landingPreviewLoading" class="landing-preview-container">
+        <div class="landing-preview-header">
+          <div class="preview-row"><span class="preview-label">页面类型：</span><span>{{ landingPreviewData.typeText || '—' }}</span></div>
+          <div class="preview-row" v-if="landingPreviewData.slug"><span class="preview-label">访问路径：</span><span class="preview-slug">/p/{{ landingPreviewData.slug }}</span></div>
+          <div class="preview-row" v-if="landingPreviewData.fields.length"><span class="preview-label">表单字段：</span><span>{{ landingPreviewData.fields.map(f => f.label).join(' / ') }}</span></div>
+        </div>
+        <div class="email-preview-divider"></div>
+        <iframe
+          v-if="landingPreviewData.html_content"
+          :srcdoc="landingPreviewData.html_content"
+          class="email-preview-iframe"
+          sandbox="allow-same-origin"
+        />
+        <el-empty v-else description="暂无页面内容（该落地页可能仅注册了表单结构，无自定义HTML）" />
+      </div>
+      <template #footer>
+        <el-button @click="landingPreviewVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <!-- ====== 弹窗：新建/编辑落地页 ====== -->
     <el-dialog
       v-model="landingDialogVisible"
@@ -504,6 +547,23 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="HTML 内容">
+          <div class="html-editor-wrap">
+            <div class="html-editor-toolbar">
+              <el-button size="small" @click="landingForm.html_content = ''">清空</el-button>
+              <el-button size="small" @click="generateDefaultHtml">生成默认模板</el-button>
+              <span class="form-hint" style="margin-left:auto">留空时按页面类型自动生成默认 HTML</span>
+            </div>
+            <el-input
+              v-model="landingForm.html_content"
+              type="textarea"
+              :rows="10"
+              placeholder="粘贴或编写 HTML 内容…"
+              class="html-textarea"
+            />
+          </div>
+          <div class="form-hint">落地页完整 HTML。留空保存时将按页面类型自动生成默认登录表单模板。</div>
+        </el-form-item>
         <el-form-item label="表单字段配置">
           <el-checkbox-group v-model="landingForm.fields" class="field-grid">
             <el-checkbox v-for="f in fieldOptions" :key="f" :value="f">{{ f }}</el-checkbox>
@@ -775,8 +835,31 @@ watch(emailCat, () => { emailPage.value = 1 })
 watch(emailKw, () => { emailPage.value = 1 })
 
 // 邮件模板卡片操作
-function previewEmail(row: EmailTemplate) {
-  ElMessage.info(`正在预览模板「${row.name}」`)
+const emailPreviewVisible = ref(false)
+const emailPreviewLoading = ref(false)
+const emailPreviewData = reactive({
+  name: '',
+  subject: '',
+  sender: '',
+  body: '',
+})
+
+async function previewEmail(row: EmailTemplate) {
+  emailPreviewVisible.value = true
+  emailPreviewLoading.value = true
+  emailPreviewData.name = row.name
+  emailPreviewData.subject = row.subject
+  emailPreviewData.sender = row.sender || ''
+  emailPreviewData.body = ''
+  try {
+    const detail = await templateApi.getEmailTemplate(row.id) as Record<string, unknown>
+    emailPreviewData.body = (detail.body as string) || (detail.html_body as string) || ''
+    emailPreviewData.sender = (detail.sender as string) || emailPreviewData.sender
+  } catch {
+    // 失败时由拦截器提示
+  } finally {
+    emailPreviewLoading.value = false
+  }
 }
 function testEmail(row: EmailTemplate) {
   ElMessage.success(`模板「${row.name}」测试邮件已发送至您的邮箱`)
@@ -806,15 +889,24 @@ const emailForm = reactive({
   trackAttach: false,
 })
 
-function openEmailDialog(row?: EmailTemplate) {
+async function openEmailDialog(row?: EmailTemplate) {
   if (row) {
     emailForm.id = row.id
     emailForm.name = row.name
-    emailForm.cat = row.cat
-    emailForm.stars = row.stars
+    emailForm.cat = row.cat || 'upgrade'
     emailForm.subject = row.subject
-    emailForm.sender = row.sender
+    emailForm.sender = row.sender || ''
+    emailForm.stars = row.stars || 3
     emailForm.body = ''
+    // 拉取详情获取完整 html_body
+    try {
+      const detail = await templateApi.getEmailTemplate(row.id) as Record<string, unknown>
+      emailForm.body = (detail.body as string) || (detail.html_body as string) || ''
+      emailForm.sender = (detail.sender as string) || emailForm.sender
+      emailForm.stars = (detail.stars as number) || emailForm.stars
+    } catch {
+      // 失败时由拦截器提示
+    }
   } else {
     Object.assign(emailForm, {
       id: 0, name: '', cat: 'upgrade', stars: 3, subject: '', sender: '', body: '',
@@ -834,17 +926,19 @@ async function saveEmail(mode: 'draft' | 'test') {
     return
   }
   try {
-    if (!emailForm.id) {
-      await templateApi.createEmailTemplate({
-        name: emailForm.name,
-        scene: emailForm.cat, // 后端 _SCENE_LABELS 同时兼容前端筛选键
-        subject: emailForm.subject,
-        html_body: emailForm.body,
-        // TODO: 难度(stars)/发件人(sender)/追踪开关 后端模板接口暂未支持
-      })
-      await loadTemplates()
+    const payload = {
+      name: emailForm.name,
+      scene: emailForm.cat,
+      subject: emailForm.subject,
+      html_body: emailForm.body,
+      source: 'custom',
     }
-    // TODO: 后端未提供模板更新接口，编辑暂仅本地提示
+    if (!emailForm.id) {
+      await templateApi.createEmailTemplate(payload)
+    } else {
+      await templateApi.updateEmailTemplate(emailForm.id, payload)
+    }
+    await loadTemplates()
     emailDialogVisible.value = false
     ElMessage.success(mode === 'draft' ? '模板草稿已保存' : '模板已保存，测试邮件已发送')
   } catch {
@@ -912,8 +1006,35 @@ watch(landingType, () => { landingPage.value = 1 })
 watch(landingKw, () => { landingPage.value = 1 })
 
 // 落地页卡片操作
-function previewLanding(row: LandingPage) {
-  ElMessage.info(`正在预览落地页「${row.name}」`)
+const landingPreviewVisible = ref(false)
+const landingPreviewLoading = ref(false)
+const landingPreviewData = reactive({
+  name: '',
+  type: '',
+  typeText: '',
+  slug: '',
+  html_content: '',
+  fields: [] as { name: string; label: string; input_type: string; required: boolean }[],
+})
+
+async function previewLanding(row: LandingPage) {
+  landingPreviewVisible.value = true
+  landingPreviewLoading.value = true
+  landingPreviewData.name = row.name
+  landingPreviewData.type = row.type
+  landingPreviewData.typeText = row.typeText || row.type
+  landingPreviewData.html_content = ''
+  landingPreviewData.fields = []
+  try {
+    const detail = await templateApi.getLandingPage(row.id) as Record<string, unknown>
+    landingPreviewData.html_content = (detail.html_content as string) || ''
+    landingPreviewData.slug = (detail.slug as string) || ''
+    landingPreviewData.fields = (detail.fields as { name: string; label: string; input_type: string; required: boolean }[]) || []
+  } catch {
+    // 失败时由拦截器提示
+  } finally {
+    landingPreviewLoading.value = false
+  }
 }
 function cloneLanding(row: LandingPage) {
   ElMessage.success(`已复制落地页「${row.name}」`)
@@ -943,19 +1064,31 @@ const landingForm = reactive({
   id: 0,
   name: '',
   type: 'mail' as string,
+  html_content: '',
   fields: ['用户名', '密码', '验证码'] as string[],
   edu: '⚠️ 您刚刚中招了！\n\n这是一次公司组织的安全演练。您刚刚在仿冒页面输入了账号密码，如果在真实场景中，您的凭据已被攻击者窃取。\n\n请牢记：\n1. 认准官方域名，不轻信邮件中的链接\n2. 输入密码前核对网址是否为 HTTPS 且域名正确\n3. 可疑邮件请及时通过举报通道上报安全团队',
   redirect: 'edu' as string,
 })
 
-function openLandingDialog(row?: LandingPage) {
+async function openLandingDialog(row?: LandingPage) {
   if (row) {
     landingForm.id = row.id
     landingForm.name = row.name
     landingForm.type = row.type
+    landingForm.html_content = ''
+    landingForm.fields = ['用户名', '密码']
+    try {
+      const detail = await templateApi.getLandingPage(row.id) as Record<string, unknown>
+      landingForm.html_content = (detail.html_content as string) || ''
+      const fields = (detail.fields as { label: string }[]) || []
+      if (fields.length) landingForm.fields = fields.map(f => f.label || '字段')
+    } catch {
+      // 失败时由拦截器提示
+    }
   } else {
     Object.assign(landingForm, {
-      id: 0, name: '', type: 'mail', fields: ['用户名', '密码', '验证码'], redirect: 'edu',
+      id: 0, name: '', type: 'mail', html_content: '',
+      fields: ['用户名', '密码', '验证码'], redirect: 'edu',
     })
   }
   landingDialogVisible.value = true
@@ -966,25 +1099,40 @@ const VIEW_TYPE_TO_PAGE: Record<string, string> = {
   mail: 'mail_login', oa: 'oa_login', pan: 'pan_auth', pay: 'custom',
 }
 
+const _DEFAULT_LANDING_HTML: Record<string, string> = {
+  mail: '<!DOCTYPE html><html><head><meta charset="utf-8"><title>登录</title></head><body style="font-family:Segoe UI,Arial,sans-serif;background:#f3f6fb;margin:0;padding:40px"><div style="max-width:380px;margin:80px auto;background:#fff;border-radius:8px;padding:40px 32px;box-shadow:0 4px 20px rgba(0,0,0,.08)"><div style="text-align:center;font-size:20px;font-weight:600;color:#0078d4;margin-bottom:8px">🔒 {{NAME}}</div><div style="text-align:center;color:#666;font-size:13px;margin-bottom:28px">请登录以继续</div><form><label style="display:block;font-size:13px;color:#333;margin-bottom:6px">用户名 / 邮箱</label><input type="text" placeholder="请输入用户名" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:4px;margin-bottom:16px;box-sizing:border-box"><label style="display:block;font-size:13px;color:#333;margin-bottom:6px">密码</label><input type="password" placeholder="请输入密码" style="width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:4px;margin-bottom:16px;box-sizing:border-box"><button type="submit" style="width:100%;background:#0078d4;color:#fff;border:none;padding:11px;border-radius:4px;font-size:15px;cursor:pointer">登 录</button></form><div style="text-align:center;margin-top:24px;font-size:11px;color:#999">© 2026 {{NAME}}</div></div></body></html>',
+  oa: '<!DOCTYPE html><html><head><meta charset="utf-8"><title>OA登录</title></head><body style="font-family:Microsoft YaHei,Arial,sans-serif;background:#f0f2f5;margin:0"><div style="background:#1a73e8;color:#fff;padding:14px 32px;font-size:15px">企业统一认证系统</div><div style="max-width:400px;margin:60px auto;background:#fff;border-radius:6px;padding:48px 40px;box-shadow:0 2px 12px rgba(0,0,0,.1)"><div style="text-align:center;font-size:22px;font-weight:600;color:#1a73e8;margin-bottom:6px">{{NAME}}</div><div style="text-align:center;color:#888;font-size:13px;margin-bottom:32px">账号登录</div><form><label style="display:block;font-size:13px;color:#555;margin-bottom:6px">账号</label><input type="text" placeholder="请输入工号或邮箱" style="width:100%;padding:11px 14px;border:1px solid #e0e0e0;border-radius:4px;margin-bottom:18px;box-sizing:border-box"><label style="display:block;font-size:13px;color:#555;margin-bottom:6px">密码</label><input type="password" placeholder="请输入密码" style="width:100%;padding:11px 14px;border:1px solid #e0e0e0;border-radius:4px;margin-bottom:18px;box-sizing:border-box"><button type="submit" style="width:100%;background:#1a73e8;color:#fff;border:none;padding:12px;border-radius:4px;font-size:15px;cursor:pointer">登 录</button></form></div></body></html>',
+  pan: '<!DOCTYPE html><html><head><meta charset="utf-8"><title>网盘登录</title></head><body style="font-family:Helvetica Neue,Arial,sans-serif;background:#fafafa;margin:0;padding:60px 20px"><div style="max-width:360px;margin:40px auto;background:#fff;border:1px solid #e8e8e8;border-radius:4px;padding:40px 32px"><div style="text-align:center;font-size:18px;font-weight:600;color:#333;margin-bottom:4px">☁️ {{NAME}}</div><div style="text-align:center;color:#999;font-size:12px;margin-bottom:24px">身份验证中心</div><form><label style="display:block;font-size:13px;color:#555;margin-bottom:6px">账号</label><input type="text" placeholder="请输入账号" style="width:100%;padding:9px 12px;border:1px solid #d9d9d9;border-radius:3px;margin-bottom:16px;box-sizing:border-box"><label style="display:block;font-size:13px;color:#555;margin-bottom:6px">密码</label><input type="password" placeholder="请输入密码" style="width:100%;padding:9px 12px;border:1px solid #d9d9d9;border-radius:3px;margin-bottom:16px;box-sizing:border-box"><button type="submit" style="width:100%;background:#1890ff;color:#fff;border:none;padding:10px;border-radius:3px;font-size:14px;cursor:pointer">登录验证</button></form></div></body></html>',
+  custom: '<!DOCTYPE html><html><head><meta charset="utf-8"><title>{{NAME}}</title></head><body style="font-family:Arial,sans-serif;background:#f5f5f5;margin:0;padding:40px 20px"><div style="max-width:420px;margin:60px auto;background:#fff;border-radius:8px;padding:40px 36px;box-shadow:0 2px 16px rgba(0,0,0,.06)"><div style="text-align:center;font-size:20px;font-weight:600;color:#333;margin-bottom:8px">{{NAME}}</div><div style="text-align:center;color:#888;font-size:13px;margin-bottom:28px">请完成以下信息提交</div><form><label style="display:block;font-size:13px;color:#444;margin-bottom:6px">姓名</label><input type="text" placeholder="请输入您的姓名" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box"><label style="display:block;font-size:13px;color:#444;margin-bottom:6px">工号</label><input type="text" placeholder="请输入工号" style="width:100%;padding:10px 12px;border:1px solid #ccc;border-radius:4px;margin-bottom:16px;box-sizing:border-box"><button type="submit" style="width:100%;background:#378ADD;color:#fff;border:none;padding:11px;border-radius:4px;font-size:15px;cursor:pointer">提交信息</button></form></div></body></html>',
+}
+
+function generateDefaultHtml() {
+  const tmpl = _DEFAULT_LANDING_HTML[landingForm.type] || _DEFAULT_LANDING_HTML.custom
+  landingForm.html_content = tmpl.replaceAll('{{NAME}}', landingForm.name || '页面名称')
+}
+
 async function saveLanding() {
   if (!landingForm.name) {
     ElMessage.warning('请填写页面名称')
     return
   }
   try {
-    if (!landingForm.id) {
-      await templateApi.createLandingPage({
-        name: landingForm.name,
-        type: VIEW_TYPE_TO_PAGE[landingForm.type] ?? 'custom',
-        form_schema: {
-          fields: landingForm.fields.map((label, i) => ({ label, input_type: 'text', sort: i })),
-          edu: landingForm.edu,
-          redirect: landingForm.redirect,
-        },
-      })
-      await loadTemplates()
+    const payload = {
+      name: landingForm.name,
+      type: VIEW_TYPE_TO_PAGE[landingForm.type] ?? 'custom',
+      html_content: landingForm.html_content,
+      form_schema: {
+        fields: landingForm.fields.map((label, i) => ({ label, input_type: 'text', sort: i })),
+        edu: landingForm.edu,
+        redirect: landingForm.redirect,
+      },
     }
-    // TODO: 后端未提供落地页更新接口，编辑暂仅本地提示
+    if (!landingForm.id) {
+      await templateApi.createLandingPage(payload)
+    } else {
+      await templateApi.updateLandingPage(landingForm.id, payload)
+    }
+    await loadTemplates()
     landingDialogVisible.value = false
     ElMessage.success('落地页已保存')
   } catch {
@@ -1279,6 +1427,75 @@ function submitUpload() {
 }
 
 // 邮件模板预览区
+.email-preview-container {
+  min-height: 300px;
+}
+.email-preview-header {
+  padding: 0 4px 12px;
+}
+.email-preview-header .preview-row {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+}
+.email-preview-header .preview-label {
+  color: var(--color-text-tertiary);
+  margin-right: 4px;
+}
+.email-preview-divider {
+  border-top: 1px solid var(--color-border-light);
+  margin-bottom: 12px;
+}
+.email-preview-iframe {
+  width: 100%;
+  min-height: 400px;
+  border: 1px solid var(--color-border-light);
+  border-radius: 8px;
+  background: #fff;
+}
+.landing-preview-container {
+  min-height: 300px;
+}
+.landing-preview-header {
+  padding: 0 4px 12px;
+}
+.landing-preview-header .preview-row {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--color-text-secondary);
+}
+.landing-preview-header .preview-label {
+  color: var(--color-text-tertiary);
+  margin-right: 4px;
+}
+.preview-slug {
+  font-family: 'SF Mono', Consolas, monospace;
+  font-size: 12px;
+  color: var(--accent-blue);
+  background: color-mix(in srgb, var(--accent-blue) 8%, transparent);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+.html-editor-wrap {
+  width: 100%;
+}
+.html-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.html-textarea {
+  font-family: 'SF Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  background: var(--color-background-tertiary);
+}
+.html-textarea :deep(.el-textarea__inner) {
+  font-family: 'SF Mono', Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
 .template-preview {
   padding: 12px;
   background: linear-gradient(

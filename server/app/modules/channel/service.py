@@ -353,10 +353,12 @@ def send_test_email_with_content(db, account, channel_id: int, payload: dict) ->
     to = payload.get("to") or ""
     tpl = db.get(EmailTemplate, payload["template_id"]) if payload.get("template_id") else None
     lp = db.get(LandingPage, payload["landing_page_id"]) if payload.get("landing_page_id") else None
-    # 链接域名优先用向导选择的欺骗性域名（与真实演练邮件一致）；未选时退回独立落地页域名
+    # 链接域名优先用向导选择的欺骗性域名（与真实演练邮件一致）；未选时退回独立落地页域名。
+    # 演示环境：http + 落地页端口直连（开发机 hosts 映射演练域名后点击即可打开仿冒登录页）；
+    # 生产部署：演练域名 DNS 指向落地页服务并配置 TLS，链接为 https://{domain}/p/{slug}。
     spoof_domain = (payload.get("domain") or "").strip().rstrip("/")
     if spoof_domain:
-        landing_url = f"https://{spoof_domain}/p/{lp.slug}" if lp else ""
+        landing_url = f"http://{spoof_domain}:{settings.landing_port}/p/{lp.slug}" if lp else ""
     else:
         landing_url = f"{settings.landing_base_url.rstrip('/')}/p/{lp.slug}" if lp else ""
 
@@ -548,6 +550,20 @@ def check_dns(db, account, domain_id: int) -> dict:
 
 
 # ---------- 伪装发件人 ----------
+
+
+def delete_domain(db, account, domain_id: int) -> None:
+    """删除域名（软约束：关联演练保留 ID 引用）。"""
+    d = db.get(PhishDomain, domain_id)
+    if d is None:
+        raise ValueError("域名不存在")
+    db.delete(d)
+    db.commit()
+    record_audit(
+        db, account=account, module="channel", action="delete_domain",
+        target_type="phish_domain", target_id=domain_id,
+    )
+
 
 def list_sender_profiles(db, account) -> list[dict]:
     """伪装发件人列表；channel 取当前默认发送通道名。"""

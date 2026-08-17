@@ -176,10 +176,10 @@
             </el-table-column>
             <el-table-column prop="last_check" label="最近检测" width="160" />
             <el-table-column label="操作" width="220">
-              <template #default>
-                <el-button size="small" link type="primary">立即检测</el-button>
-                <el-button size="small" link>修复指引</el-button>
-                <el-button size="small" link type="danger">删除</el-button>
+              <template #default="{ row }">
+                <el-button size="small" link type="primary" :loading="checkingDomainId === row.id" @click="checkDns(row)">立即检测</el-button>
+                <el-button size="small" link @click="showDnsGuide(row)">修复指引</el-button>
+                <el-button size="small" link type="danger" @click="deleteDomain(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -1071,6 +1071,79 @@ async function loadDomains() {
     if (Array.isArray(list)) domainRows.value = list
   } catch {
     // 失败提示由 http 拦截器统一弹出；保留已有数据不覆盖
+  }
+}
+
+/** 立即检测 DNS：调后端探测 SPF/DKIM/DMARC/MX → 更新行数据 */
+const checkingDomainId = ref<number | null>(null)
+
+async function checkDns(row: DomainRow) {
+  checkingDomainId.value = row.id
+  try {
+    const result = await channelApi.dnsCheck(row.id) as Record<string, unknown>
+    // 更新当前行
+    const idx = domainRows.value.findIndex(d => d.id === row.id)
+    if (idx >= 0) {
+      domainRows.value[idx] = {
+        ...domainRows.value[idx],
+        spf: (result.spf as string) || row.spf,
+        dkim: (result.dkim as string) || row.dkim,
+        dmarc: (result.dmarc as string) || row.dmarc,
+        score: (result.score as number) ?? row.score,
+        last_check: new Date().toLocaleString('zh-CN', { hour12: false }).replace(/\//g, '-'),
+      }
+    }
+    const score = (result.score as number) ?? 0
+    if (score >= 90) {
+      ElMessage.success(`「${row.domain}」DNS 检测完成 · 送达评分 ${score} 分`)
+    } else if (score >= 60) {
+      ElMessage.warning(`「${row.domain}」DNS 配置不完整 · 送达评分 ${score} 分，请查看修复指引`)
+    } else {
+      ElMessage.error(`「${row.domain}」DNS 检测失败 · 送达评分 ${score} 分，请尽快配置 DNS 记录`)
+    }
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    checkingDomainId.value = null
+  }
+}
+
+/** 修复指引弹窗 */
+function showDnsGuide(row: DomainRow) {
+  const issues: string[] = []
+  if (row.spf !== 'OK') issues.push('SPF 记录缺失或配置错误')
+  if (row.dkim !== 'OK') issues.push('DKIM 公钥未发布或选择器不匹配')
+  if (row.dmarc !== 'OK') issues.push('DMARC 策略未配置')
+  const tips = issues.length
+    ? `检测到以下问题：\n  • ${issues.join('\n  • ')}\n\n`
+    : '所有记录正常。如需重新检测，请点击「立即检测」。\n\n'
+  ElMessageBox.alert(
+    `${tips}请在域名 DNS 管理面板添加以下记录：\n\n` +
+    `1. SPF (TXT @)\n   v=spf1 mx ~all\n\n` +
+    `2. DKIM (TXT phish._domainkey)\n   系统自动生成公钥，请在域名详情查看\n\n` +
+    `3. DMARC (TXT _dmarc)\n   v=DMARC1; p=none; rua=mailto:admin@${row.domain}`,
+    `修复指引 · ${row.domain}`,
+    { confirmButtonText: '知道了', type: issues.length ? 'warning' : 'info' },
+  )
+}
+
+/** 删除域名 */
+async function deleteDomain(row: DomainRow) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除域名「${row.domain}」？关联的演练仍保留域名 ID 引用，不影响已有数据。`,
+      '删除域名',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await channelApi.deleteDomain(row.id)
+    ElMessage.success(`域名「${row.domain}」已删除`)
+    await loadDomains()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
   }
 }
 

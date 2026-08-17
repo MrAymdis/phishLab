@@ -68,13 +68,19 @@ export const orgApi = {
 // ---- 素材模板 ----
 export const templateApi = {
   emailTemplates: (scene?: string) => get('/api/v1/email-templates', { scene } as never),
+  getEmailTemplate: (id: number) => get(`/api/v1/email-templates/${id}`),
   createEmailTemplate: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/email-templates', payload),
+  updateEmailTemplate: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/email-templates/${id}`, payload),
   testSendEmailTemplate: (id: number, to: string[]) =>
     post(`/api/v1/email-templates/${id}/test-send`, to),
   landingPages: () => get('/api/v1/landing-pages'),
+  getLandingPage: (id: number) => get(`/api/v1/landing-pages/${id}`),
   createLandingPage: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/landing-pages', payload),
+  updateLandingPage: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/landing-pages/${id}`, payload),
   cloneLandingPage: (url: string) => post<{ id: number }>('/api/v1/landing-pages/clone', { url }),
   payloads: () => get('/api/v1/attachments'),
   qrAssets: () => get('/api/v1/qr-assets'),
@@ -116,6 +122,7 @@ export const channelApi = {
   createDomain: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/domains', payload),
   dnsCheck: (id: number) => get(`/api/v1/domains/${id}/dns-check`),
+  deleteDomain: (id: number) => del(`/api/v1/domains/${id}`),
 }
 
 // ---- 培训 / 举报 ----
