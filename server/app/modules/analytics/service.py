@@ -321,7 +321,7 @@ def campaign_report(db, account, campaign_id: int) -> dict:
     sent = delivered or target
     funnel = [
         {"name": "发送成功", "value": sent, "rate": _pct(sent, target)},
-        {"name": "已打开", "value": open_cnt, "rate": _pct(open_cnt, sent)},
+        {"name": "已打开", "value": open_cnt, "rate": _pct(open_cnt, target)},
         {"name": "已点击", "value": click_cnt, "rate": _pct(click_cnt, open_cnt)},
         {"name": "输入数据", "value": submit_cnt, "rate": _pct(submit_cnt, click_cnt)},
         {"name": "已举报", "value": report_cnt, "rate": _pct(report_cnt, submit_cnt)},

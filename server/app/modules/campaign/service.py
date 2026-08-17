@@ -409,15 +409,31 @@ def terminate(db, account, campaign_id: int):
 
 
 def dashboard(db, account, campaign_id: int) -> dict:
-    """监控大屏：指标卡 + 漏斗 + 预警（读冗余表 campaign_stat）。"""
+    """监控大屏：指标卡 + 漏斗 + 预警。
+
+    口径：已打开/已点击/中招/举报均为「人数」（去重目标），
+    打开过即计 1 人，重复打开不重复计数；投递成功为实际送达目标数。
+    """
     c = _get_or_404(db, campaign_id)
     stat = db.get(CampaignStat, campaign_id)
     delivered = stat.delivered_cnt if stat else 0
-    opened = stat.open_cnt if stat else 0
-    clicked = stat.click_cnt if stat else 0
     submitted = stat.submit_cnt if stat else 0
     reported = stat.report_cnt if stat else 0
     target = c.target_count or 1
+
+    # 打开/点击按人数口径：目标明细中 open_count/click_count > 0 的去重目标数
+    opened = int(db.scalar(
+        select(func.count()).select_from(CampaignTarget).where(
+            CampaignTarget.campaign_id == campaign_id,
+            CampaignTarget.open_count > 0,
+        )
+    ) or 0)
+    clicked = int(db.scalar(
+        select(func.count()).select_from(CampaignTarget).where(
+            CampaignTarget.campaign_id == campaign_id,
+            CampaignTarget.click_count > 0,
+        )
+    ) or 0)
 
     metrics = [
         {"label": "投递总数", "value": target, "suffix": "", "accent": "blue"},
