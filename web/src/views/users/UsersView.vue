@@ -3,7 +3,7 @@
     <PageHeader title="用户和组">
       <template #actions>
         <el-button :icon="Upload" @click="onImportCsv">导入CSV</el-button>
-        <el-button link size="small" @click="downloadCsvTemplate">下载模板</el-button>
+        <el-button :icon="Document" @click="downloadCsvTemplate">下载模板</el-button>
         <el-button :icon="Download" @click="onExportCsv">批量导出</el-button>
         <el-button type="primary" :icon="Plus" @click="openEmpDialog()">添加员工</el-button>
       </template>
@@ -436,7 +436,7 @@ import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElTree } from 'element-plus'
 import {
   Upload, Download, Plus, Search, Refresh, OfficeBuilding,
-  CircleCheckFilled, WarningFilled,
+  CircleCheckFilled, WarningFilled, Document,
 } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
