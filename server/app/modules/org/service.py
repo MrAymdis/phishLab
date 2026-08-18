@@ -17,8 +17,10 @@ from .models import (
 # 头像底色盘（与前端 UsersView avatarColors 一致）
 _AVATAR_COLORS = ["#378ADD", "#1D9E75", "#7F77DD", "#EF9F27", "#D85A30", "#0D9488"]
 _RISK_CODE = {1: "low", 2: "mid", 3: "high"}
-# 五维初始分偏移（基于 initial_risk）
-_DIM_OFFSETS = (-10, 15, 25, 5, -20)
+# 五维初始分偏移（基于 initial_risk；与权重配合使初始综合分 == 初始风险值）
+_DIM_OFFSETS = (10, 20, 30, 20, 10)
+# 综合分权重：邮件识别1 / 链接点击1 / 密码提交2 / 附件下载3 / 举报意识3（反向）
+_RISK_WEIGHTS = (1, 1, 2, 3, 3)
 _DIM_DEFS = [
     ("email_recognize", "邮件识别"),
     ("link_click", "链接点击"),
@@ -48,9 +50,11 @@ def _risk_level_of(score: int) -> int:
 
 
 def _total_from_dims(email: int, link: int, pwd: int, attach: int, awareness: int) -> int:
-    """综合评分 = 五维风险均值（举报意识为反向指标：风险贡献 = 100 - 意识分）。"""
+    """综合评分 = 五维加权（权重 1/1/2/3/3；举报意识为反向指标：风险贡献 = 100 - 意识分）。"""
     risk_aware = max(0, 100 - awareness)
-    return max(0, min(100, round((email + link + pwd + attach + risk_aware) / 5)))
+    dims = (email, link, pwd, attach, risk_aware)
+    total = sum(w * v for w, v in zip(_RISK_WEIGHTS, dims)) / sum(_RISK_WEIGHTS)
+    return max(0, min(100, round(total)))
 
 
 def _mask_mobile(mobile_enc: bytes | None) -> str:

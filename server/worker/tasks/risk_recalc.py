@@ -1,7 +1,7 @@
 """员工风险画像重算任务：按初始风险 + 历史行为事件全量重算五维与综合分。
 
 口径与实时消费（track_stream）一致：
-- 初始五维 = initial_risk + _DIM_OFFSETS(-10/+15/+25/+5/-20)
+- 初始五维 = initial_risk + _DIM_OFFSETS(+10/+20/+30/+20/+10)
 - 行为增量：open→邮件识别+3 / click→链接点击+8 / submit→密码提交+15、中招+1
   / report→举报意识+10、举报+1
 - 综合分 = 五维风险均值（举报意识反向），等级 0-30/31-70/71-100
@@ -20,10 +20,9 @@ def recalc(user_id: int | None = None) -> int:
     """全量（或指定员工）重算 emp_risk_profile；返回重算人数。"""
     from app.db.session import SessionLocal
     from app.modules.org.models import EmpRiskProfile, EmpUser
-    from app.modules.org.service import _risk_level_of, _total_from_dims
+    from app.modules.org.service import _DIM_OFFSETS, _risk_level_of, _total_from_dims
     from app.modules.tracking.models import TrackEvent
 
-    _DIM_OFFSETS = (-10, 15, 25, 5, -20)
     db = SessionLocal()
     try:
         stmt = select(EmpUser).where(EmpUser.status == 1)
