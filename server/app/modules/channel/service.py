@@ -211,13 +211,18 @@ def _smtp_send(
     name: str, cfg: dict, to: str,
     subject: str | None = None, html_body: str | None = None,
     sender_name: str | None = None,
+    attachments: list[dict] | None = None,
 ) -> dict:
     """纯发信：按 SMTP 配置真实发送一封测试邮件（不触碰数据库）。
 
     subject/html_body 传入时按指定内容发送（向导预览真实演练邮件样式），
     否则发送通用通道测试邮件。
+    attachments: [{filename, content(bytes), content_id}] —
+    作为邮件附件发送，同时以 Content-ID 供正文 <img src="cid:..."> 内嵌引用。
     """
     import smtplib
+    from email.mime.image import MIMEImage
+    from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
     from email.utils import formataddr
 
@@ -240,16 +245,27 @@ def _smtp_send(
     port = cfg.get("smtp_port") or (465 if encrypt == "ssl" else 587)
 
     if html_body is not None:
-        msg = MIMEText(html_body, "html", "utf-8")
-        msg["Subject"] = subject or "【PhishLab】演练邮件预览"
+        subject = subject or "【PhishLab】演练邮件预览"
     else:
-        msg = MIMEText(
+        html_body = (
             f"这是一封来自 PhishLab 的测试邮件。\n\n发送通道：{name}\n"
             f"SMTP 服务器：{host}:{port}\n发送时间：{datetime.now():%Y-%m-%d %H:%M:%S}\n\n"
-            "收到此邮件表示该通道可以正常发信。",
-            "plain", "utf-8",
+            "收到此邮件表示该通道可以正常发信。"
         )
-        msg["Subject"] = "【PhishLab】发送通道测试邮件"
+        subject = "【PhishLab】发送通道测试邮件"
+
+    if attachments:
+        # multipart/related：正文 HTML + 内嵌附件（Content-ID 引用 + 可下载）
+        msg = MIMEMultipart("related")
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+        for att in attachments:
+            image = MIMEImage(att["content"], _subtype="png", name=att.get("filename", "image.png"))
+            image.add_header("Content-ID", f"<{att.get('content_id', '')}>")
+            image.add_header("Content-Disposition", "attachment", filename=att.get("filename", "image.png"))
+            msg.attach(image)
+    else:
+        msg = MIMEText(html_body, "html", "utf-8")
+    msg["Subject"] = subject
     msg["From"] = formataddr((sender_name or name, username))
     msg["To"] = to
 
@@ -398,6 +414,26 @@ def send_test_email_with_content(db, account, channel_id: int, payload: dict) ->
         subject = subject.replace(k, v)
         html = html.replace(k, v)
 
+    # 二维码变量：{{.QRCode}} → 落地页链接二维码（附件 + 正文内嵌）
+    attachments: list[dict] = []
+    if "{{.QRCode}}" in html:
+        from app.core.qr import render_qr_png
+
+        qr_png = render_qr_png(landing_url)
+        attachments.append({
+            "filename": "操作指引二维码.png",
+            "content": qr_png,
+            "content_id": "qr_code",
+        })
+        html = html.replace(
+            "{{.QRCode}}",
+            '<div style="margin:16px 0;text-align:center">'
+            '<img src="cid:qr_code" width="160" height="160" alt="二维码" '
+            'style="border:1px solid #e8e8e8;border-radius:8px" />'
+            '<div style="font-size:12px;color:#888;margin-top:6px">'
+            '请使用手机扫描上方二维码（或下载附件）完成操作</div></div>',
+        )
+
     # 落地页未被模板引用时，追加一个明显的落地页链接（模拟真实演练邮件的钩子）
     if lp and "{{.ResetURL}}" not in html and landing_url not in html:
         html += (
@@ -425,7 +461,8 @@ def send_test_email_with_content(db, account, channel_id: int, payload: dict) ->
         "smtp_password": password,
     }
     sender_name = payload.get("sender_name") or ch.name
-    result = _smtp_send(ch.name, cfg, to, subject=subject, html_body=html, sender_name=sender_name)
+    result = _smtp_send(ch.name, cfg, to, subject=subject, html_body=html,
+                        sender_name=sender_name, attachments=attachments)
 
     ch.last_test_result = result
     ch.last_test_at = datetime.now()

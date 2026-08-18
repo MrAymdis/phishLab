@@ -12,9 +12,14 @@ from worker.celery_app import celery_app
 logger = logging.getLogger("phishlab.delivery")
 
 
-def _render_email(db, target, campaign) -> tuple[str, str, str, str] | None:
-    """渲染单封演练邮件：返回 (收件人, 主题, HTML, 发件人显示名)；通道不可用返回 None。"""
+def _render_email(db, target, campaign) -> dict | None:
+    """渲染单封演练邮件：返回 {to, subject, html, sender_name, attachments}；通道不可用返回 None。
+
+    {{.QRCode}} 变量：落地页链接渲染为二维码 PNG，作为附件发送并以 Content-ID
+    内嵌正文（<img src="cid:qr_code">）；链接替换为提示文案。
+    """
     from app.core.config import settings
+    from app.core.qr import render_qr_png
     from app.modules.channel.models import PhishDomain, SendChannel, SenderProfile
     from app.modules.org.models import EmpDept, EmpUser
     from app.modules.template.models import EmailTemplate, LandingPage
@@ -53,6 +58,25 @@ def _render_email(db, target, campaign) -> tuple[str, str, str, str] | None:
     for k, v in var_map.items():
         subject = subject.replace(k, v)
         html = html.replace(k, v)
+
+    # 二维码变量：{{.QRCode}} → 落地页链接二维码（附件 + 正文内嵌）
+    attachments: list[dict] = []
+    if "{{.QRCode}}" in html:
+        qr_png = render_qr_png(landing_url)
+        attachments.append({
+            "filename": "操作指引二维码.png",
+            "content": qr_png,
+            "content_id": "qr_code",
+        })
+        html = html.replace(
+            "{{.QRCode}}",
+            '<div style="margin:16px 0;text-align:center">'
+            '<img src="cid:qr_code" width="160" height="160" alt="二维码" '
+            'style="border:1px solid #e8e8e8;border-radius:8px" />'
+            '<div style="font-size:12px;color:#888;margin-top:6px">'
+            '请使用手机扫描上方二维码（或下载附件）完成操作</div></div>',
+        )
+
     # 打开追踪像素（track_pixel=1 时注入）：邮件被查看（客户端加载图片）时记录 open 事件。
     # 不用 display:none（部分邮箱反追踪会剔除），用 1px 透明图 + 0 透明度，视觉同样不可见。
     track_pixel = tpl.track_pixel if tpl else 1
@@ -68,10 +92,17 @@ def _render_email(db, target, campaign) -> tuple[str, str, str, str] | None:
         sp = db.get(SenderProfile, campaign.sender_profile_id)
         if sp:
             sender_name = sp.display_name or sp.name
-    return user.email, subject, html, sender_name
+    return {
+        "to": user.email,
+        "subject": subject,
+        "html": html,
+        "sender_name": sender_name,
+        "attachments": attachments,
+    }
 
 
-def _send_via_channel(db, ch, to: str, subject: str, html: str, sender_name: str) -> bool:
+def _send_via_channel(db, ch, to: str, subject: str, html: str, sender_name: str,
+                      attachments: list[dict] | None = None) -> bool:
     """按通道加密配置发信；成功返回 True。"""
     from app.core.security import decrypt_secret
     from app.modules.channel.service import _smtp_send
@@ -89,7 +120,8 @@ def _send_via_channel(db, ch, to: str, subject: str, html: str, sender_name: str
         "smtp_username": ch.smtp_username,
         "smtp_password": password,
     }
-    result = _smtp_send(ch.name, cfg, to, subject=subject, html_body=html, sender_name=sender_name)
+    result = _smtp_send(ch.name, cfg, to, subject=subject, html_body=html,
+                        sender_name=sender_name, attachments=attachments)
     return result["ok"]
 
 
@@ -184,15 +216,20 @@ def deliver_one(self, target_id: int):
             t.send_status = "failed"
             db.commit()
             return False
-        to, subject, html, sender_name = rendered
+        to = rendered["to"]
+        subject = rendered["subject"]
+        html = rendered["html"]
+        sender_name = rendered["sender_name"]
+        attachments = rendered.get("attachments") or []
 
         ch = _pick_channel(db, campaign)
         if ch is None:
             t.send_status = "failed"
             db.commit()
             return False
-        logger.info("投递开始 target=%s to=%s subject=%s via=%s", t.id, to, subject, ch.name)
-        ok = _send_via_channel(db, ch, to, subject, html, sender_name)
+        logger.info("投递开始 target=%s to=%s subject=%s via=%s 附件=%d",
+                    t.id, to, subject, ch.name, len(attachments))
+        ok = _send_via_channel(db, ch, to, subject, html, sender_name, attachments)
 
         t.send_status = "sent" if ok else "failed"
         t.sent_at = datetime.now() if ok else None

@@ -407,7 +407,7 @@
           />
           <!-- v-pre：内容含字面量模板变量 {{.Xxx}}，需跳过 Vue 插值解析 -->
           <div v-pre class="form-hint">
-            支持插入动态变量：{{.FirstName}} {{.LastName}} {{.Department}} {{.Email}} {{.Date}} {{.ResetURL}} 等，发送时自动替换。
+            支持插入动态变量：{{.FirstName}} {{.LastName}} {{.Department}} {{.Email}} {{.Date}} {{.ResetURL}} 等，发送时自动替换；{{.QRCode}} 将落地页链接渲染为二维码附件。
           </div>
         </el-form-item>
         <el-form-item label="追踪选项">
@@ -890,7 +890,7 @@ function deleteEmail(row: EmailTemplate) {
 
 // 邮件模板弹窗
 const emailDialogVisible = ref(false)
-const emailVariables = ['{{.FirstName}}', '{{.LastName}}', '{{.Department}}', '{{.Email}}', '{{.Date}}', '{{.ResetURL}}']
+const emailVariables = ['{{.FirstName}}', '{{.LastName}}', '{{.Department}}', '{{.Email}}', '{{.Date}}', '{{.ResetURL}}', '{{.QRCode}}']
 const emailForm = reactive({
   id: 0,
   name: '',
