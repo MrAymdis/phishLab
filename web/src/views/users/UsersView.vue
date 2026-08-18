@@ -515,31 +515,7 @@ function riskSliderBadgeStyle(v: number) {
 // ============ 部门树 ============
 const treeProps = { label: 'label', children: 'children' }
 
-const deptTree = ref<DeptNode[]>([
-  {
-    id: 0, label: '总公司', count: 3580,
-    children: [
-      {
-        id: 1, label: '技术部', count: 420,
-        children: [
-          { id: 11, label: '研发组', count: 186 },
-          { id: 12, label: '运维组', count: 128 },
-          { id: 13, label: '安全组', count: 106 },
-        ],
-      },
-      {
-        id: 2, label: '财务部', count: 56,
-        children: [
-          { id: 21, label: '会计组', count: 32 },
-          { id: 22, label: '出纳组', count: 24 },
-        ],
-      },
-      { id: 3, label: '人力资源部', count: 86 },
-      { id: 4, label: '市场部', count: 320 },
-      { id: 5, label: '行政部', count: 48 },
-    ],
-  },
-])
+const deptTree = ref<DeptNode[]>([])
 
 const deptKw = ref('')
 const deptTreeRef = ref<InstanceType<typeof ElTree>>()
@@ -668,9 +644,13 @@ async function loadUsers(deptId?: number) {
     const q: Record<string, unknown> = { page: 1, pageSize: 100 }
     if (deptId) q.dept_id = deptId
     const res = (await orgApi.users(q)) as { list: Employee[] }
-    if (Array.isArray(res.list) && res.list.length) employeeRows.value = res.list
+    if (Array.isArray(res.list)) {
+      employeeRows.value = res.list
+      // 无选中员工时自动选中第一名，档案面板展示真实数据
+      if (!selectedEmp.value && res.list.length) selectEmp(res.list[0])
+    }
   } catch {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    ElMessage.warning('员工数据加载失败，请稍后重试')
   }
 }
 
@@ -687,22 +667,7 @@ const allowedDeptLabels = computed<Set<string> | null>(() => {
 })
 
 // ============ 员工数据（对齐 demo 14 条 mock，接口加载成功后覆盖） ============
-const employeeRows = ref<Employee[]>([
-  { id: 1, name: '张伟', no: 'EMP001', dept: '技术部 / 研发组', deptShort: '研发组', pos: '高级研发工程师', email: 'zhangwei@jianfa.com', phone: '138****2856', risk: 'high', riskScore: 82, tags: ['研发'], clicks: 3, training: 'completed', avatarColor: avatarColors[0] },
-  { id: 2, name: '李娜', no: 'EMP002', dept: '财务部 / 会计组', deptShort: '会计组', pos: '会计主管', email: 'lina@jianfa.com', phone: '139****1024', risk: 'high', riskScore: 78, tags: ['财务'], clicks: 4, training: 'completed', avatarColor: avatarColors[1] },
-  { id: 3, name: '王强', no: 'EMP003', dept: '技术部 / 运维组', deptShort: '运维组', pos: '运维工程师', email: 'wangqiang@jianfa.com', phone: '137****8832', risk: 'mid', riskScore: 55, tags: ['运维'], clicks: 1, training: 'progress', avatarColor: avatarColors[2] },
-  { id: 4, name: '刘洋', no: 'EMP004', dept: '技术部 / 研发组', deptShort: '研发组', pos: '前端工程师', email: 'liuyang@jianfa.com', phone: '135****6677', risk: 'low', riskScore: 22, tags: ['研发'], clicks: 0, training: 'completed', avatarColor: avatarColors[3] },
-  { id: 5, name: '陈静', no: 'EMP005', dept: '人力资源部', deptShort: '人力部', pos: 'HR专员', email: 'chenjing@jianfa.com', phone: '136****4458', risk: 'mid', riskScore: 48, tags: ['新员工'], clicks: 2, training: 'progress', avatarColor: avatarColors[4] },
-  { id: 6, name: '赵磊', no: 'EMP006', dept: '技术部 / 安全组', deptShort: '安全组', pos: '安全工程师', email: 'zhaolei@jianfa.com', phone: '138****9912', risk: 'low', riskScore: 15, tags: ['运维'], clicks: 0, training: 'completed', avatarColor: avatarColors[5] },
-  { id: 7, name: '孙芳', no: 'EMP007', dept: '市场部', deptShort: '市场部', pos: '市场经理', email: 'sunfang@jianfa.com', phone: '139****3344', risk: 'high', riskScore: 75, tags: [], clicks: 3, training: 'none', avatarColor: avatarColors[0] },
-  { id: 8, name: '周明', no: 'EMP008', dept: '行政部', deptShort: '行政部', pos: '行政主管', email: 'zhouming@jianfa.com', phone: '133****7766', risk: 'mid', riskScore: 52, tags: [], clicks: 1, training: 'completed', avatarColor: avatarColors[1] },
-  { id: 9, name: '吴婷', no: 'EMP009', dept: '财务部 / 出纳组', deptShort: '出纳组', pos: '出纳', email: 'wuting@jianfa.com', phone: '136****2200', risk: 'high', riskScore: 88, tags: ['财务'], clicks: 5, training: 'progress', avatarColor: avatarColors[2] },
-  { id: 10, name: '郑浩', no: 'EMP010', dept: '技术部 / 研发组', deptShort: '研发组', pos: '架构师', email: 'zhenghao@jianfa.com', phone: '135****1188', risk: 'low', riskScore: 18, tags: ['研发'], clicks: 0, training: 'completed', avatarColor: avatarColors[3] },
-  { id: 11, name: '黄丽', no: 'EMP011', dept: '人力资源部', deptShort: '人力部', pos: 'HRBP', email: 'huangli@jianfa.com', phone: '138****5599', risk: 'mid', riskScore: 50, tags: [], clicks: 1, training: 'completed', avatarColor: avatarColors[4] },
-  { id: 12, name: '林峰', no: 'EMP012', dept: '市场部', deptShort: '市场部', pos: '品牌专员', email: 'linfeng@jianfa.com', phone: '139****6611', risk: 'mid', riskScore: 58, tags: ['新员工'], clicks: 2, training: 'none', avatarColor: avatarColors[5] },
-  { id: 13, name: '徐敏', no: 'EMP013', dept: '财务部', deptShort: '财务部', pos: '财务总监', email: 'xumin@jianfa.com', phone: '137****0099', risk: 'high', riskScore: 72, tags: ['高管'], clicks: 3, training: 'completed', avatarColor: avatarColors[0] },
-  { id: 14, name: '杨帆', no: 'EMP014', dept: '技术部', deptShort: '技术部', pos: 'CTO', email: 'yangfan@jianfa.com', phone: '135****0001', risk: 'low', riskScore: 12, tags: ['高管', '研发'], clicks: 0, training: 'completed', avatarColor: avatarColors[1] },
-])
+const employeeRows = ref<Employee[]>([])
 
 const tagOptions = ref<string[]>(['高管', '研发', '运维', '财务', '新员工'])
 const tagColorMap: Record<string, string> = {
@@ -778,7 +743,7 @@ watch([tagFilter, riskFilter, empKw, selectedDept], () => {
 })
 
 // ============ 选中员工（右侧风险画像联动） ============
-const selectedEmp = ref<Employee | null>(employeeRows.value[0])
+const selectedEmp = ref<Employee | null>(null)
 
 /** 后端风险画像（接口数据优先，派生计算兜底） */
 interface RiskProfileData {
