@@ -170,12 +170,13 @@ def consume():
             elif event_type == "report":
                 profile.report_count += 1
                 profile.report_awareness = min(100, profile.report_awareness + 10)
-            # 综合评分公式与 org 服务共享（五维风险均值，举报意识反向）
-            from app.modules.org.service import _risk_level_of, _total_from_dims
+            # 综合评分：行为次数直接计分（初始值×60% + 提交×8 + 点击×3 + 打开×1 − 举报×5）
+            from app.modules.org.service import _behavior_counts, _risk_level_of, _total_from_behavior
 
-            profile.total_score = _total_from_dims(
-                profile.email_recognize, profile.link_click, profile.pwd_submit,
-                profile.attach_run, profile.report_awareness,
+            counts = _behavior_counts(db, target.user_id)
+            profile.total_score = _total_from_behavior(
+                user.initial_risk if user else 70,
+                counts["open_n"], counts["click_n"], counts["submit_n"], counts["report_n"],
             )
             profile.risk_level = _risk_level_of(profile.total_score)
 

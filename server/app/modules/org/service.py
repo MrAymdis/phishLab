@@ -17,10 +17,8 @@ from .models import (
 # 头像底色盘（与前端 UsersView avatarColors 一致）
 _AVATAR_COLORS = ["#378ADD", "#1D9E75", "#7F77DD", "#EF9F27", "#D85A30", "#0D9488"]
 _RISK_CODE = {1: "low", 2: "mid", 3: "high"}
-# 五维初始分偏移（基于 initial_risk；与权重配合使初始综合分 == 初始风险值）
-_DIM_OFFSETS = (10, 20, 30, 20, 10)
-# 综合分权重：邮件识别1 / 链接点击1 / 密码提交2 / 附件下载3 / 举报意识3（反向）
-_RISK_WEIGHTS = (1, 1, 2, 3, 3)
+# 五维仅作展示：初始分 = 初始风险值（不加偏移），行为增量叠加后封顶
+_DIM_OFFSETS = (0, 0, 0, 0, 0)
 _DIM_DEFS = [
     ("email_recognize", "邮件识别"),
     ("link_click", "链接点击"),
@@ -49,12 +47,30 @@ def _risk_level_of(score: int) -> int:
     return 3
 
 
-def _total_from_dims(email: int, link: int, pwd: int, attach: int, awareness: int) -> int:
-    """综合评分 = 五维加权（权重 1/1/2/3/3；举报意识为反向指标：风险贡献 = 100 - 意识分）。"""
-    risk_aware = max(0, 100 - awareness)
-    dims = (email, link, pwd, attach, risk_aware)
-    total = sum(w * v for w, v in zip(_RISK_WEIGHTS, dims)) / sum(_RISK_WEIGHTS)
+def _total_from_behavior(initial_risk: int, open_n: int, click_n: int,
+                         submit_n: int, report_n: int) -> int:
+    """综合评分 = 初始风险值×60% + 行为项（提交×8 + 点击×3 + 打开×1 − 举报×5）。
+
+    行为次数直接累计拉开差距；结果钳制 0-100。
+    """
+    total = initial_risk * 0.6 + submit_n * 8 + click_n * 3 + open_n * 1 - report_n * 5
     return max(0, min(100, round(total)))
+
+
+def _behavior_counts(db: Session, user_id: int) -> dict:
+    """员工累计行为次数（按 track_event 统计）。"""
+    rows = db.execute(
+        select(TrackEvent.event_type, func.count(TrackEvent.id))
+        .where(TrackEvent.user_id == user_id)
+        .group_by(TrackEvent.event_type)
+    ).all()
+    counts = {et: int(n) for et, n in rows}
+    return {
+        "open_n": counts.get("open", 0),
+        "click_n": counts.get("click", 0),
+        "submit_n": counts.get("submit", 0),
+        "report_n": counts.get("report", 0),
+    }
 
 
 def _mask_mobile(mobile_enc: bytes | None) -> str:
@@ -271,7 +287,7 @@ def create_user(db: Session, account, payload: dict) -> int:
     initial = min(max(int(payload.get("initial_risk") or 70), 0), 100)
     user.initial_risk = initial
     dims = [min(max(initial + off, 0), 100) for off in _DIM_OFFSETS]
-    total = _total_from_dims(*dims)
+    total = _total_from_behavior(initial, 0, 0, 0, 0)
     db.add(EmpRiskProfile(
         user_id=user.id,
         total_score=total,
@@ -339,7 +355,11 @@ def update_user(db: Session, account, user_id: int, payload: dict) -> dict:
         profile.email_recognize, profile.link_click = dims[0], dims[1]
         profile.pwd_submit, profile.attach_run = dims[2], dims[3]
         profile.report_awareness = dims[4]
-        profile.total_score = _total_from_dims(*dims)
+        counts = _behavior_counts(db, user.id)
+        profile.total_score = _total_from_behavior(
+            user.initial_risk, counts["open_n"], counts["click_n"],
+            counts["submit_n"], counts["report_n"],
+        )
         profile.risk_level = _risk_level_of(profile.total_score)
     db.commit()
     record_audit(
@@ -551,7 +571,7 @@ def get_risk_profile(db: Session, account, user_id: int) -> dict:
     profile = db.get(EmpRiskProfile, user_id)
     if profile is None:
         dims = [{"label": label, "val": 70, "color": _dim_color(70)} for _, label in _DIM_DEFS]
-        total, risk_level, phish, report, training_completion = 70, 1, 0, 0, 0.0
+        total, risk_level, phish, report, training_completion = 42, 1, 0, 0, 0.0
     else:
         dims = [
             {"label": label, "val": int(getattr(profile, attr)), "color": _dim_color(int(getattr(profile, attr)))}
