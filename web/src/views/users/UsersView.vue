@@ -350,7 +350,7 @@
             <el-slider v-model="empForm.riskScore" :min="0" :max="100" style="flex: 1" />
             <span class="badge" :style="riskSliderBadgeStyle(empForm.riskScore)">{{ empForm.riskScore }}</span>
           </div>
-          <div class="form-hint">0-30 低风险 · 31-70 中风险 · 71-100 高风险</div>
+          <div class="form-hint">0-70 低风险 · 71-80 中风险 · 81-100 高风险</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -507,8 +507,8 @@ function trainingBadgeStyle(s: TrainingStatus) {
   return { background: m.bg, color: m.color }
 }
 function riskSliderBadgeStyle(v: number) {
-  if (v <= 30) return { background: 'rgba(29,158,117,0.15)', color: '#1D9E75' }
-  if (v <= 70) return { background: 'rgba(239,159,39,0.15)', color: '#EF9F27' }
+  if (v <= 70) return { background: 'rgba(29,158,117,0.15)', color: '#1D9E75' }
+  if (v <= 80) return { background: 'rgba(239,159,39,0.15)', color: '#EF9F27' }
   return { background: 'rgba(216,90,48,0.15)', color: '#D85A30' }
 }
 
@@ -913,7 +913,7 @@ const empForm = reactive({
   dept: '技术部 / 研发组',
   pos: '',
   tags: [] as string[],
-  riskScore: 50,
+  riskScore: 70,
 })
 
 function openEmpDialog(row?: Employee) {
@@ -939,7 +939,7 @@ function openEmpDialog(row?: Employee) {
       dept: '技术部 / 研发组',
       pos: '',
       tags: [],
-      riskScore: 50,
+      riskScore: 70,
     })
   }
   empDialogVisible.value = true
@@ -1090,7 +1090,7 @@ async function onImportFileChange(e: Event) {
 
 /** 下载 CSV 导入模板（工号,姓名,邮箱,部门,岗位,手机号,初始风险值,标签） */
 function downloadCsvTemplate() {
-  const content = '工号,姓名,邮箱,部门,岗位,手机号,初始风险值,标签\nEMP1001,张三,zhangsan@company.com,技术部/研发组,研发工程师,13800000000,50,研发;新员工\nEMP1002,李四,lisi@company.com,财务部/会计组,会计,13900000000,60,财务\n'
+  const content = '工号,姓名,邮箱,部门,岗位,手机号,初始风险值,标签\nEMP1001,张三,zhangsan@company.com,技术部/研发组,研发工程师,13800000000,70,研发;新员工\nEMP1002,李四,lisi@company.com,财务部/会计组,会计,13900000000,70,财务\n'
   const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

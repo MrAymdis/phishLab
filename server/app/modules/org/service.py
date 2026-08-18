@@ -39,10 +39,10 @@ _FMT = "%Y-%m-%d %H:%M:%S"
 # ---------- 通用辅助 ----------
 
 def _risk_level_of(score: int) -> int:
-    """风险分 → 等级：1低(0-30) 2中(31-70) 3高(71-100)。"""
-    if score <= 30:
-        return 1
+    """风险分 → 等级：1低(0-70) 2中(71-80) 3高(81-100)。"""
     if score <= 70:
+        return 1
+    if score <= 80:
         return 2
     return 3
 
@@ -124,8 +124,8 @@ def _user_rows(db: Session, users: list[EmpUser], dept_map: dict[int, EmpDept]) 
             "pos": u.position or "",
             "email": u.email,
             "phone": _mask_mobile(u.mobile_enc),
-            "risk": _RISK_CODE.get(profile.risk_level if profile else 2, "mid"),
-            "riskScore": int(profile.total_score) if profile else 50,
+            "risk": _RISK_CODE.get(profile.risk_level if profile else 1, "low"),
+            "riskScore": int(profile.total_score) if profile else 70,
             "tags": tags_map.get(u.id, []),
             "clicks": int(profile.phish_count) if profile else 0,
             "training": train_map.get(u.id, "none"),
@@ -264,7 +264,7 @@ def create_user(db: Session, account, payload: dict) -> int:
     db.add(user)
     db.flush()  # 取自增 id
 
-    initial = min(max(int(payload.get("initial_risk") or 0), 0), 100)
+    initial = min(max(int(payload.get("initial_risk") or 70), 0), 100)
     user.initial_risk = initial
     dims = [min(max(initial + off, 0), 100) for off in _DIM_OFFSETS]
     total = _total_from_dims(*dims)
@@ -472,7 +472,7 @@ def import_users_csv(db: Session, account, content: bytes) -> dict:
         if dept_id is None:
             dept_id = db.scalar(select(EmpDept.id).where(EmpDept.parent_id == 0).order_by(EmpDept.id).limit(1)) or 0
         try:
-            risk = int(cell(row, idx_risk)) if cell(row, idx_risk) else 50
+            risk = int(cell(row, idx_risk)) if cell(row, idx_risk) else 70
         except ValueError:
             risk = 50
         # 标签：逗号/分号分隔的标签名，按名解析，不存在的自动创建
@@ -546,8 +546,8 @@ def get_risk_profile(db: Session, account, user_id: int) -> dict:
         raise BizError(ErrorCode.NOT_FOUND, "员工不存在")
     profile = db.get(EmpRiskProfile, user_id)
     if profile is None:
-        dims = [{"label": label, "val": 50, "color": _dim_color(50)} for _, label in _DIM_DEFS]
-        total, risk_level, phish, report, training_completion = 50, 2, 0, 0, 0.0
+        dims = [{"label": label, "val": 70, "color": _dim_color(70)} for _, label in _DIM_DEFS]
+        total, risk_level, phish, report, training_completion = 70, 1, 0, 0, 0.0
     else:
         dims = [
             {"label": label, "val": int(getattr(profile, attr)), "color": _dim_color(int(getattr(profile, attr)))}

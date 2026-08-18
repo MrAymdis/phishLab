@@ -173,7 +173,7 @@ def seed_org(db):
             phish_count=clicks,
             report_count=clicks,
             training_completion=Decimal(100 if train == "completed" else (60 if train == "progress" else 0)),
-            risk_level=1 if score <= 30 else (3 if score > 70 else 2),
+            risk_level=1 if score <= 70 else (3 if score >= 81 else 2),
         ))
         for tid in tag_ids:
             db.add(EmpUserTag(user_id=uid, tag_id=tid))
