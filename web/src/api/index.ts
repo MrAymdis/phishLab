@@ -40,6 +40,7 @@ export const campaignApi = {
   resume: (id: number) => post(`/api/v1/campaigns/${id}/resume`),
   terminate: (id: number) => post(`/api/v1/campaigns/${id}/terminate`),
   deleteCampaign: (id: number) => del(`/api/v1/campaigns/${id}`),
+  duplicateCampaign: (id: number) => post<{ id: number }>(`/api/v1/campaigns/${id}/duplicate`),
   dashboard: (id: number) => get(`/api/v1/campaigns/${id}/dashboard`),
   timeline: (id: number, page = 1) =>
     get(`/api/v1/campaigns/${id}/timeline`, { page, pageSize: 20 }),
@@ -81,6 +82,8 @@ export const templateApi = {
     post<{ id: number }>('/api/v1/email-templates', payload),
   updateEmailTemplate: (id: number, payload: Record<string, unknown>) =>
     put(`/api/v1/email-templates/${id}`, payload),
+  duplicateEmailTemplate: (id: number) =>
+    post<{ id: number }>(`/api/v1/email-templates/${id}/duplicate`),
   testSendEmailTemplate: (id: number, to: string[]) =>
     post(`/api/v1/email-templates/${id}/test-send`, to),
   landingPages: () => get('/api/v1/landing-pages'),
@@ -89,6 +92,8 @@ export const templateApi = {
     post<{ id: number }>('/api/v1/landing-pages', payload),
   updateLandingPage: (id: number, payload: Record<string, unknown>) =>
     put(`/api/v1/landing-pages/${id}`, payload),
+  duplicateLandingPage: (id: number) =>
+    post<{ id: number }>(`/api/v1/landing-pages/${id}/duplicate`),
   cloneLandingPage: (url: string) => post<{ id: number }>('/api/v1/landing-pages/clone', { url }),
   payloads: () => get('/api/v1/attachments'),
   qrAssets: () => get('/api/v1/qr-assets'),

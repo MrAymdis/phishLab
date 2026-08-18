@@ -48,6 +48,11 @@ def create_template(payload: EmailTemplateCreate, account=Depends(get_current_ac
     return resp.ok({"id": service.create_email_template(db, account, payload.model_dump())})
 
 
+@email_templates.post("/{tid}/duplicate", summary="复制模板（生成副本）")
+def duplicate_template(tid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"id": service.duplicate_email_template(db, account, tid)})
+
+
 @email_templates.get("/{tid}", summary="邮件模板详情")
 def get_template(tid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.get_email_template(db, tid))
@@ -83,6 +88,11 @@ def create_page(payload: LandingPageCreate, account=Depends(get_current_account)
 def update_page(pid: int, payload: LandingPageCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     service.update_landing_page(db, account, pid, payload.model_dump())
     return resp.ok({"id": pid})
+
+
+@landing_pages.post("/{pid}/duplicate", summary="复制落地页（生成副本）")
+def duplicate_page(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"id": service.duplicate_landing_page(db, account, pid)})
 
 
 @landing_pages.post("/clone", summary="URL 克隆工具")

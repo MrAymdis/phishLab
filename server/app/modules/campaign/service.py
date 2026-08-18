@@ -257,6 +257,56 @@ def create_campaign(db, account, payload) -> int:
     return cid
 
 
+def duplicate_campaign(db, account, campaign_id: int) -> int:
+    """复制演练：基于原演练配置创建新草稿（目标按快照重新展开）。"""
+    src = _get_or_404(db, campaign_id)
+    payload_snapshot = src.target_snapshot or {}
+    user_ids = _expand_target_ids(db, src.target_mode, payload_snapshot) if payload_snapshot else []
+
+    new = Campaign(
+        name=f"{src.name}（副本）",
+        description=src.description,
+        type=src.type,
+        status="draft",
+        creator_id=account.id,
+        template_id=src.template_id,
+        landing_page_id=src.landing_page_id,
+        channel_id=src.channel_id,
+        sender_profile_id=src.sender_profile_id,
+        domain_id=src.domain_id,
+        target_mode=src.target_mode,
+        target_snapshot=payload_snapshot,
+        target_count=len(user_ids),
+        schedule_type="now",
+        batch_count=src.batch_count,
+        batch_interval_min=src.batch_interval_min,
+        randomize_content=src.randomize_content,
+        time_jitter_sec=src.time_jitter_sec,
+        pixel_degrade=src.pixel_degrade,
+        training_policy=src.training_policy,
+        course_ids=src.course_ids or [],
+        force_training_rules=src.force_training_rules or [],
+        auth_confirmed=1,
+    )
+    db.add(new)
+    db.flush()
+    for i, uid in enumerate(user_ids):
+        db.add(CampaignTarget(
+            campaign_id=new.id,
+            user_id=uid,
+            batch_no=(i % (src.batch_count or 1)) + 1,
+            token=secrets.token_hex(16),
+        ))
+    db.add(CampaignStat(campaign_id=new.id))
+    db.commit()
+    record_audit(
+        db, account=account, module="campaign", action="duplicate",
+        target_type="campaign", target_id=str(new.id),
+        detail={"source_id": campaign_id, "name": new.name},
+    )
+    return new.id
+
+
 def get_campaign(db, account, campaign_id: int):
     """演练详情（7 步向导回显）。"""
     c = _get_or_404(db, campaign_id)

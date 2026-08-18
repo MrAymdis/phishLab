@@ -43,6 +43,11 @@ def detail(cid: int, account=Depends(get_current_account), db: Session = Depends
     return resp.ok(service.get_campaign(db, account, cid))
 
 
+@campaigns.post("/{cid}/duplicate", summary="复制演练（生成新草稿）")
+def duplicate(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"id": service.duplicate_campaign(db, account, cid)})
+
+
 @campaigns.delete("/{cid}", summary="删除演练（仅草稿/已终止）")
 def delete(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.delete_campaign(db, account, cid))

@@ -879,8 +879,14 @@ async function previewEmail(row: EmailTemplate) {
 function testEmail(row: EmailTemplate) {
   ElMessage.success(`模板「${row.name}」测试邮件已发送至您的邮箱`)
 }
-function copyEmail(row: EmailTemplate) {
-  ElMessage.success(`已复制模板「${row.name}」`)
+async function copyEmail(row: EmailTemplate) {
+  try {
+    await templateApi.duplicateEmailTemplate(row.id)
+    ElMessage.success(`已复制模板「${row.name}」，副本已生成`)
+    await loadTemplates()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 function deleteEmail(row: EmailTemplate) {
   ElMessageBox.confirm(`确认删除模板「${row.name}」？`, '提示', { type: 'warning' })
@@ -1067,8 +1073,14 @@ async function previewLanding(row: LandingPage) {
     landingPreviewLoading.value = false
   }
 }
-function cloneLanding(row: LandingPage) {
-  ElMessage.success(`已复制落地页「${row.name}」`)
+async function cloneLanding(row: LandingPage) {
+  try {
+    await templateApi.duplicateLandingPage(row.id)
+    ElMessage.success(`已复制落地页「${row.name}」，副本已生成`)
+    await loadTemplates()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 function deleteLanding(row: LandingPage) {
   ElMessageBox.confirm(`确认删除落地页「${row.name}」？`, '提示', { type: 'warning' })
@@ -1080,12 +1092,17 @@ function deleteLanding(row: LandingPage) {
 const cloneDialogVisible = ref(false)
 const cloneForm = reactive({ url: '', name: '', type: 'mail' as string, mobile: true })
 
-function submitClone() {
+async function submitClone() {
   if (!cloneForm.url) { ElMessage.warning('请填写源页面URL'); return }
   if (!cloneForm.name) { ElMessage.warning('请填写页面名称'); return }
-  // TODO: 可接入 templateApi.cloneLandingPage(url)，后端会真实抓取目标 URL 并存草稿审核
-  cloneDialogVisible.value = false
-  ElMessage.success('页面克隆任务已提交，预计 30 秒后完成')
+  try {
+    await templateApi.cloneLandingPage(cloneForm.url)
+    ElMessage.success('页面克隆完成，已生成草稿（请稍后刷新列表查看）')
+    cloneDialogVisible.value = false
+    await loadTemplates()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出（克隆失败的 URL 会提示原因）
+  }
 }
 
 // 新建/编辑落地页弹窗

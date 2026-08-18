@@ -331,10 +331,14 @@ function doEdit(row: CampaignRow) {
   ElMessage.info(`已进入演练向导（编辑「${row.name}」）`)
   router.push('/campaign/create')
 }
-function doCopy(row: CampaignRow) {
-  const text = JSON.stringify(row, null, 2)
-  navigator.clipboard?.writeText(text).catch(() => {})
-  ElMessage.success(`已复制演练「${row.name}」的数据，可用于创建新演练`)
+async function doCopy(row: CampaignRow) {
+  try {
+    await campaignApi.duplicateCampaign(row.id)
+    ElMessage.success(`已复制演练「${row.name}」，新草稿已生成`)
+    await load()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 async function doDelete(row: CampaignRow) {
   try {

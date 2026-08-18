@@ -104,6 +104,71 @@ def create_email_template(db, account, payload: dict) -> int:
     return tpl.id
 
 
+def duplicate_email_template(db, account, template_id: int) -> int:
+    """复制模板：生成同名（副本）的新模板，使用计数归零。"""
+    t = db.get(EmailTemplate, template_id)
+    if t is None:
+        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
+    new = EmailTemplate(
+        name=f"{t.name}（副本）",
+        scene=t.scene,
+        subject=t.subject,
+        html_body=t.html_body,
+        variables=t.variables or [],
+        source="custom",
+        status="approved",
+        created_by=account.id,
+        sender=t.sender,
+        stars=t.stars,
+        track_pixel=t.track_pixel,
+        track_link=t.track_link,
+        track_attach=t.track_attach,
+        used_count=0,
+        click_rate=0,
+    )
+    db.add(new)
+    db.commit()
+    record_audit(
+        db, account=account, module="template", action="duplicate_template",
+        target_type="email_template", target_id=str(new.id), detail={"source_id": template_id},
+    )
+    return new.id
+
+
+def duplicate_landing_page(db, account, page_id: int) -> int:
+    """复制落地页：复制页面与表单字段，生成新 slug。"""
+    p = db.get(LandingPage, page_id)
+    if p is None:
+        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
+    new = LandingPage(
+        name=f"{p.name}（副本）",
+        type=p.type,
+        slug=secrets.token_hex(6),
+        html_content=p.html_content,
+        page_schema=p.page_schema,
+        form_schema=p.form_schema,
+        source="custom",
+        status=p.status,
+        created_by=account.id,
+        used_count=0,
+    )
+    db.add(new)
+    db.flush()
+    for f in db.scalars(
+        select(LandingFormField).where(LandingFormField.page_id == page_id).order_by(LandingFormField.sort)
+    ).all():
+        db.add(LandingFormField(
+            page_id=new.id, field_key=f.field_key, label=f.label,
+            input_type=f.input_type, sensitive_flag=f.sensitive_flag, sort=f.sort,
+        ))
+    db.commit()
+    record_audit(
+        db, account=account, module="template", action="duplicate_landing_page",
+        target_type="landing_page", target_id=str(new.id), detail={"source_id": page_id},
+    )
+    return new.id
+
+
 def get_email_template(db, template_id: int) -> dict:
     """获取邮件模板详情（含 html_body 全文）。"""
     t = db.get(EmailTemplate, template_id)
