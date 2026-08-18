@@ -59,6 +59,13 @@ export const orgApi = {
   updateUser: (id: number, payload: Record<string, unknown>) =>
     put(`/api/v1/emp-users/${id}`, payload),
   deleteUser: (id: number) => del(`/api/v1/emp-users/${id}`),
+  importUsersCsv: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return post<{ imported: number; failed: number; errors: string[] }>(
+      '/api/v1/emp-users/import', fd,
+    )
+  },
   riskProfile: (uid: number) => get(`/api/v1/emp-users/${uid}/risk-profile`),
   groups: () => get('/api/v1/groups'),
   tags: () => get('/api/v1/tags'),

@@ -502,11 +502,11 @@ def seed_campaign(db):
 
     # 追踪事件（=监控页时间轴）
     events = [
-        ("submit", 1, NOW - timedelta(minutes=32), "在登录页提交了账号密码"),
+        ("submit", 1, NOW - timedelta(minutes=32), "在登录页提交了敏感数据"),
         ("click", 4, NOW - timedelta(minutes=58), "点击了邮件中的链接"),
         ("open", 5, NOW - timedelta(minutes=95), "打开了邮件"),
         ("report", 10, NOW - timedelta(hours=2), "通过 Outlook 插件举报可疑邮件"),
-        ("submit", 13, NOW - timedelta(hours=3), "在登录页提交了账号密码"),
+        ("submit", 13, NOW - timedelta(hours=3), "在登录页提交了敏感数据"),
     ]
     for i, (etype, uid, ts, detail) in enumerate(events):
         db.add(TrackEvent(

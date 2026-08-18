@@ -250,7 +250,7 @@ def _bind_tags(db: Session, user_id: int, tag_ids: list[int]) -> None:
 def create_user(db: Session, account, payload: dict) -> int:
     """新增员工：手机 encrypt_secret 入库；初始化风险画像（五维带偏移）与标签。"""
     email = payload["email"]
-    if db.scalar(select(EmpUser.id).where(EmpUser.email == email)):
+    if db.scalar(select(EmpUser.id).where(EmpUser.email == email, EmpUser.status == 1)):
         raise BizError(ErrorCode.PARAM_INVALID, "邮箱已存在")
     user = EmpUser(
         emp_no=payload.get("emp_no"),
@@ -309,7 +309,7 @@ def update_user(db: Session, account, user_id: int, payload: dict) -> dict:
     if user is None:
         raise BizError(ErrorCode.NOT_FOUND, "员工不存在")
     email = payload["email"]
-    if db.scalar(select(EmpUser.id).where(EmpUser.email == email, EmpUser.id != user_id)):
+    if db.scalar(select(EmpUser.id).where(EmpUser.email == email, EmpUser.id != user_id, EmpUser.status == 1)):
         raise BizError(ErrorCode.PARAM_INVALID, "邮箱已存在")
 
     user.name = payload["name"]
@@ -359,6 +359,139 @@ def delete_user(db: Session, account, user_id: int) -> dict:
         detail={"email": user.email},
     )
     return {"id": user_id}
+
+
+def import_users_csv(db: Session, account, content: bytes) -> dict:
+    """CSV 批量导入：工号,姓名,邮箱[,部门,岗位,手机号,初始风险]；逐行容错。
+
+    部门按名称精确匹配或「技术部/研发组」路径逐级匹配；不匹配的行跳过并返回原因。
+    """
+    import csv
+    import io
+    import re
+
+    text = content.decode("utf-8-sig", errors="ignore")
+    try:
+        rows = list(csv.reader(io.StringIO(text)))
+    except Exception:
+        raise BizError(ErrorCode.PARAM_INVALID, "CSV 解析失败，请检查文件格式")
+    rows = [r for r in rows if any((c or "").strip() for c in r)]
+    if not rows:
+        raise BizError(ErrorCode.PARAM_INVALID, "CSV 内容为空")
+
+    # 表头识别：首行含「邮箱/email」视为表头
+    header = [ (h or "").strip() for h in rows[0] ]
+    has_header = any("邮箱" in h or "email" in h.lower() for h in header)
+    data_rows = rows[1:] if has_header else rows
+
+    def col_idx(names):
+        for n in names:
+            for i, h in enumerate(header):
+                if n in h or h in n:
+                    return i
+        return None
+
+    if has_header:
+        idx_no = col_idx(("工号", "员工编号", "no"))
+        idx_name = col_idx(("姓名", "name"))
+        idx_email = col_idx(("邮箱", "email"))
+        idx_dept = col_idx(("部门", "dept"))
+        idx_pos = col_idx(("岗位", "职位", "position"))
+        idx_mobile = col_idx(("手机", "电话", "mobile", "phone"))
+        idx_risk = col_idx(("初始风险", "风险", "risk"))
+    else:
+        # 无表头：固定顺序 工号,姓名,邮箱,部门,岗位,手机号,初始风险
+        idx_no, idx_name, idx_email, idx_dept, idx_pos, idx_mobile, idx_risk = 0, 1, 2, 3, 4, 5, 6
+
+    def cell(row, idx):
+        if idx is None or idx >= len(row):
+            return ""
+        return (row[idx] or "").strip()
+
+    dept_cache: dict[str, int | None] = {}
+
+    def resolve_dept(name: str) -> int | None:
+        if not name:
+            return None
+        if name in dept_cache:
+            return dept_cache[name]
+        d = db.scalar(select(EmpDept).where(EmpDept.name == name))
+        if d is not None:
+            dept_cache[name] = d.id
+            return d.id
+        # 路径匹配：「技术部/研发组」按名称路径比对（兼容有无根节点前缀与两种分隔符）
+        normalized = name.replace(" / ", "/")
+        nodes = list(db.scalars(select(EmpDept)).all())
+        by_id = {n.id: n for n in nodes}
+
+        def path_of(n):
+            parts = [n.name]
+            while n.parent_id and n.parent_id in by_id:
+                n = by_id[n.parent_id]
+                parts.append(n.name)
+            return "/".join(reversed(parts))
+
+        for n in nodes:
+            full = path_of(n)
+            if full == normalized:
+                dept_cache[name] = n.id
+                return n.id
+        # 去除根节点前缀后再比一次（总公司/技术部/研发组 → 技术部/研发组）
+        for n in nodes:
+            full = path_of(n)
+            parts = full.split("/")
+            if len(parts) > 1 and "/".join(parts[1:]) == normalized:
+                dept_cache[name] = n.id
+                return n.id
+        dept_cache[name] = None
+        return None
+
+    imported = 0
+    errors: list[str] = []
+    seen: set[str] = set()
+    for i, row in enumerate(data_rows):
+        line_no = i + 2 if has_header else i + 1
+        name = cell(row, idx_name)
+        email = cell(row, idx_email)
+        if not name or not email:
+            errors.append(f"第{line_no}行：姓名/邮箱不能为空")
+            continue
+        if not re.match(r"^[^\s@]+@[^\s@]+\.[^\s@]+$", email):
+            errors.append(f"第{line_no}行：邮箱格式不正确（{email}）")
+            continue
+        if email in seen or db.scalar(select(EmpUser.id).where(EmpUser.email == email, EmpUser.status == 1)):
+            errors.append(f"第{line_no}行：邮箱已存在（{email}）")
+            continue
+        seen.add(email)
+        dept_name = cell(row, idx_dept)
+        dept_id = resolve_dept(dept_name)
+        if dept_name and dept_id is None:
+            errors.append(f"第{line_no}行：部门不存在（{dept_name}）")
+            continue
+        if dept_id is None:
+            dept_id = db.scalar(select(EmpDept.id).where(EmpDept.parent_id == 0).order_by(EmpDept.id).limit(1)) or 0
+        try:
+            risk = int(cell(row, idx_risk)) if cell(row, idx_risk) else 50
+        except ValueError:
+            risk = 50
+        create_user(db, account, {
+            "emp_no": cell(row, idx_no) or None,
+            "name": name,
+            "email": email,
+            "mobile": cell(row, idx_mobile) or None,
+            "dept_id": dept_id or 0,
+            "position": cell(row, idx_pos) or None,
+            "tag_ids": [],
+            "initial_risk": risk,
+        })
+        imported += 1
+
+    record_audit(
+        db, account=account, module="org", action="import_users_csv",
+        target_type="emp_user", target_id=None,
+        detail={"imported": imported, "failed": len(errors)},
+    )
+    return {"imported": imported, "failed": len(errors), "errors": errors[:20]}
 
 
 # ---------- 风险画像 ----------

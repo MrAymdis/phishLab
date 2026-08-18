@@ -3,10 +3,20 @@
     <PageHeader title="用户和组">
       <template #actions>
         <el-button :icon="Upload" @click="onImportCsv">导入CSV</el-button>
+        <el-button link size="small" @click="downloadCsvTemplate">下载模板</el-button>
         <el-button :icon="Download" @click="onExportCsv">批量导出</el-button>
         <el-button type="primary" :icon="Plus" @click="openEmpDialog()">添加员工</el-button>
       </template>
     </PageHeader>
+
+    <!-- 隐藏的 CSV 文件选择器 -->
+    <input
+      ref="importInputRef"
+      type="file"
+      accept=".csv,text/csv"
+      style="display: none"
+      @change="onImportFileChange"
+    />
 
     <el-row :gutter="12" class="users-row">
       <!-- ============ 左侧：部门树 ============ -->
@@ -1047,10 +1057,47 @@ async function saveEmp() {
   }
 }
 
-// ============ 工具栏其他按钮（后端暂无对应路由，保留演示行为） ============
+// ============ 工具栏：CSV 导入 ============
+const importInputRef = ref<HTMLInputElement>()
+
 function onImportCsv() {
-  // TODO: 后端未提供 CSV 批量导入路由
-  ElMessage.info('请选择CSV文件导入员工名单（工号、姓名、邮箱必填）')
+  importInputRef.value?.click()
+}
+
+async function onImportFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // 允许重复选择同一文件
+  if (!file) return
+  if (!file.name.toLowerCase().endsWith('.csv')) {
+    ElMessage.warning('请选择 CSV 文件')
+    return
+  }
+  try {
+    const res = await orgApi.importUsersCsv(file)
+    const errors = res.errors ?? []
+    if (errors.length) {
+      ElMessage.warning(`导入完成：成功 ${res.imported} 条，失败 ${res.failed} 条。失败原因（前 ${errors.length} 条）：${errors.slice(0, 3).join('；')}${errors.length > 3 ? '…' : ''}`)
+    } else {
+      ElMessage.success(`成功导入 ${res.imported} 名员工`)
+    }
+    await loadUsers()
+    await loadTags()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
+}
+
+/** 下载 CSV 导入模板（工号,姓名,邮箱,部门,岗位,手机号,初始风险值） */
+function downloadCsvTemplate() {
+  const content = '工号,姓名,邮箱,部门,岗位,手机号,初始风险值\nEMP1001,张三,zhangsan@company.com,技术部/研发组,研发工程师,13800000000,50\n'
+  const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = '员工导入模板.csv'
+  a.click()
+  URL.revokeObjectURL(url)
 }
 function onExportCsv() {
   // TODO: 后端未提供批量导出路由

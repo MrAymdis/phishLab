@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
@@ -61,6 +61,12 @@ def list_users(
 ):
     page, page_size = paging
     return resp.ok(service.list_users(db, account, dept_id=dept_id, tag=tag, risk_level=risk_level, kw=kw, page=page, page_size=page_size))
+
+
+@emp_users.post("/import", summary="CSV 批量导入员工（工号,姓名,邮箱[,部门,岗位,手机号,初始风险]）")
+async def import_csv(file: UploadFile = File(...), account=Depends(get_current_account), db: Session = Depends(get_db)):
+    content = await file.read()
+    return resp.ok(service.import_users_csv(db, account, content))
 
 
 @emp_users.post("", summary="添加员工")
