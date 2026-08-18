@@ -49,11 +49,11 @@ def _risk_level_of(score: int) -> int:
 
 def _total_from_behavior(initial_risk: int, open_n: int, click_n: int,
                          submit_n: int, report_n: int) -> int:
-    """综合评分 = 初始风险值×60% + 行为项（提交×30 + 点击×20 + 打开×1 − 举报×50）。
+    """综合评分 = 初始风险值 + 打开×2 + 点击×3 + 提交×10 − 举报×15。
 
-    行为次数直接累计拉开差距；结果钳制 0-100。
+    无行为时综合分 = 初始风险值；行为次数直接累计拉开差距；结果钳制 0-100。
     """
-    total = initial_risk * 0.6 + submit_n * 30 + click_n * 20 + open_n * 1 - report_n * 50
+    total = initial_risk + open_n * 2 + click_n * 3 + submit_n * 10 - report_n * 15
     return max(0, min(100, round(total)))
 
 
