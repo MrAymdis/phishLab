@@ -1088,9 +1088,9 @@ async function onImportFileChange(e: Event) {
   }
 }
 
-/** 下载 CSV 导入模板（工号,姓名,邮箱,部门,岗位,手机号,初始风险值） */
+/** 下载 CSV 导入模板（工号,姓名,邮箱,部门,岗位,手机号,初始风险值,标签） */
 function downloadCsvTemplate() {
-  const content = '工号,姓名,邮箱,部门,岗位,手机号,初始风险值\nEMP1001,张三,zhangsan@company.com,技术部/研发组,研发工程师,13800000000,50\n'
+  const content = '工号,姓名,邮箱,部门,岗位,手机号,初始风险值,标签\nEMP1001,张三,zhangsan@company.com,技术部/研发组,研发工程师,13800000000,50,研发;新员工\nEMP1002,李四,lisi@company.com,财务部/会计组,会计,13900000000,60,财务\n'
   const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

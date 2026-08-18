@@ -399,9 +399,10 @@ def import_users_csv(db: Session, account, content: bytes) -> dict:
         idx_pos = col_idx(("岗位", "职位", "position"))
         idx_mobile = col_idx(("手机", "电话", "mobile", "phone"))
         idx_risk = col_idx(("初始风险", "风险", "risk"))
+        idx_tags = col_idx(("标签", "tag"))
     else:
-        # 无表头：固定顺序 工号,姓名,邮箱,部门,岗位,手机号,初始风险
-        idx_no, idx_name, idx_email, idx_dept, idx_pos, idx_mobile, idx_risk = 0, 1, 2, 3, 4, 5, 6
+        # 无表头：固定顺序 工号,姓名,邮箱,部门,岗位,手机号,初始风险,标签
+        idx_no, idx_name, idx_email, idx_dept, idx_pos, idx_mobile, idx_risk, idx_tags = 0, 1, 2, 3, 4, 5, 6, 7
 
     def cell(row, idx):
         if idx is None or idx >= len(row):
@@ -474,6 +475,16 @@ def import_users_csv(db: Session, account, content: bytes) -> dict:
             risk = int(cell(row, idx_risk)) if cell(row, idx_risk) else 50
         except ValueError:
             risk = 50
+        # 标签：逗号/分号分隔的标签名，按名解析，不存在的自动创建
+        tag_names = [t.strip() for t in re.split(r"[,，;；]", cell(row, idx_tags)) if t.strip()]
+        tag_ids: list[int] = []
+        for tn in tag_names:
+            tag = db.scalar(select(EmpTag).where(EmpTag.name == tn))
+            if tag is None:
+                tag = EmpTag(name=tn, color=None)
+                db.add(tag)
+                db.flush()
+            tag_ids.append(tag.id)
         create_user(db, account, {
             "emp_no": cell(row, idx_no) or None,
             "name": name,
@@ -481,7 +492,7 @@ def import_users_csv(db: Session, account, content: bytes) -> dict:
             "mobile": cell(row, idx_mobile) or None,
             "dept_id": dept_id or 0,
             "position": cell(row, idx_pos) or None,
-            "tag_ids": [],
+            "tag_ids": tag_ids,
             "initial_risk": risk,
         })
         imported += 1
