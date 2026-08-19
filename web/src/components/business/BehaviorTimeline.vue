@@ -19,10 +19,15 @@
         <span>浏览器 {{ ev.browser }}</span>
         <span v-if="ev.fingerprint" class="ev-fp" :title="`完整指纹：${ev.fingerprint}`">指纹 {{ ev.fingerprint }}</span>
       </div>
-      <!-- 提交事件的脱敏详情：账号掩码 + 口令长度（口令不落明文） -->
-      <div v-if="submitInfo(ev).length" class="ev-submit-info">
-        <span v-for="s in submitInfo(ev)" :key="s" class="ev-submit-item">{{ s }}</span>
-      </div>
+      <!-- 提交事件的表单详情：字段名 + 值表格（账号掩码/口令长度原样呈现，口令不落明文） -->
+      <table v-if="submitRows(ev).length" class="ev-submit-table">
+        <tbody>
+          <tr v-for="r in submitRows(ev)" :key="r.label">
+            <td class="ev-submit-label">{{ r.label }}</td>
+            <td class="ev-submit-value">{{ r.value }}</td>
+          </tr>
+        </tbody>
+      </table>
     </el-timeline-item>
   </el-timeline>
 </template>
@@ -43,28 +48,47 @@ export interface TimelineEvent {
 
 defineProps<{ events: TimelineEvent[] }>()
 
-/** 提交事件的脱敏字段展示：账号 t***e / 密码已输入(10位) */
-function submitInfo(ev: TimelineEvent): string[] {
+/** 提交事件的表单字段表格：字段名 → 中文标签，值原样展示（掩码/口令首尾字符）。
+ *  口令不落完整明文（红线）：库中形态为 {len, first, last}，展示首尾字符中间星号填充；
+ *  仅存长度（≤2 位或历史数据）时展示"已输入（N 位）"。 */
+const FIELD_LABELS: Record<string, string> = {
+  uid: '账号',
+  username: '账号',
+  user: '账号',
+  password: '密码',
+  pwd: '密码',
+  smsaddr: '手机号',
+  phone: '手机号',
+  mobile: '手机号',
+  locale: '语言',
+  verifycode: '验证码',
+  verifycellcode: '短信验证码',
+}
+function submitRows(ev: TimelineEvent): { label: string; value: string }[] {
   const detail = ev.detail
   if (!detail || !ev.danger) return []
-  const parts: string[] = []
+  const rows: { label: string; value: string }[] = []
   for (const [key, value] of Object.entries(detail)) {
-    if (key === 'fp_hash') continue
     if (key.endsWith('_mask')) {
-      const label = key.replace('_mask', '')
-      const cn = label.toLowerCase().includes('user') || label.toLowerCase().includes('name')
-        ? '账号'
-        : label.toLowerCase().includes('phone') || label.toLowerCase().includes('mobile')
-          ? '手机号'
-          : label
-      if (value) parts.push(`${cn} ${value}`)
+      if (!value) continue
+      const base = key.replace(/_mask$/, '')
+      rows.push({
+        label: FIELD_LABELS[base.toLowerCase()] ?? base,
+        value: String(value),
+      })
     } else if (typeof value === 'object' && value !== null && 'len' in (value as Record<string, unknown>)) {
-      const label = key.toLowerCase().includes('pass') ? '密码' : key
-      const len = (value as { len: number }).len
-      parts.push(`${label}已输入（${len} 位）`)
+      const len = (value as { len: number; first?: string; last?: string }).len
+      const { first, last } = value as { first?: string; last?: string }
+      // 首尾字符 + 中间星号填充；无首尾数据（≤2 位或历史事件）退化为仅长度
+      const shown = first && last
+        ? `${first}${'*'.repeat(Math.max(0, len - 2))}${last}`
+        : `已输入（${len} 位）`
+      rows.push({ label: FIELD_LABELS[key.toLowerCase()] ?? key, value: shown })
+    } else if (key === 'fp_hash' && value) {
+      rows.push({ label: '设备指纹', value: String(value) })
     }
   }
-  return parts
+  return rows
 }
 </script>
 
@@ -87,18 +111,24 @@ function submitInfo(ev: TimelineEvent): string[] {
   font-family: ui-monospace, 'Courier New', monospace;
   word-break: break-all;
 }
-.ev-submit-info {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 6px;
-}
-.ev-submit-item {
+.ev-submit-table {
+  margin-top: 8px;
+  border-collapse: collapse;
   font-size: 12px;
+  min-width: 260px;
+}
+.ev-submit-table td {
+  border: 1px solid rgba(163, 45, 45, 0.25);
+  padding: 4px 10px;
+}
+.ev-submit-label {
   color: #a32d2d;
   background: rgba(163, 45, 45, 0.08);
-  border: 1px solid rgba(163, 45, 45, 0.25);
-  border-radius: 4px;
-  padding: 2px 8px;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.ev-submit-value {
+  color: #5c0d0d;
+  word-break: break-all;
 }
 </style>

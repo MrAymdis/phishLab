@@ -192,7 +192,7 @@ def _fp_hash(fp_json: str) -> str | None:
 
 @app.post("/p/{slug}/submit")
 async def submit(slug: str, request: Request):
-    """表单捕获：口令字段只存长度（红线）；账号存脱敏掩码；指纹组件哈希入库。
+    """表单捕获：口令只存长度+首尾字符（红线：中间内容/完整口令绝不落库）；账号存脱敏掩码；指纹组件哈希入库。
 
     TODO(一期)：token 反查 campaign → training_policy：redirect(302 培训页)/popup/none
     """
@@ -205,8 +205,12 @@ async def submit(slug: str, request: Request):
         if key in ("token", "fp"):
             continue
         v = str(value or "")
-        if "pass" in key.lower():  # 口令：只记长度，绝不存明文/掩码
-            detail[key] = {"len": len(v)}
+        if "pass" in key.lower():  # 口令：长度+首尾字符；≤2 位时首尾即完整口令，只存长度
+            pv = {"len": len(v)}
+            if len(v) > 2:
+                pv["first"] = v[:1]
+                pv["last"] = v[-1:]
+            detail[key] = pv
         else:  # 账号等非口令字段：脱敏掩码
             detail[f"{key}_mask"] = _mask_value(v)
     fp_hash = _fp_hash(str(form.get("fp") or ""))
