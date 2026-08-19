@@ -692,12 +692,12 @@ def reveal_submit_password(db, account, campaign_id: int, event_id: int,
 
 
 def delete_campaign(db, account, campaign_id: int) -> None:
-    """删除演练：仅 draft 状态可删；关联数据级联删除。"""
+    """删除演练：草稿/已终止状态可删（进行中不可删，避免追踪事件孤儿；已完成保留报表不删）；关联数据级联删除。"""
     c = db.get(Campaign, campaign_id)
     if c is None:
         raise ValueError("演练不存在")
-    if c.status != "draft":
-        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿状态可删除演练")
+    if c.status not in ("draft", "terminated"):
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/已终止状态可删除演练")
     db.execute(CampaignTarget.__table__.delete().where(CampaignTarget.campaign_id == campaign_id))
     db.execute(CampaignBatch.__table__.delete().where(CampaignBatch.campaign_id == campaign_id))
     db.execute(CampaignStat.__table__.delete().where(CampaignStat.campaign_id == campaign_id))

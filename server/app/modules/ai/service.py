@@ -7,7 +7,7 @@ import json
 import re
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.core.audit import record_audit
 from app.core.errors import BizError, ErrorCode
@@ -45,12 +45,15 @@ def list_sessions(db, account):
 
 def _local_reply(db, message: str) -> str:
     """本地回复引擎：基于数据库真实统计的关键词应答（三期接 LLM）。"""
-    from app.modules.analytics.models import StatDaily
-    from app.modules.campaign.models import Campaign, CampaignStat
+    from app.modules.campaign.models import Campaign, CampaignStat, CampaignTarget
     from app.modules.training.models import Course
 
-    total_submit = db.scalar(select(func.coalesce(func.sum(StatDaily.submit_cnt), 0))) or 0
-    total_target = db.scalar(select(func.coalesce(func.sum(StatDaily.target_cnt), 0))) or 0
+    sent = CampaignTarget.send_status.in_(("sent", "delivered", "bounced", "failed"))
+    total_submit = db.scalar(
+        select(func.coalesce(func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)), 0))
+        .where(sent)
+    ) or 0
+    total_target = db.scalar(select(func.count()).where(sent)) or 0
     rate = total_submit / total_target * 100 if total_target else 0.0
     running = db.scalars(select(Campaign).where(Campaign.status == "running")).all()
     running_names = "、".join(c.name for c in running) or "暂无进行中的演练"
@@ -144,11 +147,14 @@ def generate_template(db, account, payload: dict) -> int:
 
 def generate_analysis(db, account, kind: str, target: dict) -> int:
     """智能分析报告（演练效果/部门画像/趋势预测/培训建议）→ ai_draft。"""
-    from app.modules.analytics.models import StatDaily
-    from app.modules.campaign.models import Campaign
+    from app.modules.campaign.models import Campaign, CampaignTarget
 
-    total_submit = db.scalar(select(func.coalesce(func.sum(StatDaily.submit_cnt), 0))) or 0
-    total_target = db.scalar(select(func.coalesce(func.sum(StatDaily.target_cnt), 0))) or 0
+    sent = CampaignTarget.send_status.in_(("sent", "delivered", "bounced", "failed"))
+    total_submit = db.scalar(
+        select(func.coalesce(func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)), 0))
+        .where(sent)
+    ) or 0
+    total_target = db.scalar(select(func.count()).where(sent)) or 0
     rate = total_submit / total_target * 100 if total_target else 0.0
     campaign_cnt = db.scalar(select(func.count()).select_from(Campaign)) or 0
 

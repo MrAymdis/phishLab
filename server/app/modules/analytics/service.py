@@ -1,12 +1,13 @@
 """报表中心服务：概览指标、单演练报表、部门/趋势/个人报表、异步导出。
 
-数据来源优先级：stat_daily 平台行（窗口内 → 全量回退）→ campaign_stat 汇总回退；
+数据来源：campaign_target 事实表直查（按投递时间窗口，分子分母同窗口）；
+stat_daily 冗余汇总表暂无写入任务（二期实现），读取它只会拿到过期/演示数据；
 所有比率由数据库计数实时计算，禁止硬编码；空表返回零值结构，不抛异常。
 """
 from datetime import datetime, timedelta
 from uuid import uuid4
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.audit import record_audit
 from app.core.deps import apply_data_scope
@@ -16,8 +17,6 @@ from app.modules.org.models import EmpDept, EmpRiskProfile, EmpUser
 from app.modules.template.models import AttachmentPayload, EmailTemplate, LandingPage, QrAsset
 from app.modules.tracking.models import TrackEvent
 from app.modules.training.models import Course, TrainingAssignment
-
-from .models import StatDaily
 
 _DAYS = {"7d": 7, "month": 30, "quarter": 90}
 _TYPE_CN = {"mail": "邮件", "sms": "短信", "social": "社交媒体", "usb": "USB"}
@@ -45,21 +44,47 @@ def _bar(n) -> int:
     return max(5, min(int(n * 25), 100))
 
 
+_SENT_STATUS = ("sent", "delivered", "bounced", "failed")
+
+
 def _agg_platform(db, since):
-    """平台行聚合：窗口内无数据时回退全量。"""
-    stmt = (
+    """窗口内投递聚合：campaign_target 事实表直查（按投递时间窗口）。
+
+    stat_daily 冗余汇总表暂无写入任务，读取它只会拿到过期/演示数据；
+    所有计数限定在「投递时间 >= since」的记录内，保证分子分母同窗口。
+    """
+    sent = CampaignTarget.send_status.in_(_SENT_STATUS)
+    base = (
         select(
-            func.sum(StatDaily.campaign_cnt), func.sum(StatDaily.target_cnt),
-            func.sum(StatDaily.delivered_cnt), func.sum(StatDaily.open_cnt),
-            func.sum(StatDaily.click_cnt), func.sum(StatDaily.submit_cnt),
-            func.sum(StatDaily.report_cnt),
+            func.count(CampaignTarget.id),  # 投递人次（实际发出）
+            func.sum(case((CampaignTarget.send_status.in_(("sent", "delivered")), 1), else_=0)),  # 送达
+            func.sum(case((CampaignTarget.first_open_at.is_not(None), 1), else_=0)),  # 打开
+            func.sum(case((CampaignTarget.first_click_at.is_not(None), 1), else_=0)),  # 点击
+            func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)),  # 提交
+            func.sum(case((CampaignTarget.report_flag == 1, 1), else_=0)),  # 举报
         )
-        .where(StatDaily.dim_type == "platform")
+        .where(sent)
     )
-    row = db.execute(stmt.where(StatDaily.stat_date >= since)).one()
-    if not any(row):  # 窗口内无数据 → 全量回退
-        row = db.execute(stmt).one()
-    return [int(v or 0) for v in row]
+    row = db.execute(base.where(CampaignTarget.sent_at >= since)).one()
+    if not any(row):  # 窗口内无投递 → 全量回退
+        row = db.execute(base).one()
+    return [0, *[int(v or 0) for v in row]]  # 首项 campaign_cnt 占位，由调用方覆盖
+
+
+def _bucket_ts(buckets, dt, since, n_buckets, week_bucket):
+    """将事件时间戳落入窗口分桶（week_bucket 按周且尾桶收口，否则按天）。
+
+    30 天窗口 / 7 天桶 = 4.28 桶，最后的几天会落入第 5 个不存在的桶，
+    故按周时对越界索引做 min 截断并入尾桶（与按天分桶语义一致）。
+    """
+    if dt is None:
+        return
+    idx = (dt.date() - since).days // 7 if week_bucket else (dt.date() - since).days
+    if week_bucket:
+        idx = min(idx, n_buckets - 1)
+    if not 0 <= idx < n_buckets:
+        return
+    buckets[idx] += 1
 
 
 def _campaign_stat_sums(db):
@@ -157,24 +182,29 @@ def overview_metrics(db, account, range_: str) -> dict:
         for n, name, dept in top_rows
     ]
 
-    # TOP5 中招部门（stat_daily dept 行按部门聚合）
+    # TOP5 中招部门（真实提交事件按部门聚合，同窗口）
     dept_stmt = (
-        select(StatDaily.dim_id, func.sum(StatDaily.submit_cnt), EmpDept.name)
-        .join(EmpDept, EmpDept.id == StatDaily.dim_id, isouter=True)
-        .where(StatDaily.dim_type == "dept")
-        .group_by(StatDaily.dim_id, EmpDept.name)
-        .order_by(func.sum(StatDaily.submit_cnt).desc())
+        select(EmpDept.name, func.count(CampaignTarget.id))
+        .join(EmpUser, EmpUser.id == CampaignTarget.user_id)
+        .join(EmpDept, EmpDept.id == EmpUser.dept_id, isouter=True)
+        .where(CampaignTarget.submit_flag == 1, CampaignTarget.sent_at >= since)
+        .group_by(EmpDept.name)
+        .order_by(func.count(CampaignTarget.id).desc())
         .limit(5)
     )
     top_depts = [
-        {"name": name or f"部门{dim_id}", "count": f"{int(n or 0)}次", "bar": _bar(n or 0)}
-        for dim_id, n, name in db.execute(dept_stmt).all()
+        {"name": name or "未知部门", "count": f"{int(n or 0)}次", "bar": _bar(n or 0)}
+        for name, n in db.execute(dept_stmt).all()
     ]
 
     # 进行中演练实时投递漏斗
-    running_ids = db.scalars(
-        select(Campaign.id).where(Campaign.status.in_(("sending", "running")))
+    running_camps = db.scalars(
+        select(Campaign)
+        .where(Campaign.status.in_(("sending", "running")))
+        .order_by(Campaign.id.desc())
     ).all()
+    running_ids = [c.id for c in running_camps]
+    live_campaign_name = running_camps[0].name if running_camps else ""
     live = [0] * 5
     if running_ids:
         row = db.execute(
@@ -240,21 +270,17 @@ def overview_metrics(db, account, range_: str) -> dict:
     else:
         n_buckets, week_bucket = 4 if range_ == "month" else 12, True
         labels = [f"W{i + 1}" for i in range(n_buckets)]
-    daily_rows = db.execute(
-        select(StatDaily.stat_date, func.sum(StatDaily.submit_cnt), func.sum(StatDaily.target_cnt))
-        .where(StatDaily.dim_type == "platform", StatDaily.stat_date >= since)
-        .group_by(StatDaily.stat_date)
-    ).all()
     victims, bucket_target = [0] * n_buckets, [0] * n_buckets
-    for d, s, t in daily_rows:
-        if week_bucket:
-            idx = min((d - since).days // 7, n_buckets - 1)
-        else:
-            idx = (d - since).days
-            if not 0 <= idx < n_buckets:
-                continue
-        victims[idx] += int(s or 0)
-        bucket_target[idx] += int(t or 0)
+    for (t,) in db.execute(
+        select(CampaignTarget.submit_at)
+        .where(CampaignTarget.submit_flag == 1, CampaignTarget.sent_at >= since)
+    ).all():
+        _bucket_ts(victims, t, since, n_buckets, week_bucket)
+    for (t,) in db.execute(
+        select(CampaignTarget.sent_at)
+        .where(CampaignTarget.send_status.in_(_SENT_STATUS), CampaignTarget.sent_at >= since)
+    ).all():
+        _bucket_ts(bucket_target, t, since, n_buckets, week_bucket)
     victim_rates = [_pct(victims[i], bucket_target[i]) for i in range(n_buckets)]
 
     trend = {"labels": labels, "victims": victims, "victimRates": victim_rates}
@@ -270,8 +296,6 @@ def overview_metrics(db, account, range_: str) -> dict:
         name = _parse_ua(ua)
         ua_counts[name] = ua_counts.get(name, 0) + 1
     top_ua = sorted(ua_counts.items(), key=lambda kv: -kv[1])[:6]
-    if not top_ua:
-        top_ua = [("Chrome · Windows", 1)]  # 空库占位
     fingerprints = [{"name": name, "value": cnt} for name, cnt in top_ua]
 
     return {
@@ -279,6 +303,7 @@ def overview_metrics(db, account, range_: str) -> dict:
         "topPersons": top_persons,
         "topDepts": top_depts,
         "liveStats": live_stats,
+        "liveCampaignName": live_campaign_name,
         "opsData": ops_data,
         "plans": plans,
         "channelDist": channel_dist,
@@ -374,25 +399,29 @@ def campaign_report(db, account, campaign_id: int) -> dict:
 # ---------- 部门 / 趋势 / 个人报表 ----------
 
 def department_report(db, account, range_: str) -> dict:
-    """部门横向对比（stat_daily dim_type=dept），过部门数据权限。"""
+    """部门横向对比（campaign_target 直查，按部门数据权限过滤，投递时间窗口）。"""
     days = _window_days(range_)
     since = (datetime.now() - timedelta(days=days)).date()
 
+    submit_c = func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0))
     stmt = (
         select(
-            StatDaily.dim_id,
-            func.sum(StatDaily.target_cnt), func.sum(StatDaily.open_cnt),
-            func.sum(StatDaily.click_cnt), func.sum(StatDaily.submit_cnt),
-            func.sum(StatDaily.report_cnt), EmpDept.name,
+            EmpUser.dept_id,
+            func.sum(case((CampaignTarget.send_status.in_(_SENT_STATUS), 1), else_=0)),  # 投递人次
+            func.sum(case((CampaignTarget.first_open_at.is_not(None), 1), else_=0)),
+            func.sum(case((CampaignTarget.first_click_at.is_not(None), 1), else_=0)),
+            submit_c,
+            func.sum(case((CampaignTarget.report_flag == 1, 1), else_=0)),
+            EmpDept.name,
         )
-        .join(EmpDept, EmpDept.id == StatDaily.dim_id, isouter=True)
-        .where(StatDaily.dim_type == "dept")
-        .group_by(StatDaily.dim_id, EmpDept.name)
-        .order_by(func.sum(StatDaily.submit_cnt).desc())
+        .join(EmpUser, EmpUser.id == CampaignTarget.user_id)
+        .join(EmpDept, EmpDept.id == EmpUser.dept_id, isouter=True)
+        .group_by(EmpUser.dept_id, EmpDept.name)
+        .order_by(submit_c.desc())
     )
-    stmt = apply_data_scope(db, stmt, account, dept_col=StatDaily.dim_id)
-    rows = db.execute(stmt.where(StatDaily.stat_date >= since)).all()
-    if not rows:  # 窗口内无数据回退全量
+    stmt = apply_data_scope(db, stmt, account, dept_col=EmpUser.dept_id)
+    rows = db.execute(stmt.where(CampaignTarget.sent_at >= since)).all()
+    if not rows:  # 窗口内无投递回退全量
         rows = db.execute(stmt).all()
 
     rows_out, labels, submit_rates = [], [], []
@@ -413,7 +442,7 @@ def department_report(db, account, range_: str) -> dict:
 
 
 def trend_report(db, account, range_: str) -> dict:
-    """跨演练月度趋势 + 场景维度（stat_daily dim_type=scene）。平台级，不过数据权限。"""
+    """跨演练月度趋势 + 场景维度（campaign_target 直查，按投递时间窗口）。平台级，不过数据权限。"""
     days = _window_days(range_)
     since = (datetime.now() - timedelta(days=days)).date()
     months = {"7d": 1, "month": 3, "quarter": 6}.get(range_, 3)
@@ -429,13 +458,13 @@ def trend_report(db, account, range_: str) -> dict:
         month_keys.append((y, m))
     labels = [f"{m}月" for _, m in month_keys]
 
-    year_expr, month_expr = func.extract("year", StatDaily.stat_date), func.extract("month", StatDaily.stat_date)
-
-    # 平台行按月聚合（窗口内）
+    # 投递按月聚合（窗口内，分子分母同窗口；提交/举报按投递月份归属）
+    year_expr, month_expr = func.extract("year", CampaignTarget.sent_at), func.extract("month", CampaignTarget.sent_at)
     month_rows = db.execute(
-        select(year_expr, month_expr,
-               func.sum(StatDaily.target_cnt), func.sum(StatDaily.submit_cnt), func.sum(StatDaily.report_cnt))
-        .where(StatDaily.dim_type == "platform", StatDaily.stat_date >= since)
+        select(year_expr, month_expr, func.count(CampaignTarget.id),
+               func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)),
+               func.sum(case((CampaignTarget.report_flag == 1, 1), else_=0)))
+        .where(CampaignTarget.send_status.in_(_SENT_STATUS), CampaignTarget.sent_at >= since)
         .group_by(year_expr, month_expr)
     ).all()
     by_month = {f"{int(y)}-{int(m):02d}": (t or 0, s or 0, r or 0) for y, m, t, s, r in month_rows}
@@ -456,20 +485,22 @@ def trend_report(db, account, range_: str) -> dict:
         submit_rates.append(_pct(s, t))
         report_rates.append(_pct(r, t))
 
-    # 场景维度（窗口内 → 全量回退）
+    # 场景维度（按演练方式，窗口内 → 全量回退）
     scene_stmt = (
-        select(StatDaily.dim_key,
-               func.sum(StatDaily.target_cnt), func.sum(StatDaily.submit_cnt), func.sum(StatDaily.report_cnt))
-        .where(StatDaily.dim_type == "scene")
-        .group_by(StatDaily.dim_key)
+        select(Campaign.type, func.count(CampaignTarget.id),
+               func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)),
+               func.sum(case((CampaignTarget.report_flag == 1, 1), else_=0)))
+        .join(Campaign, Campaign.id == CampaignTarget.campaign_id)
+        .where(CampaignTarget.send_status.in_(_SENT_STATUS))
+        .group_by(Campaign.type)
     )
-    s_rows = db.execute(scene_stmt.where(StatDaily.stat_date >= since)).all()
+    s_rows = db.execute(scene_stmt.where(CampaignTarget.sent_at >= since)).all()
     if not s_rows:
         s_rows = db.execute(scene_stmt).all()
     scenes = [
-        {"scene": key or "其他", "targetCount": int(t or 0),
-         "submitRate": _pct(s or 0, t or 0), "reportRate": _pct(r or 0, t or 0)}
-        for key, t, s, r in s_rows
+        {"scene": _TYPE_CN.get(t, t or "其他") + "钓鱼演练", "targetCount": int(n or 0),
+         "submitRate": _pct(s or 0, n or 0), "reportRate": _pct(r or 0, n or 0)}
+        for t, n, s, r in s_rows
     ]
 
     return {"labels": labels, "campaignCounts": campaign_counts,

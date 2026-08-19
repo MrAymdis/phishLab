@@ -49,6 +49,11 @@ def sync(source: str = Query(..., description="ldap/wecom/dingtalk/feishu"),
     return resp.ok(service.sync_org(db, account, source))
 
 
+@emp_users.get("/overview", summary="用户和组概览统计（总人数/本月新增/高风险/培训完成）")
+def org_overview(account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.org_overview(db, account))
+
+
 @emp_users.get("", summary="员工档案列表（标签/风险筛选）")
 def list_users(
     dept_id: int | None = None,

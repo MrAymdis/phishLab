@@ -49,7 +49,8 @@
       <el-col :span="8">
         <div class="card card-blue">
           <div class="card-title">演练活动方式分布</div>
-          <BaseChart :option="channelPie" height="240px" />
+          <BaseChart v-if="channelTotal > 0" :option="channelPie" height="240px" />
+          <el-empty v-else description="暂无演练数据" :image-size="70" style="padding: 24px 0" />
         </div>
       </el-col>
       <el-col :span="16">
@@ -71,33 +72,40 @@
             </el-radio-group>
           </div>
           <template v-if="topDim === 'person'">
-            <div v-for="(p, idx) in topPersons" :key="p.name" class="rank-row">
-              <span class="rank-no" :style="{ color: rankColors[idx] }">{{ idx + 1 }}</span>
-              <span class="rank-pname">{{ p.name }}</span>
-              <span class="rank-dept">{{ p.dept }}</span>
-              <div class="bar-track">
-                <div class="bar-fill" :style="{ width: p.bar + '%', background: rankColors[idx] }" />
+            <template v-if="topPersons.length">
+              <div v-for="(p, idx) in topPersons" :key="p.name" class="rank-row">
+                <span class="rank-no" :style="{ color: rankColors[idx] }">{{ idx + 1 }}</span>
+                <span class="rank-pname">{{ p.name }}</span>
+                <span class="rank-dept">{{ p.dept }}</span>
+                <div class="bar-track">
+                  <div class="bar-fill" :style="{ width: p.bar + '%', background: rankColors[idx] }" />
+                </div>
+                <span class="rank-count">{{ p.count }}</span>
               </div>
-              <span class="rank-count">{{ p.count }}</span>
-            </div>
+            </template>
+            <el-empty v-else description="暂无中招人员数据" :image-size="60" style="padding: 12px 0" />
           </template>
           <template v-else>
-            <div v-for="(d, idx) in topDepts" :key="d.name" class="rank-row">
-              <span class="rank-no" :style="{ color: rankColors[idx] }">{{ idx + 1 }}</span>
-              <span class="rank-pname">{{ d.name }}</span>
-              <span class="rank-dept">&nbsp;</span>
-              <div class="bar-track">
-                <div class="bar-fill" :style="{ width: d.bar + '%', background: rankColors[idx] }" />
+            <template v-if="topDepts.length">
+              <div v-for="(d, idx) in topDepts" :key="d.name" class="rank-row">
+                <span class="rank-no" :style="{ color: rankColors[idx] }">{{ idx + 1 }}</span>
+                <span class="rank-pname">{{ d.name }}</span>
+                <span class="rank-dept">&nbsp;</span>
+                <div class="bar-track">
+                  <div class="bar-fill" :style="{ width: d.bar + '%', background: rankColors[idx] }" />
+                </div>
+                <span class="rank-count">{{ d.count }}</span>
               </div>
-              <span class="rank-count">{{ d.count }}</span>
-            </div>
+            </template>
+            <el-empty v-else description="暂无部门数据" :image-size="60" style="padding: 12px 0" />
           </template>
         </div>
       </el-col>
       <el-col :span="8" class="equal-col">
         <div class="card card-purple">
           <div class="card-title">浏览器指纹分布</div>
-          <BaseChart :option="fingerprintPie" height="220px" />
+          <BaseChart v-if="fingerprintTotal > 0" :option="fingerprintPie" height="220px" />
+          <el-empty v-else description="暂无指纹数据" :image-size="70" style="padding: 24px 0" />
         </div>
       </el-col>
       <el-col :span="8" class="equal-col">
@@ -117,8 +125,8 @@
       <el-col :span="12" class="equal-col">
         <div class="card card-green">
           <div class="card-title">
-            <span><span class="live-dot" /> 进行中的演练 · Q3全员防钓鱼演练</span>
-            <span class="live-realtime"><span class="live-dot" /> 实时</span>
+            <span><span class="live-dot" /> 进行中的演练{{ liveCampaignName ? ` · ${liveCampaignName}` : ' · 暂无' }}</span>
+            <span v-if="liveCampaignName" class="live-realtime"><span class="live-dot" /> 实时</span>
           </div>
           <div class="live-bar-list">
             <div v-for="s in liveStats" :key="s.label" class="live-bar-row">
@@ -148,6 +156,9 @@
               </tr>
             </thead>
             <tbody>
+              <tr v-if="!plans.length">
+                <td colspan="5" style="text-align: center; color: var(--color-text-tertiary); padding: 16px 0">暂无计划演练</td>
+              </tr>
               <tr v-for="p in plans" :key="p.name">
                 <td class="plan-t-name">{{ p.name }}</td>
                 <td>{{ p.date }}</td>
@@ -166,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, shallowRef, onMounted, watch } from 'vue'
+import { ref, shallowRef, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { EChartsOption } from 'echarts'
 import { MagicStick, Promotion } from '@element-plus/icons-vue'
@@ -192,108 +203,63 @@ function askChatBI() {
   ElMessage.info(`ChatBI 正在生成查询：${chatbiQuery.value}（AI 功能三期上线）`)
 }
 
-// ============ TOP5 排行（部门/人员切换） ============
+// ============ 数据区（全部来自 GET /api/v1/overview/metrics，无 mock） ============
 const topDim = ref<'person' | 'dept'>('person')
 const rankColors = ['#A32D2D', '#D85A30', '#D85A30', '#EF9F27', '#EF9F27']
-const topPersons = ref<{ name: string; dept: string; count: string | number; bar: number }[]>([
-  { name: '张某某', dept: '研发部', count: '4次', bar: 100 },
-  { name: '李某某', dept: '市场部', count: '3次', bar: 75 },
-  { name: '王某某', dept: '行政部', count: '3次', bar: 75 },
-  { name: '赵某某', dept: '财务部', count: '2次', bar: 50 },
-  { name: '孙某某', dept: '运营部', count: '2次', bar: 50 },
-])
+const topPersons = ref<{ name: string; dept: string; count: string | number; bar: number }[]>([])
+const topDepts = ref<{ name: string; count: string | number; bar: number }[]>([])
 
 type Accent = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal'
-const coreMetrics = ref<{ title: string; value: string | number; suffix: string; accent: Accent }[]>([
-  { title: '本月演练次数', value: 12, suffix: ' 场', accent: 'blue' },
-  { title: '演练人数', value: '4,200', suffix: ' 人', accent: 'teal' },
-  { title: '平均中招率', value: '17.8', suffix: ' %', accent: 'orange' },
-  { title: '平均举报率', value: '22.3', suffix: ' %', accent: 'green' },
-  { title: '培训通过率', value: '82.1', suffix: ' %', accent: 'purple' },
-  { title: '高危人员数', value: 47, suffix: ' 人', accent: 'red' },
-])
+const coreMetrics = ref<{ title: string; value: string | number; suffix: string; accent: Accent }[]>([])
 
 const channelPie = shallowRef<EChartsOption>({
   tooltip: { trigger: 'item' },
   legend: { bottom: 0, textStyle: { fontSize: 11 } },
-  series: [{
-    type: 'pie', radius: ['38%', '62%'],
-    label: { fontSize: 11 },
-    data: [
-      { name: '邮件钓鱼演练', value: 86 },
-      { name: '短信钓鱼演练', value: 28 },
-      { name: '社交媒体钓鱼', value: 14 },
-    ],
-  }],
+  series: [{ type: 'pie', radius: ['38%', '62%'], label: { fontSize: 11 }, data: [] }],
 })
 
 const trendChart = shallowRef<EChartsOption>({
   tooltip: { trigger: 'axis' },
   legend: { data: ['中招人数', '中招率%'], textStyle: { fontSize: 11 }, top: 0 },
   grid: { left: 40, right: 40, top: 34, bottom: 24 },
-  xAxis: { type: 'category', data: ['W1', 'W2', 'W3', 'W4'] },
+  xAxis: { type: 'category', data: [] },
   yAxis: [
     { type: 'value', name: '人数' },
     { type: 'value', name: '%', max: 40 },
   ],
   series: [
-    { name: '中招人数', type: 'bar', barWidth: 22, data: [142, 187, 121, 96], itemStyle: { color: '#378ADD' } },
-    { name: '中招率%', type: 'line', yAxisIndex: 1, data: [21.4, 19.6, 16.2, 13.1], itemStyle: { color: '#D85A30' } },
+    { name: '中招人数', type: 'bar', barWidth: 22, data: [], itemStyle: { color: '#378ADD' } },
+    { name: '中招率%', type: 'line', yAxisIndex: 1, data: [], itemStyle: { color: '#D85A30' } },
   ],
 })
 
 const fingerprintPie = shallowRef<EChartsOption>({
   tooltip: { trigger: 'item' },
   legend: { bottom: 0, textStyle: { fontSize: 11 } },
-  series: [{
-    type: 'pie', radius: '58%',
-    label: { fontSize: 11 },
-    data: [
-      { name: 'Chrome · Windows', value: 612 },
-      { name: 'Edge · Windows', value: 208 },
-      { name: 'Chrome · macOS', value: 141 },
-      { name: 'Firefox · Linux', value: 39 },
-    ],
-  }],
+  series: [{ type: 'pie', radius: '58%', label: { fontSize: 11 }, data: [] }],
 })
 
-const topDepts = ref<{ name: string; count: string | number; bar: number }[]>([
-  { name: '财务部', count: '12次', bar: 100 },
-  { name: '市场部', count: '9次', bar: 75 },
-  { name: '行政部', count: '7次', bar: 58 },
-  { name: '人力资源部', count: '5次', bar: 42 },
-  { name: '技术部', count: '3次', bar: 25 },
-])
+const liveStats = ref<{ label: string; value: string | number; bar: number; color: string }[]>([])
+const liveCampaignName = ref('')
+const opsData = ref<{ label: string; value: string | number }[]>([])
+const plans = ref<{ name: string; date: string; type: string; target: string; status: string }[]>([])
 
-const liveStats = ref<{ label: string; value: string | number; bar: number; color: string }[]>([
-  { label: '已投递', value: '1,200', bar: 100, color: '#378ADD' },
-  { label: '已阅读', value: '856', bar: 71, color: '#378ADD' },
-  { label: '已点击', value: '324', bar: 27, color: '#D85A30' },
-  { label: '已提交', value: '187', bar: 16, color: '#A32D2D' },
-  { label: '已举报', value: '268', bar: 22, color: '#1D9E75' },
-])
+const channelTotal = computed(() => {
+  const s = channelPie.value.series as { data: { value: number }[] }[]
+  return s[0]?.data?.reduce((sum, i) => sum + (i.value || 0), 0) ?? 0
+})
+const fingerprintTotal = computed(() => {
+  const s = fingerprintPie.value.series as { data: { value: number }[] }[]
+  return s[0]?.data?.reduce((sum, i) => sum + (i.value || 0), 0) ?? 0
+})
 
-const opsData = ref<{ label: string; value: string | number }[]>([
-  { label: '邮件钓鱼模板', value: 86 },
-  { label: '口令钓鱼模板', value: 42 },
-  { label: '二维码钓鱼模板', value: 28 },
-  { label: '水坑钓鱼模板', value: 15 },
-  { label: '钓鱼话术', value: 120 },
-])
-
-const plans = ref([
-  { name: 'Q3全员防钓鱼演练', date: '2026-08-20', type: '邮件钓鱼', target: '全公司 (3,580人)', status: '待开始' },
-  { name: '研发部定向演练', date: '2026-08-25', type: '短信钓鱼', target: '研发部 (420人)', status: '待开始' },
-  { name: '新员工安全意识测试', date: '2026-09-01', type: '邮件钓鱼', target: '新入职员工 (30人)', status: '待开始' },
-  { name: '财务部专项演练', date: '2026-09-10', type: '邮件钓鱼', target: '财务部 (56人)', status: '筹备中' },
-])
-
-// ============ 接口数据加载（失败时保留演示数据） ============
+// ============ 接口数据加载 ============
 interface OverviewData {
   coreMetrics: { title: string; value: string | number; suffix: string; accent: Accent }[]
   topPersons: { name: string; dept: string; count: string | number; bar: number }[]
   topDepts: { name: string; count: string | number; bar: number }[]
   liveStats: { label: string; value: string | number; bar: number; color: string }[]
+  liveCampaignName?: string
   opsData: { label: string; value: string | number }[]
   plans: { name: string; date: string; type: string; target: string; status: string }[]
   channelDist: { name: string; value: number }[]
@@ -304,40 +270,42 @@ interface OverviewData {
 async function load() {
   try {
     const d = (await analyticsApi.overview(range.value)) as OverviewData | null
-    if (d?.coreMetrics?.length) coreMetrics.value = d.coreMetrics
-    if (d?.topPersons?.length) topPersons.value = d.topPersons
-    if (d?.topDepts?.length) topDepts.value = d.topDepts
-    if (d?.liveStats?.length) liveStats.value = d.liveStats
-    if (d?.opsData?.length) opsData.value = d.opsData
-    if (d?.plans?.length) plans.value = d.plans
-    // 图表数据：仅当接口返回非空数组时覆盖 mock（shallowRef 需整体替换以触发更新）
-    if (d?.channelDist?.length) {
+    if (!d) return
+    coreMetrics.value = d.coreMetrics ?? []
+    topPersons.value = d.topPersons ?? []
+    topDepts.value = d.topDepts ?? []
+    liveStats.value = d.liveStats ?? []
+    liveCampaignName.value = d.liveCampaignName ?? ''
+    opsData.value = d.opsData ?? []
+    plans.value = d.plans ?? []
+    // 图表数据：shallowRef 需整体替换以触发更新
+    if (d.channelDist) {
       const series = channelPie.value.series as { data: { name: string; value: number }[] }[]
       channelPie.value = {
         ...channelPie.value,
         series: [{ ...series[0], data: d.channelDist }],
       } as EChartsOption
     }
-    if (d?.fingerprints?.length) {
+    if (d.fingerprints) {
       const series = fingerprintPie.value.series as { data: { name: string; value: number }[] }[]
       fingerprintPie.value = {
         ...fingerprintPie.value,
         series: [{ ...series[0], data: d.fingerprints }],
       } as EChartsOption
     }
-    if (d?.trend?.labels?.length) {
+    if (d.trend) {
       const series = trendChart.value.series as { data: number[] }[]
       trendChart.value = {
         ...trendChart.value,
-        xAxis: { ...(trendChart.value.xAxis as { data: string[] }), data: d.trend.labels },
+        xAxis: { ...(trendChart.value.xAxis as { data: string[] }), data: d.trend.labels ?? [] },
         series: [
-          { ...series[0], data: d.trend.victims },
-          { ...series[1], data: d.trend.victimRates },
+          { ...series[0], data: d.trend.victims ?? [] },
+          { ...series[1], data: d.trend.victimRates ?? [] },
         ],
       } as EChartsOption
     }
   } catch {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    ElMessage.warning('接口数据加载失败，请检查网络或后端服务')
   }
 }
 

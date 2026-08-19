@@ -1,5 +1,5 @@
 """组织与员工服务：部门树、员工档案 CRUD、风险画像、分组标签、组织同步。"""
-from sqlalchemy import delete, func, or_, select
+from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit
@@ -590,6 +590,58 @@ def get_risk_profile(db: Session, account, user_id: int) -> dict:
         "reportCount": report,
         "trainingCompletion": training_completion,
         "history": _risk_history(db, user_id),
+    }
+
+
+# ---------- 概览统计 ----------
+
+def org_overview(db: Session, account) -> dict:
+    """用户和组概览统计（真实聚合，数据权限过滤）。
+
+    总人数=在职员工；覆盖部门=有在职员工的部门数；本月新增按 created_at 归月；
+    高风险=风险画像 risk_level=3（81-100）；已培训完成=training_completion>=100%。
+    """
+    from datetime import datetime
+
+    now = datetime.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    prev_start = (
+        month_start.replace(month=month_start.month - 1)
+        if month_start.month > 1 else month_start.replace(year=month_start.year - 1, month=12)
+    )
+
+    emp_scope = apply_data_scope(
+        db, select(EmpUser.id).where(EmpUser.status == 1), account, dept_col=EmpUser.dept_id,
+    )
+    emp_ids = [r for (r,) in db.execute(emp_scope).all()]
+    total = len(emp_ids)
+    if not emp_ids:
+        return {"total": 0, "dept_count": 0, "month_new": 0, "month_growth": None,
+                "high_risk": 0, "trained": 0, "training_pct": 0.0}
+
+    month_new, prev_new, dept_count = db.execute(
+        select(
+            func.sum(case((EmpUser.created_at >= month_start, 1), else_=0)),
+            func.sum(case(((EmpUser.created_at >= prev_start) & (EmpUser.created_at < month_start), 1), else_=0)),
+            func.count(func.distinct(EmpUser.dept_id)),
+        ).where(EmpUser.id.in_(emp_ids))
+    ).one()
+
+    profiles = db.scalars(
+        select(EmpRiskProfile).where(EmpRiskProfile.user_id.in_(emp_ids))
+    ).all()
+    high_risk = sum(1 for p in profiles if p.risk_level == 3)
+    trained = sum(1 for p in profiles if (p.training_completion or 0) >= 100)
+
+    growth = None if prev_new == 0 else round((month_new - prev_new) / prev_new * 100)
+    return {
+        "total": total,
+        "dept_count": int(dept_count),
+        "month_new": int(month_new),
+        "month_growth": growth,  # None=无上月数据
+        "high_risk": high_risk,
+        "trained": trained,
+        "training_pct": round(trained / total * 100, 1),
     }
 
 

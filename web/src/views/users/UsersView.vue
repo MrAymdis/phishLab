@@ -68,47 +68,48 @@
         <!-- 统计卡片 -->
         <el-row :gutter="12" class="stat-row">
           <el-col :span="6">
-            <StatCard title="总人数" value="3,580" accent="blue" sub="覆盖 8 个部门" />
+            <StatCard title="总人数" :value="overview.total.toLocaleString()" accent="blue" :sub="`覆盖 ${overview.dept_count} 个部门`" />
           </el-col>
           <el-col :span="6">
-            <StatCard title="本月新增" :value="42" accent="green" value-color="#1D9E75" sub="↑ 较上月 +18%" />
+            <StatCard title="本月新增" :value="overview.month_new" accent="green" value-color="#1D9E75" :sub="monthGrowthText" />
           </el-col>
           <el-col :span="6">
-            <StatCard title="高风险人员" :value="86" accent="red" value-color="#A32D2D" sub="需优先培训" />
+            <StatCard title="高风险人员" :value="overview.high_risk" accent="red" value-color="#A32D2D" sub="需优先培训" />
           </el-col>
           <el-col :span="6">
-            <StatCard title="已培训完成" value="2,940" accent="teal" value-color="#0D9488" sub="完成率 82.1%" />
+            <StatCard title="已培训完成" :value="overview.trained.toLocaleString()" accent="teal" value-color="#0D9488" :sub="`完成率 ${overview.training_pct}%`" />
           </el-col>
         </el-row>
 
         <!-- 工具栏 -->
         <div class="card toolbar-card">
           <div class="toolbar">
-            <span class="filter-label">标签：</span>
-            <el-radio-group v-model="tagFilter" size="small">
-              <el-radio-button value="all">全部</el-radio-button>
-              <el-radio-button v-for="t in tagOptions" :key="t" :value="t">{{ t }}</el-radio-button>
-            </el-radio-group>
-            <el-button size="small" text type="primary" @click="openTagDialog" class="tag-add-btn">+ 新建标签</el-button>
-            <el-divider direction="vertical" />
-            <span class="filter-label">风险：</span>
-            <el-radio-group v-model="riskFilter" size="small">
-              <el-radio-button value="all">全部</el-radio-button>
-              <el-radio-button value="high">高</el-radio-button>
-              <el-radio-button value="mid">中</el-radio-button>
-              <el-radio-button value="low">低</el-radio-button>
-            </el-radio-group>
-            <div class="toolbar-right">
-              <el-input
-                v-model="empKw"
-                size="small"
-                placeholder="搜索姓名/工号/邮箱..."
-                :prefix-icon="Search"
-                clearable
-                class="emp-search"
-              />
-              <el-button :icon="Upload" size="small" @click="onImportCsv">导入CSV</el-button>
-              <el-button type="primary" :icon="Plus" size="small" @click="openEmpDialog()">添加员工</el-button>
+            <div class="toolbar-row">
+              <span class="filter-label">标签：</span>
+              <el-radio-group v-model="tagFilter" size="small">
+                <el-radio-button value="all">全部</el-radio-button>
+                <el-radio-button v-for="t in tagOptions" :key="t" :value="t">{{ t }}</el-radio-button>
+              </el-radio-group>
+              <el-button size="small" text type="primary" @click="openTagDialog" class="tag-add-btn">+ 新建标签</el-button>
+            </div>
+            <div class="toolbar-row">
+              <span class="filter-label">风险：</span>
+              <el-radio-group v-model="riskFilter" size="small">
+                <el-radio-button value="all">全部</el-radio-button>
+                <el-radio-button value="high">高</el-radio-button>
+                <el-radio-button value="mid">中</el-radio-button>
+                <el-radio-button value="low">低</el-radio-button>
+              </el-radio-group>
+              <div class="toolbar-right">
+                <el-input
+                  v-model="empKw"
+                  size="small"
+                  placeholder="搜索姓名/工号/邮箱..."
+                  :prefix-icon="Search"
+                  clearable
+                  class="emp-search"
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -182,7 +183,10 @@
 
       <!-- ============ 右侧：员工风险画像 ============ -->
       <el-col :span="6">
-        <div v-if="selectedEmp" class="right-panel">
+        <div v-if="riskProfileFailed" class="card empty-card">
+          <el-empty description="画像数据加载失败，请稍后重试" />
+        </div>
+        <div v-else-if="selectedEmp" class="right-panel">
           <!-- 基本信息 -->
           <div class="card card-blue profile-head-card">
             <div class="profile-head">
@@ -554,53 +558,16 @@ async function createDept() {
     return
   }
   try {
-    const res = await orgApi.createDept({
+    await orgApi.createDept({
       name: deptForm.name.trim(),
       parent_id: deptForm.parentId,
       code: deptForm.code.trim() || null,
     })
-    const newId = res?.id ?? Date.now()
-    const newNode: DeptNode = {
-      id: newId,
-      label: deptForm.name.trim(),
-      count: 0,
-      children: [],
-    }
-    if (deptForm.parentId === 0) {
-      deptTree.value.push(newNode)
-    } else {
-      const parent = findNodeById(deptTree.value, deptForm.parentId)
-      if (parent) {
-        parent.children = parent.children ?? []
-        parent.children.push(newNode)
-        parent.count += 0
-      } else {
-        deptTree.value.push(newNode)
-      }
-    }
-    ElMessage.success(`部门「${newNode.label}」创建成功`)
+    ElMessage.success(`部门「${deptForm.name.trim()}」创建成功`)
     deptDialogVisible.value = false
+    await loadDepts() // 从后端刷新部门树（含人数统计），不本地伪造节点
   } catch {
-    const newId = Date.now()
-    const newNode: DeptNode = {
-      id: newId,
-      label: deptForm.name.trim(),
-      count: 0,
-      children: [],
-    }
-    if (deptForm.parentId === 0) {
-      deptTree.value.push(newNode)
-    } else {
-      const parent = findNodeById(deptTree.value, deptForm.parentId)
-      if (parent) {
-        parent.children = parent.children ?? []
-        parent.children.push(newNode)
-      } else {
-        deptTree.value.push(newNode)
-      }
-    }
-    ElMessage.success(`部门「${newNode.label}」已添加（本地演示）`)
-    deptDialogVisible.value = false
+    // 失败提示由 http 拦截器统一弹出
   }
 }
 
@@ -654,10 +621,33 @@ async function loadUsers(deptId?: number) {
   }
 }
 
+// ============ 概览统计卡片（emp-users/overview 真实聚合） ============
+const overview = reactive({
+  total: 0, dept_count: 0, month_new: 0, month_growth: null as number | null,
+  high_risk: 0, trained: 0, training_pct: 0,
+})
+
+const monthGrowthText = computed(() => {
+  if (overview.month_new === 0) return '本月暂无新增'
+  if (overview.month_growth === null) return '无上月对比数据'
+  const sign = overview.month_growth >= 0 ? '↑ 较上月' : '↓ 较上月'
+  return `${sign} ${Math.abs(overview.month_growth)}%`
+})
+
+async function loadOverview() {
+  try {
+    const d = await orgApi.overview()
+    if (d) Object.assign(overview, d)
+  } catch {
+    // 失败提示由 http 拦截器统一弹出；保留 0 值
+  }
+}
+
 onMounted(() => {
   loadDepts()
   loadUsers()
   loadTags()
+  loadOverview()
 })
 
 // 选中部门时，允许命中所选节点或其任一子部门（含父部门名称命中员工 dept 字段）
@@ -756,116 +746,46 @@ interface RiskProfileData {
   history: { time: string; type: 'primary' | 'success' | 'warning' | 'danger'; title: string; desc: string }[]
 }
 const riskProfileData = ref<RiskProfileData | null>(null)
+const riskProfileFailed = ref(false)
 
 function selectEmp(row: Employee) {
   selectedEmp.value = row
   riskProfileData.value = null
+  riskProfileFailed.value = false
   orgApi.riskProfile(row.id)
     .then((data) => { riskProfileData.value = data as RiskProfileData })
-    .catch(() => { riskProfileData.value = null }) // 失败保留派生兜底
+    .catch(() => { riskProfileFailed.value = true }) // 失败显示空态，不伪造画像
 }
 
-const profileTotalScore = computed(() =>
-  riskProfileData.value?.total ?? selectedEmp.value?.riskScore ?? 0,
+const profileTotalScore = computed(() => riskProfileData.value?.total ?? 0)
+
+/** 风险画像 5 维：全部来自后端画像接口，不派生伪造 */
+const selectedRiskDims = computed<RiskDim[]>(() => riskProfileData.value?.dims ?? [])
+
+const trainingPct = computed(() =>
+  riskProfileData.value ? `${riskProfileData.value.trainingCompletion}%` : '—',
 )
 
-/** 风险画像 5 维：后端五维画像优先，员工行数据派生兜底 */
-const selectedRiskDims = computed<RiskDim[]>(() => {
-  if (riskProfileData.value?.dims?.length) {
-    return riskProfileData.value.dims
-  }
-  const emp = selectedEmp.value
-  if (!emp) return []
-  const s = emp.riskScore
-  const dims = [
-    { label: '邮件识别', val: Math.min(100, Math.max(5, s - 7)) },
-    { label: '链接点击', val: Math.min(100, Math.max(5, s + 6)) },
-    { label: '密码提交', val: Math.min(100, Math.max(5, s - 12)) },
-    { label: '附件下载', val: Math.min(100, Math.max(5, s - 17)) },
-    { label: '举报意识', val: Math.max(5, 100 - s - 12) },
-  ]
-  return dims.map(d => ({
-    label: d.label,
-    val: d.val,
-    color: d.val > 70 ? '#D85A30' : d.val > 40 ? '#EF9F27' : '#1D9E75',
-  }))
-})
-
-const trainingPct = computed(() => {
-  if (riskProfileData.value) return `${riskProfileData.value.trainingCompletion}%`
-  const s = selectedEmp.value?.training
-  if (s === 'completed') return '100%'
-  if (s === 'progress') return '60%'
-  return '0%'
-})
-
+/** 课程完成状态按后端真实培训完成度推进 */
 const selectedCourses = computed(() => {
-  const s = selectedEmp.value?.training
+  const pct = riskProfileData.value?.trainingCompletion ?? 0
   return [
-    { name: '基础钓鱼防范课程', done: s !== 'none' },
-    { name: '密码安全意识培训', done: s === 'completed' },
-    { name: '邮件识别专项训练', done: s === 'completed' },
-    { name: '社会工程学进阶', done: false },
+    { name: '基础钓鱼防范课程', done: pct >= 25 },
+    { name: '密码安全意识培训', done: pct >= 50 },
+    { name: '邮件识别专项训练', done: pct >= 75 },
+    { name: '社会工程学进阶', done: pct >= 100 },
   ]
 })
 
-const selectedReportCount = computed(() =>
-  riskProfileData.value?.reportCount ?? (selectedEmp.value && selectedEmp.value.clicks > 0 ? 2 : 0),
-)
+const selectedReportCount = computed(() => riskProfileData.value?.reportCount ?? 0)
 
-/** 历史中招次数：后端 phishCount 优先 */
-const profilePhishCount = computed(() =>
-  riskProfileData.value?.phishCount ?? selectedEmp.value?.clicks ?? 0,
-)
+/** 历史中招次数：后端 phishCount */
+const profilePhishCount = computed(() => riskProfileData.value?.phishCount ?? 0)
 
-// 历史行为轨迹：后端真实事件轨迹优先，员工行数据派生兜底
-const selectedTimeline = computed<TimelineEvent[]>(() => {
-  if (riskProfileData.value?.history?.length) {
-    return riskProfileData.value.history as TimelineEvent[]
-  }
-  const emp = selectedEmp.value
-  if (!emp) return []
-  const events: TimelineEvent[] = []
-  if (emp.clicks > 0) {
-    events.push({
-      time: '2026-08-15 09:42',
-      type: 'danger',
-      title: 'Q3全员防钓鱼演练 · 中招',
-      desc: '点击钓鱼链接并提交了OA账号密码',
-    })
-    events.push({
-      time: '2026-08-15 10:15',
-      type: 'success',
-      title: 'Q3全员防钓鱼演练 · 举报',
-      desc: '事后意识到风险，通过举报按钮上报可疑邮件',
-    })
-  }
-  if (emp.clicks > 1) {
-    events.push({
-      time: '2026-06-12 14:20',
-      type: 'danger',
-      title: 'Q2全员钓鱼演练 · 中招',
-      desc: '点击伪造的密码重置链接',
-    })
-  }
-  if (emp.training !== 'none') {
-    events.push({
-      time: '2026-06-15 16:00',
-      type: 'primary',
-      title: '安全培训 · 完成',
-      desc: '完成「邮件识别专项训练」课程，考核通过',
-    })
-  }
-  if (emp.clicks > 2) {
-    events.push({
-      time: '2026-03-11 11:08',
-      type: 'warning',
-      title: 'Q1全公司防钓鱼 · 中招',
-      desc: '下载了钓鱼附件中的可执行文件',
-    })
-  }
-  return events.sort((a, b) => b.time.localeCompare(a.time))
-})
+// 历史行为轨迹：全部来自后端 track_event 聚合，不伪造
+const selectedTimeline = computed<TimelineEvent[]>(() =>
+  (riskProfileData.value?.history ?? []) as TimelineEvent[],
+)
 
 // ============ 添加/编辑员工弹窗 ============
 const empDialogVisible = ref(false)
@@ -1066,15 +986,19 @@ function downloadCsvTemplate() {
 }
 function onExportCsv() {
   // TODO: 后端未提供批量导出路由
-  ElMessage.info(`正在导出 ${filteredEmployees.value.length} 条员工数据，请稍候...`)
+  ElMessage.info('员工批量导出接口尚未提供，将在后续版本开放')
 }
-function onSyncAd() {
-  // TODO: 后端 depts/sync 仅登记任务，二期接入真实同步
-  ElMessage.info('正在连接AD/LDAP服务器同步组织架构...')
+async function onSyncAd() {
+  try {
+    await orgApi.syncSource('ldap')
+    ElMessage.success('已登记 AD/LDAP 组织同步任务，二期将接入真实拉取')
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 function onSendDrill(emp: Employee) {
   // TODO: 后端未提供单员工快速发起演练路由，需走演练管理创建流程
-  ElMessage.success(`已将「${emp.name}」加入演练发送队列`)
+  ElMessage.info(`单员工快捷演练未开放，请到「演练管理」创建演练并添加「${emp.name}」为目标`)
 }
 </script>
 
@@ -1153,6 +1077,11 @@ function onSendDrill(emp: Employee) {
 }
 .toolbar {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.toolbar-row {
+  display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
@@ -1160,13 +1089,12 @@ function onSendDrill(emp: Employee) {
 .filter-label {
   font-size: 11px;
   color: var(--color-text-tertiary);
+  flex-shrink: 0;
 }
 .toolbar-right {
-  flex: 1;
+  margin-left: auto;
   display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
+  align-items: center;
 }
 .emp-search {
   width: 220px;
