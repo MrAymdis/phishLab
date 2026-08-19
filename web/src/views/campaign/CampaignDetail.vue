@@ -46,7 +46,7 @@
         实时用户行为时间轴
         <el-tag size="small" effect="plain"><span class="live-dot" style="margin-right:4px" />实时更新</el-tag>
       </div>
-      <BehaviorTimeline v-if="timeline.length" :events="timeline" />
+      <BehaviorTimeline v-if="timeline.length" :events="timeline" :campaign-id="Number(route.params.id)" />
       <el-empty v-else description="暂无行为数据（邮件投递后打开/点击将实时出现）" :image-size="48" />
     </div>
   </div>
@@ -114,6 +114,7 @@ interface CampaignDashData {
   alerts: { msg: string; time: string; advice: string }[]
 }
 interface TimelineDataItem {
+  id?: number
   time: string
   user: string
   action: string
@@ -155,6 +156,7 @@ async function load() {
 
     const list = (tl as { list?: TimelineDataItem[] } | null)?.list ?? []
     timeline.value = list.map((t) => ({
+      id: t.id,
       time: t.time,
       user: t.user,
       action: t.action,

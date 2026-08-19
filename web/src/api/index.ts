@@ -44,6 +44,8 @@ export const campaignApi = {
   dashboard: (id: number) => get(`/api/v1/campaigns/${id}/dashboard`),
   timeline: (id: number, page = 1) =>
     get(`/api/v1/campaigns/${id}/timeline`, { page, pageSize: 20 }),
+  revealSubmitPassword: (id: number, eventId: number) =>
+    post<{ password: string; user: string | null }>(`/api/v1/campaigns/${id}/events/${eventId}/reveal`),
   testSend: (id: number, to: string[]) => post(`/api/v1/campaigns/${id}/test-send`, to),
 }
 

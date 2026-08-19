@@ -593,6 +593,7 @@ def timeline(db, account, campaign_id: int, page: int, page_size: int):
         else:
             user = "未知用户"
         items.append({
+            "id": ev.id,
             "time": ev.created_at.strftime(_DT_FMT) if ev.created_at else "",
             "user": user,
             "action": _ACTION_TEXT.get(ev.event_type, ev.event_type),
@@ -607,7 +608,38 @@ def timeline(db, account, campaign_id: int, page: int, page_size: int):
     return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
 
-def test_send(db, account, campaign_id: int, to: list[str]):
+def reveal_submit_password(db, account, campaign_id: int, event_id: int) -> dict:
+    """取证：解密提交事件中的口令（AES-GCM），全程审计。
+
+    仅 submit 事件可解密；无密文（历史数据/加密失败）时提示无法求证。
+    """
+    import base64
+
+    from app.core.security import decrypt_secret
+
+    ev = db.get(TrackEvent, event_id)
+    if ev is None or ev.campaign_id != campaign_id:
+        raise BizError(ErrorCode.NOT_FOUND, "事件不存在")
+    if ev.event_type != "submit":
+        raise BizError(ErrorCode.PARAM_INVALID, "仅提交事件可取证")
+
+    detail = ev.detail or {}
+    encrypted = None
+    for key, value in detail.items():
+        if isinstance(value, dict) and value.get("encrypted"):
+            encrypted = value["encrypted"]
+            break
+    if not encrypted:
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "该事件未加密存储口令，无法取证")
+
+    password = decrypt_secret(base64.b64decode(encrypted))
+    user = db.get(EmpUser, ev.user_id)
+    record_audit(
+        db, account=account, module="campaign", action="reveal_password",
+        target_type="track_event", target_id=str(event_id),
+        detail={"campaign_id": campaign_id, "user": user.name if user else ev.user_id},
+    )
+    return {"password": password, "event_id": event_id, "user": user.name if user else None}
     """发送测试：仅白名单收件人。真实 SMTP 投递由 Worker 实现（TODO 一期）。"""
     _get_or_404(db, campaign_id)
     # TODO(一期)：经通道适配器真实发送并校验 SMTP 连通性，当前仅回执占位

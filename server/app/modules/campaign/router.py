@@ -94,6 +94,16 @@ def timeline(
     return resp.ok(service.timeline(db, account, cid, page, page_size))
 
 
+@campaigns.post("/{cid}/events/{event_id}/reveal", summary="取证：解密提交口令（全程审计）")
+def reveal_password(
+    cid: int,
+    event_id: int,
+    account=Depends(get_current_account),
+    db: Session = Depends(get_db),
+):
+    return resp.ok(service.reveal_submit_password(db, account, cid, event_id))
+
+
 @campaigns.get("/{cid}/stream", summary="实时推送（SSE）")
 async def stream(cid: int):
     async def gen():

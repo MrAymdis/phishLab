@@ -192,10 +192,15 @@ def _fp_hash(fp_json: str) -> str | None:
 
 @app.post("/p/{slug}/submit")
 async def submit(slug: str, request: Request):
-    """表单捕获：口令只存长度+首尾字符（红线：中间内容/完整口令绝不落库）；账号存脱敏掩码；指纹组件哈希入库。
+    """表单捕获：口令 AES-GCM 加密入库（明文不落盘）+ 长度/首尾字符用于展示；账号存脱敏掩码；指纹组件哈希入库。
+
+    取证：管理端授权解密（全程审计）；≤2 位只存长度（首尾即完整口令）。
 
     TODO(一期)：token 反查 campaign → training_policy：redirect(302 培训页)/popup/none
     """
+    import base64
+
+    from app.core.security import encrypt_secret
     from app.modules.tracking.stream import push_event
 
     form = await request.form()
@@ -205,11 +210,15 @@ async def submit(slug: str, request: Request):
         if key in ("token", "fp"):
             continue
         v = str(value or "")
-        if "pass" in key.lower():  # 口令：长度+首尾字符；≤2 位时首尾即完整口令，只存长度
+        if "pass" in key.lower():  # 口令：AES-GCM 密文 + 长度 + 首尾字符（展示用）
             pv = {"len": len(v)}
             if len(v) > 2:
                 pv["first"] = v[:1]
                 pv["last"] = v[-1:]
+            try:
+                pv["encrypted"] = base64.b64encode(encrypt_secret(v)).decode()
+            except Exception:
+                pass  # 加密失败退化为仅长度，不阻断提交
             detail[key] = pv
         else:  # 账号等非口令字段：脱敏掩码
             detail[f"{key}_mask"] = _mask_value(v)
