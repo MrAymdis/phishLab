@@ -107,6 +107,13 @@ docker compose -f deploy/docker-compose.yml up -d mysql redis minio
 - AI 产出（模板/落地页/课程/报告摘要）一律走 `ai_draft` 草稿审核流，审核人/时间入审计。
 - 报表与列表查询必须过数据权限过滤器（`core` 层封装），禁止裸查询。
 
+## 模型路由约定
+
+- 主对话固定 deepseek-v4-pro（会话内不随任务复杂度自动切换模型）
+- 简单查找、单文件小改动、快速问答 → 优先派给 `quick` 子代理（haiku → deepseek-v4-flash，省 token）
+- 多文件重构、架构级改动、深度审查、疑难 bug → `heavy` 子代理或主循环直接做（opus → deepseek-v4-pro）
+- 派子代理时可按任务复杂度显式传 `model` 参数
+
 ## 分期范围（当前阶段判断依据）
 
 - 一期 MVP：概览、演练管理(邮件)、用户和组、邮件模板+基础落地页、SMTP、基础报表、RBAC+审计
