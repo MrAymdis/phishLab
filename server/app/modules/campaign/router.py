@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
@@ -94,14 +94,16 @@ def timeline(
     return resp.ok(service.timeline(db, account, cid, page, page_size))
 
 
-@campaigns.post("/{cid}/events/{event_id}/reveal", summary="取证：解密提交口令（全程审计）")
+@campaigns.post("/{cid}/events/{event_id}/reveal", summary="取证：操作密码验证后解密全部明文（全程审计）")
 def reveal_password(
     cid: int,
     event_id: int,
+    payload: dict = Body(...),
     account=Depends(get_current_account),
     db: Session = Depends(get_db),
 ):
-    return resp.ok(service.reveal_submit_password(db, account, cid, event_id))
+    op = str(payload.get("operation_password") or "")
+    return resp.ok(service.reveal_submit_password(db, account, cid, event_id, op))
 
 
 @campaigns.get("/{cid}/stream", summary="实时推送（SSE）")

@@ -608,14 +608,23 @@ def timeline(db, account, campaign_id: int, page: int, page_size: int):
     return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
 
-def reveal_submit_password(db, account, campaign_id: int, event_id: int) -> dict:
-    """取证：解密提交事件中的口令（AES-GCM），全程审计。
+def reveal_submit_password(db, account, campaign_id: int, event_id: int,
+                           operation_password: str) -> dict:
+    """取证：管理端输入操作密码后解密提交事件的全部明文（AES-GCM），全程审计。
 
+    操作密码存 PBKDF2 哈希（settings.reveal_operation_pwd），配置前无法取证。
     仅 submit 事件可解密；无密文（历史数据/加密失败）时提示无法求证。
     """
     import base64
 
-    from app.core.security import decrypt_secret
+    from app.core.security import decrypt_secret, verify_password
+    from app.modules.settings.service import get_setting
+
+    stored = get_setting(db, "reveal_operation_pwd", "")
+    if not stored:
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "未配置取证操作密码，请在系统设置中配置后再试")
+    if not verify_password(operation_password, stored):
+        raise BizError(ErrorCode.PERM_DENIED, "取证操作密码错误")
 
     ev = db.get(TrackEvent, event_id)
     if ev is None or ev.campaign_id != campaign_id:
@@ -623,23 +632,28 @@ def reveal_submit_password(db, account, campaign_id: int, event_id: int) -> dict
     if ev.event_type != "submit":
         raise BizError(ErrorCode.PARAM_INVALID, "仅提交事件可取证")
 
+    # 解密全部 *_plain 密文字段（口令/账号/手机号/验证码等）
+    fields: list[dict] = []
     detail = ev.detail or {}
-    encrypted = None
     for key, value in detail.items():
-        if isinstance(value, dict) and value.get("encrypted"):
-            encrypted = value["encrypted"]
-            break
-    if not encrypted:
-        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "该事件未加密存储口令，无法取证")
+        if not key.endswith("_plain") or not isinstance(value, dict) or not value.get("encrypted"):
+            continue
+        try:
+            plain = decrypt_secret(base64.b64decode(value["encrypted"]))
+        except Exception:
+            continue
+        fields.append({"name": key[: -len("_plain")], "value": plain})
+    if not fields:
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "该事件未加密存储明文，无法取证")
 
-    password = decrypt_secret(base64.b64decode(encrypted))
     user = db.get(EmpUser, ev.user_id)
     record_audit(
         db, account=account, module="campaign", action="reveal_password",
         target_type="track_event", target_id=str(event_id),
-        detail={"campaign_id": campaign_id, "user": user.name if user else ev.user_id},
+        detail={"campaign_id": campaign_id, "user": user.name if user else ev.user_id,
+                "fields": [f["name"] for f in fields]},
     )
-    return {"password": password, "event_id": event_id, "user": user.name if user else None}
+    return {"fields": fields, "event_id": event_id, "user": user.name if user else None}
     """发送测试：仅白名单收件人。真实 SMTP 投递由 Worker 实现（TODO 一期）。"""
     _get_or_404(db, campaign_id)
     # TODO(一期)：经通道适配器真实发送并校验 SMTP 连通性，当前仅回执占位

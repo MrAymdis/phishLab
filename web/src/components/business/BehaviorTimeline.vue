@@ -19,21 +19,21 @@
         <span>浏览器 {{ ev.browser }}</span>
         <span v-if="ev.fingerprint" class="ev-fp" :title="`完整指纹：${ev.fingerprint}`">指纹 {{ ev.fingerprint }}</span>
       </div>
-      <!-- 提交事件的表单详情：字段名 + 值表格（账号掩码/口令首尾原样呈现，口令 AES-GCM 密文不落明文） -->
+      <!-- 提交事件的表单详情：字段名 + 值表格（账号掩码/口令首尾原样呈现，密文不落明文） -->
       <table v-if="submitRows(ev).length" class="ev-submit-table">
         <tbody>
           <tr v-for="r in submitRows(ev)" :key="r.label">
             <td class="ev-submit-label">{{ r.label }}</td>
-            <td class="ev-submit-value">
-              {{ r.value }}
-              <a
-                v-if="r.reveal"
-                class="ev-reveal"
-                @click.prevent="revealPassword(ev, r.reveal)"
-              >查看口令</a>
-            </td>
+            <td class="ev-submit-value">{{ r.value }}</td>
           </tr>
         </tbody>
+        <tfoot v-if="canReveal(ev)">
+          <tr>
+            <td colspan="2">
+              <a class="ev-reveal" @click.prevent="revealFields(ev)">查看全部明文（需取证操作密码）</a>
+            </td>
+          </tr>
+        </tfoot>
       </table>
     </el-timeline-item>
   </el-timeline>
@@ -58,17 +58,41 @@ export interface TimelineEvent {
 
 const props = defineProps<{ events: TimelineEvent[]; campaignId?: number }>()
 
-/** 取证：解密口令（AES-GCM），服务端全程审计。 */
-async function revealPassword(ev: TimelineEvent, reveal: { eventId: number }): Promise<void> {
+/** 事件是否含可取证密文（任一 *_plain 字段） */
+function canReveal(ev: TimelineEvent): boolean {
+  if (!ev.detail || !ev.danger || !ev.id) return false
+  return Object.values(ev.detail).some(
+    (v) => typeof v === 'object' && v !== null && (v as Record<string, unknown>).encrypted != null,
+  )
+}
+
+/** 取证：输入操作密码 → 解密全部明文（AES-GCM），服务端全程审计。 */
+async function revealFields(ev: TimelineEvent): Promise<void> {
   try {
-    const { campaignApi } = await import('@/api')
-    const res = await campaignApi.revealSubmitPassword(props.campaignId ?? 0, reveal.eventId)
-    ElMessageBox.alert(`提交的口令为：${res.password}`, `取证口令 · ${ev.user}`, {
-      confirmButtonText: '我知道了',
-      type: 'warning',
-      message: `该操作已记录审计日志（${ev.user} 提交事件的完整口令）`,
+    const { value: op } = await ElMessageBox.prompt('请输入取证操作密码（系统设置中配置）', `取证 · ${ev.user}`, {
+      inputType: 'password',
+      confirmButtonText: '解密',
+      cancelButtonText: '取消',
+      inputPlaceholder: '取证操作密码',
     })
+    if (!op) return
+    const { campaignApi } = await import('@/api')
+    const res = await campaignApi.revealSubmitPassword(props.campaignId ?? 0, ev.id!, { operation_password: op })
+    const rows = res.fields
+      .map((f) => ({ label: FIELD_LABELS[f.name.toLowerCase()] ?? f.name, value: f.value }))
+      .map((r) => `<tr><td style="padding:4px 12px;color:#a32d2d;background:rgba(163,45,45,.08);white-space:nowrap;font-weight:600;border:1px solid rgba(163,45,45,.25)">${r.label}</td><td style="padding:4px 12px;word-break:break-all;border:1px solid rgba(163,45,45,.25)">${r.value}</td></tr>`)
+      .join('')
+    ElMessageBox.alert(
+      `<table style="border-collapse:collapse;font-size:13px;width:100%">${rows}</table>`,
+      `提交的全部明文 · ${ev.user}`,
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '我知道了',
+        message: `该操作已记录审计日志（${ev.user} 提交事件的完整明文）`,
+      },
+    )
   } catch (err) {
+    if (err === 'cancel' || err === 'close') return
     ElMessage.error(`取证失败：${err instanceof Error ? err.message : String(err)}`)
   }
 }
@@ -89,10 +113,10 @@ const FIELD_LABELS: Record<string, string> = {
   verifycode: '验证码',
   verifycellcode: '短信验证码',
 }
-function submitRows(ev: TimelineEvent): { label: string; value: string; reveal?: { eventId: number } }[] {
+function submitRows(ev: TimelineEvent): { label: string; value: string }[] {
   const detail = ev.detail
   if (!detail || !ev.danger) return []
-  const rows: { label: string; value: string; reveal?: { eventId: number } }[] = []
+  const rows: { label: string; value: string }[] = []
   for (const [key, value] of Object.entries(detail)) {
     if (key.endsWith('_mask')) {
       if (!value) continue
@@ -108,13 +132,7 @@ function submitRows(ev: TimelineEvent): { label: string; value: string; reveal?:
       const shown = first && last
         ? `${first}${'*'.repeat(Math.max(0, len - 2))}${last}`
         : `已输入（${len} 位）`
-      const hasCipher = (value as Record<string, unknown>).encrypted != null
-      rows.push({
-        label: FIELD_LABELS[key.toLowerCase()] ?? key,
-        value: shown,
-        // 有 AES-GCM 密文才可取证（历史/加密失败事件不展示入口）
-        reveal: hasCipher && ev.id ? { eventId: ev.id } : undefined,
-      })
+      rows.push({ label: FIELD_LABELS[key.toLowerCase()] ?? key, value: shown })
     } else if (key === 'fp_hash' && value) {
       rows.push({ label: '设备指纹', value: String(value) })
     }

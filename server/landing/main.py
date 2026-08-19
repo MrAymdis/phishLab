@@ -192,9 +192,12 @@ def _fp_hash(fp_json: str) -> str | None:
 
 @app.post("/p/{slug}/submit")
 async def submit(slug: str, request: Request):
-    """表单捕获：口令 AES-GCM 加密入库（明文不落盘）+ 长度/首尾字符用于展示；账号存脱敏掩码；指纹组件哈希入库。
+    """表单捕获：所有字段 AES-GCM 加密入库（明文不落盘）；口令另存长度/首尾字符用于展示；
+    账号等非口令字段存脱敏掩码用于展示；指纹组件哈希入库。
 
-    取证：管理端授权解密（全程审计）；≤2 位只存长度（首尾即完整口令）。
+    取证：管理端输入操作密码解密全部明文（全程审计）；≤2 位口令只存长度（首尾即完整口令）。
+
+    detail 结构：口令 {len, first?, last?} / 非口令 *_mask（展示）；*_plain {encrypted}（取证）。
 
     TODO(一期)：token 反查 campaign → training_policy：redirect(302 培训页)/popup/none
     """
@@ -210,18 +213,19 @@ async def submit(slug: str, request: Request):
         if key in ("token", "fp"):
             continue
         v = str(value or "")
-        if "pass" in key.lower():  # 口令：AES-GCM 密文 + 长度 + 首尾字符（展示用）
+        if "pass" in key.lower():  # 口令：长度 + 首尾字符（展示），密文走 _plain
             pv = {"len": len(v)}
             if len(v) > 2:
                 pv["first"] = v[:1]
                 pv["last"] = v[-1:]
-            try:
-                pv["encrypted"] = base64.b64encode(encrypt_secret(v)).decode()
-            except Exception:
-                pass  # 加密失败退化为仅长度，不阻断提交
             detail[key] = pv
-        else:  # 账号等非口令字段：脱敏掩码
+        else:  # 账号等非口令字段：脱敏掩码（展示）
             detail[f"{key}_mask"] = _mask_value(v)
+        if v:  # 取证密文：明文 AES-GCM 加密，明文绝不落盘
+            try:
+                detail[f"{key}_plain"] = {"encrypted": base64.b64encode(encrypt_secret(v)).decode()}
+            except Exception:
+                pass  # 加密失败退化为不存密文，不阻断提交
     fp_hash = _fp_hash(str(form.get("fp") or ""))
     if fp_hash:
         detail["fp_hash"] = fp_hash

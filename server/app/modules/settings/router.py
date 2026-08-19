@@ -53,6 +53,9 @@ def get_settings(db: Session = Depends(get_db)):
     data = dict(_DEFAULTS)
     for row in db.scalars(select(PlatformSetting)).all():
         data[row.setting_key] = _decode(row.setting_value)
+    # 取证操作密码只回显"是否已配置"，不暴露哈希
+    if data.get("reveal_operation_pwd"):
+        data["reveal_operation_pwd"] = "1"
     return resp.ok(data)
 
 
@@ -68,6 +71,11 @@ def update_settings(
             value = json.dumps(value, ensure_ascii=False)
         elif value is not None and not isinstance(value, str):
             value = str(value)
+        # 取证操作密码：只存 PBKDF2 哈希（不存原文/可逆密文），仅可验证不可还原
+        if key == "reveal_operation_pwd" and value:
+            from app.core.security import hash_password
+
+            value = hash_password(str(value))
         row = db.get(PlatformSetting, key)
         if row is None:
             row = PlatformSetting(setting_key=key, setting_value=value)

@@ -295,7 +295,7 @@
                     <el-input v-model="brand.icp" placeholder="京ICP备00000000号" />
                   </el-form-item>
                   <el-form-item>
-                    <el-button type="primary" size="small">保存品牌设置</el-button>
+                    <el-button type="primary" size="small" @click="saveBrand">保存品牌设置</el-button>
                   </el-form-item>
                 </el-form>
               </div>
@@ -322,7 +322,7 @@
                     <el-input v-model="track.redirect_url" placeholder="https://company.com" />
                   </el-form-item>
                   <el-form-item>
-                    <el-button type="primary" size="small">保存追踪配置</el-button>
+                    <el-button type="primary" size="small" @click="saveTracking">保存追踪配置</el-button>
                   </el-form-item>
                 </el-form>
               </div>
@@ -363,13 +363,24 @@
                     <el-input v-model="privacy.disclaimer" type="textarea" :rows="3"
                       placeholder="演练仅用于安全意识教育目的，所有收集数据将在演练结束后按留存策略销毁..." />
                   </el-form-item>
+                  <el-form-item label="取证操作密码">
+                    <el-input
+                      v-model="privacy.reveal_operation_pwd"
+                      type="password"
+                      show-password
+                      :placeholder="revealPwdConfigured ? '已配置（留空表示不修改）' : '设置后用于取证查看提交明文'"
+                    />
+                    <div style="font-size: 11px; color: var(--color-text-tertiary); line-height: 1.6; margin-top: 4px">
+                      查看员工提交的口令明文前需输入此密码，PBKDF2 哈希存储，解密操作全程留审计
+                    </div>
+                  </el-form-item>
                   <el-form-item>
                     <el-checkbox v-model="privacy.compliance_confirm">
                       已确认符合《网络安全法》《个人信息保护法》及公司合规要求
                     </el-checkbox>
                   </el-form-item>
                   <el-form-item>
-                    <el-button type="primary" size="small">保存合规设置</el-button>
+                    <el-button type="primary" size="small" @click="savePrivacy">保存合规设置</el-button>
                   </el-form-item>
                 </el-form>
               </div>
@@ -506,7 +517,10 @@ const privacy = reactive({
   retention_log: '1y',
   disclaimer: '本平台所有钓鱼演练活动仅用于企业内部安全意识教育目的。演练中收集的所有行为数据（打开、点击、提交、下载等）将严格保密，仅用于评估员工安全意识水平，并在数据留存周期到期后自动销毁。所有演练不涉及真实的恶意行为。',
   compliance_confirm: true,
+  reveal_operation_pwd: '',
 })
+/** 取证操作密码是否已配置（GET 只回显 "1"，绝不回显哈希） */
+const revealPwdConfigured = ref(false)
 const siem = reactive({ server: 'siem.corp.local', port: 514, proto: 'udp', tls: false })
 const whType = ref('wecom')
 const wh = reactive({
@@ -579,6 +593,50 @@ const moduleRows = [
 const loadWarning = () => ElMessage.warning('接口数据加载失败，已展示演示数据')
 const toFlag = (v: unknown) => v === '1' || v === 1 || v === true
 
+// ---- 保存（基础参数 → platform_setting）----
+const saveBrand = async () => {
+  try {
+    await systemApi.updateSettings({
+      name: brand.name, copyright: brand.copyright, icp: brand.icp,
+    })
+    ElMessage.success('品牌设置已保存')
+  } catch (err) {
+    ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+const saveTracking = async () => {
+  try {
+    await systemApi.updateSettings({
+      track_domain: track.domain, link_expire: track.link_expire, redirect_url: track.redirect_url,
+      pixel_enabled: privacy.tracking_pixel ? '1' : '0',
+    })
+    ElMessage.success('追踪配置已保存')
+  } catch (err) {
+    ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+const savePrivacy = async () => {
+  try {
+    const payload: Record<string, unknown> = {
+      retention_drill: privacy.retention_drill,
+      retention_behavior: privacy.retention_behavior,
+      retention_log: privacy.retention_log,
+      disclaimer: privacy.disclaimer,
+      compliance_confirm: privacy.compliance_confirm ? '1' : '0',
+    }
+    // 留空 = 不修改既有操作密码；输入则覆盖（后端 PBKDF2 哈希存储）
+    if (privacy.reveal_operation_pwd) payload.reveal_operation_pwd = privacy.reveal_operation_pwd
+    await systemApi.updateSettings(payload)
+    if (privacy.reveal_operation_pwd) {
+      revealPwdConfigured.value = true
+      privacy.reveal_operation_pwd = ''
+    }
+    ElMessage.success('合规设置已保存')
+  } catch (err) {
+    ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 onMounted(async () => {
   // 角色列表
   try {
@@ -629,6 +687,7 @@ onMounted(async () => {
       if (s.retention_log) privacy.retention_log = s.retention_log
       if (s.disclaimer) privacy.disclaimer = s.disclaimer
       if (s.compliance_confirm !== undefined && s.compliance_confirm !== null) privacy.compliance_confirm = toFlag(s.compliance_confirm)
+      if (s.reveal_operation_pwd) revealPwdConfigured.value = true
     }
   } catch { loadWarning() }
 
