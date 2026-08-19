@@ -61,12 +61,17 @@ def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "
 </body></html>""" + FP_SCRIPT
 
 
-def _render_custom_html(page, slug: str, token: str) -> str:
+def _render_custom_html(page, slug: str, token: str, submit_base: str = "") -> str:
     """渲染自定义/克隆页面：静态渲染 + 消毒 + 表单重定向 + token/指纹注入，
-    逻辑收敛在 template.service.render_cloned_html（预览接口共用，保证一致）。"""
+    逻辑收敛在 template.service.render_cloned_html（预览接口共用，保证一致）。
+
+    submit_base 传演练域名（request.base_url）：克隆页 <base> 指向原站，表单 action
+    必须用绝对 URL，否则会被 base 劫持提交到原站域名。"""
     from app.modules.template.service import render_cloned_html
 
-    return render_cloned_html(page.html_content or "", slug, token, page.clone_from_url or "")
+    return render_cloned_html(
+        page.html_content or "", slug, token, page.clone_from_url or "", submit_base
+    )
 
 
 def _load_page(slug: str):
@@ -150,7 +155,7 @@ def serve(slug: str, request: Request, token: str = ""):
     page = _load_page(slug)
     if page is not None and page.html_content:
         return HTMLResponse(
-            _render_custom_html(page, slug, token),
+            _render_custom_html(page, slug, token, str(request.base_url)),
             headers={"Cache-Control": "no-store"},
         )
     # TODO(一期)：注入指纹采集 JS（Canvas/WebGL/字体），写入 fingerprint 表

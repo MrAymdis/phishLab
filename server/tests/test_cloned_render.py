@@ -105,8 +105,33 @@ def test_js_generated_form_gets_fallback():
     assert 'action="/p/s2/submit"' in out
 
 
+def test_submit_base_absolute_action():
+    """演练域名经 submit_base 传入：表单 action 为绝对 URL，不受克隆页 <base>（原站域名）劫持。"""
+    page = _COREMAIL_PAGE.replace(
+        'action="/coremail/index.jsp"',
+        'action="/coremail/index.jsp"',  # 原站表单 action 被整体重写
+    )
+    out = render_cloned_html(
+        page, "ab12", "tok-9", "https://mail.example.com/",
+        submit_base="http://p.drill.example.com",
+    )
+    assert 'action="http://p.drill.example.com/p/ab12/submit"' in out
+    # 带尾斜杠的 base 也归一化，不出现双斜杠
+    out2 = render_cloned_html(
+        page, "ab12", "", "https://mail.example.com/",
+        submit_base="http://p.drill.example.com/",
+    )
+    assert 'action="http://p.drill.example.com/p/ab12/submit"' in out2
+    # 兜底登录表单同样使用绝对 action
+    bare = "<html><body><div class='content'></div></body></html>"
+    out3 = render_cloned_html(
+        bare, "ab12", "", "", submit_base="http://p.drill.example.com",
+    )
+    assert 'action="http://p.drill.example.com/p/ab12/submit"' in out3
+
+
 def test_landing_serve_renders_cloned_page():
-    """落地页服务 /p/{slug} 端到端：返回静态渲染+消毒后的页面。"""
+    """落地页服务 /p/{slug} 端到端：返回静态渲染+消毒后的页面，表单 action 用请求 host。"""
     db = SessionLocal()
     db.add(LandingPage(
         name="克隆-mail.example.com", type="cloned", slug="serve001",
@@ -123,5 +148,5 @@ def test_landing_serve_renders_cloned_page():
     assert r.status_code == 200
     body = r.text
     assert "img_id=logo_001" in body
-    assert 'action="/p/serve001/submit"' in body
+    assert 'action="http://testserver/p/serve001/submit"' in body
     assert "CUSTOME_DATA" not in body

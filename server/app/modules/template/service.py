@@ -849,7 +849,7 @@ def _render_coremail_shell(html: str) -> str:
 
 
 _FALLBACK_LOGIN = """<div style="max-width:360px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:32px;font-family:'Microsoft YaHei',Arial,sans-serif;">
-<form method="post" action="/p/{slug}/submit" style="display:flex;flex-direction:column;gap:14px;">
+<form method="post" action="{submit_base}/p/{slug}/submit" style="display:flex;flex-direction:column;gap:14px;">
   <h3 style="margin:0 0 8px;text-align:center;color:#333;font-size:18px;">账号登录</h3>
   <input type="text" name="uid" placeholder="用户名 / 邮箱" required style="width:100%;padding:11px 14px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:14px;" />
   <input type="password" name="password" placeholder="密码" required style="width:100%;padding:11px 14px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:14px;" />
@@ -860,9 +860,13 @@ _FALLBACK_LOGIN = """<div style="max-width:360px;margin:0 auto;background:#fff;b
 </div>"""
 
 
-def _inject_fallback_login(html: str, slug: str, token: str) -> str:
-    """兜底表单注入策略：优先替换常见的 JS 占位容器，否则追加在 </body> 之前。"""
-    form_html = _FALLBACK_LOGIN.format(slug=slug, token=token)
+def _inject_fallback_login(html: str, slug: str, token: str, submit_base: str = "") -> str:
+    """兜底表单注入策略：优先替换常见的 JS 占位容器，否则追加在 </body> 之前。
+
+    submit_base 传演练域名（如 http://p.example.com），表单 action 用绝对 URL，
+    避免被克隆页 <base>（原站域名）劫持；为空时退化为相对路径。
+    """
+    form_html = _FALLBACK_LOGIN.format(slug=slug, token=token, submit_base=submit_base)
     # 1) 替换空 content / loginArea 容器
     for pattern in [
         r"<div\b[^>]*class\s*=\s*['\"]content['\"][^>]*>\s*</div>",
@@ -877,15 +881,19 @@ def _inject_fallback_login(html: str, slug: str, token: str) -> str:
     return html + form_html
 
 
-def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: str = "") -> str:
+def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: str = "",
+                       submit_base: str = "") -> str:
     """克隆/自定义页服务端渲染 + 消毒，落地页服务与预览接口共用（所见即受害者所见）。
 
     1) Coremail 等 JS 渲染页面静态化：JS 模板+数据 → 静态壳（内容区/登录侧栏/背景），
        保证与原页视觉一致；
     2) 红线消毒：剥离脚本/内联事件/内嵌框架——原页登录 JS 会把口令发回真实系统，
        消毒后口令只进入本服务的提交端点（仅记录是否输入+长度）；
-    3) 相对资源解析（<base>）、表单重定向 /p/{slug}/submit、注入 token/指纹隐藏域。
+    3) 相对资源解析（<base>）、表单重定向到 submit_base/p/{slug}/submit、注入 token/指纹隐藏域。
+       submit_base 传演练域名：页面 <base> 指向原站（热链资源），root-relative action
+       会被劫持到原站域名，必须用绝对 URL 提交到本服务。
     """
+    submit_base = (submit_base or "").rstrip("/")
     html = normalize_cloned_html(_render_coremail_shell(html))
 
     # 1) 剥离脚本（自闭合/配对两种写法）
@@ -930,17 +938,19 @@ def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: st
         f'<input type="hidden" name="fp" id="fp-input" value="" />'
     )
 
+    submit_action = f"{submit_base}/p/{slug}/submit" if submit_base else f"/p/{slug}/submit"
+
     def _rewrite_form(m: "re.Match") -> str:
         tag = m.group(0)
         if re.search(r"\saction\s*=", tag, re.I):
             tag = re.sub(
                 r"\saction\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)",
-                f' action="/p/{slug}/submit"',
+                f' action="{submit_action}"',
                 tag,
                 flags=re.I,
             )
         else:
-            tag = tag[:-1].rstrip() + f' action="/p/{slug}/submit">'
+            tag = tag[:-1].rstrip() + f' action="{submit_action}">'
         if re.search(r"\s+method\s*=", tag, re.I):
             tag = re.sub(
                 r"\s+method\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)",
@@ -964,7 +974,7 @@ def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: st
 
     # 5) 目标站登录表单可能完全由 JS 生成（静态化后仍无表单）：注入兜底登录表单
     if not re.search(r"<form\b", html, re.I):
-        html = _inject_fallback_login(html, slug, token)
+        html = _inject_fallback_login(html, slug, token, submit_base)
 
     # 6) 注入指纹采集（存在 </body> 则前置，否则追加文末）
     if re.search(r"</body\s*>", html, re.I):
