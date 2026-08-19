@@ -106,7 +106,7 @@
 
         <el-tab-pane label="伪装发件人" name="sender">
           <div class="toolbar">
-            <el-button type="primary" size="small" :icon="Plus" @click="senderDialog = true">新增伪装发件人</el-button>
+            <el-button type="primary" size="small" :icon="Plus" @click="openSenderDialog()">新增伪装发件人</el-button>
           </div>
           <el-table :data="senderRows" size="small" style="margin-top: 12px">
             <el-table-column label="显示名" prop="display_name" width="140" />
@@ -130,10 +130,10 @@
             </el-table-column>
             <el-table-column label="关联通道" prop="channel" width="160" />
             <el-table-column label="操作" width="200">
-              <template #default>
-                <el-button size="small" link>编辑</el-button>
-                <el-button size="small" link type="primary">测试</el-button>
-                <el-button size="small" link type="danger">删除</el-button>
+              <template #default="{ row }">
+                <el-button size="small" link type="primary" @click="openSenderEdit(row)">编辑</el-button>
+                <el-button size="small" link @click="openSenderTest(row)">测试</el-button>
+                <el-button size="small" link type="danger" @click="deleteSender(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -260,7 +260,7 @@
                   v-model="channelForm.smtp_pass"
                   type="password"
                   show-password
-                  placeholder="输入SMTP密码或授权码"
+                  :placeholder="secretPlaceholder('输入SMTP密码或授权码')"
                 />
               </el-form-item>
             </el-col>
@@ -285,7 +285,7 @@
                   v-model="channelForm.ews_pass"
                   type="password"
                   show-password
-                  placeholder="输入Exchange账号密码"
+                  :placeholder="secretPlaceholder('输入Exchange账号密码')"
                 />
               </el-form-item>
             </el-col>
@@ -318,7 +318,7 @@
                     v-model="channelForm.ews_client_secret"
                     type="password"
                     show-password
-                    placeholder="Azure AD应用的Client Secret"
+                    :placeholder="secretPlaceholder('Azure AD应用的Client Secret')"
                   />
                 </el-form-item>
               </el-col>
@@ -383,7 +383,7 @@
                   v-model="channelForm.sms_api_secret"
                   type="password"
                   show-password
-                  placeholder="输入API密钥（AccessSecret）"
+                  :placeholder="secretPlaceholder('输入API密钥（AccessSecret）')"
                 />
               </el-form-item>
             </el-col>
@@ -413,52 +413,6 @@
             <div class="form-hint">在短信服务商后台申请的模板编号</div>
           </el-form-item>
         </template>
-
-        <!-- 伪装发件人配置 -->
-        <div class="sender-block">
-          <div class="sender-block-title">伪装发件人配置</div>
-          <el-form-item label="发件人显示名称" prop="sender_display_name">
-            <el-input v-model="channelForm.sender_display_name" placeholder="如：财务部-报销系统通知" />
-            <div class="form-hint">员工收到邮件/短信时显示的发件人名称</div>
-          </el-form-item>
-          <template v-if="channelForm.type !== 'sms'">
-            <el-row :gutter="16">
-              <el-col :span="12">
-                <el-form-item label="发件邮箱地址" prop="sender_email">
-                  <el-input v-model="channelForm.sender_email" placeholder="如：noreply@finance-company-notice.com" />
-                  <div class="form-hint">邮件演练专用，需使用已配置的域名</div>
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="回复地址 Reply-To">
-                  <el-input v-model="channelForm.sender_reply_to" placeholder="默认同发件邮箱" />
-                  <div class="form-hint">建议设为不可回复地址</div>
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </template>
-          <template v-else>
-            <el-row :gutter="16">
-              <el-col :span="12">
-                <el-form-item label="短信发送号码" prop="sender_sms_number">
-                  <el-input v-model="channelForm.sender_sms_number" placeholder="如：1069001234567" />
-                  <div class="form-hint">短信通道的发送号码或扩展号</div>
-                </el-form-item>
-              </el-col>
-              <el-col :span="12">
-                <el-form-item label="短信签名" prop="sender_sms_sign">
-                  <el-input v-model="channelForm.sender_sms_sign" placeholder="如：【企业安全中心】" />
-                  <div class="form-hint">短信正文前缀签名</div>
-                </el-form-item>
-              </el-col>
-            </el-row>
-          </template>
-          <el-form-item label="适用场景标签">
-            <el-checkbox-group v-model="channelForm.sender_tags">
-              <el-checkbox v-for="t in SCENE_TAGS" :key="t" :value="t">{{ t }}</el-checkbox>
-            </el-checkbox-group>
-          </el-form-item>
-        </div>
 
         <el-form-item label="每日发送上限">
           <el-input v-model="channelForm.daily_limit" placeholder="如：5000" style="width: 220px" />
@@ -546,7 +500,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="senderDialog" title="新增伪装发件人" width="520px">
+    <el-dialog v-model="senderDialog" :title="editingSenderId ? '编辑伪装发件人' : '新增伪装发件人'" width="520px">
       <el-form :model="senderForm" label-width="100px" size="default">
         <el-form-item label="显示名">
           <el-input v-model="senderForm.display_name" placeholder="财务部通知" />
@@ -568,15 +522,57 @@
           </el-select>
         </el-form-item>
         <el-form-item label="关联通道">
-          <el-select v-model="senderForm.channel" style="width: 100%">
-            <el-option label="主SMTP (smtp.company.com)" value="主SMTP" />
-            <el-option label="备用SMTP (smtp2.company.com)" value="备用SMTP" />
+          <el-select v-model="senderForm.channel_id" clearable placeholder="默认 SMTP 通道（自动选择）" style="width: 100%">
+            <el-option v-for="c in smtpChannels" :key="c.id" :label="c.name" :value="c.id">
+              <span>{{ c.name }}</span>
+              <span v-if="c.is_default" class="channel-default-tag">默认</span>
+            </el-option>
           </el-select>
         </el-form-item>
+        <div class="form-hint">
+          发信使用所选通道的发送账号，收件端展示的 From 为上述显示名与发件地址；留空表示自动选择默认 SMTP 通道
+        </div>
       </el-form>
       <template #footer>
         <el-button @click="senderDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveSender">确认添加</el-button>
+        <el-button type="primary" @click="saveSender">{{ editingSenderId ? '保存修改' : '确认添加' }}</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="senderTestDialog" title="测试伪装发件人" width="480px">
+      <el-form label-width="100px" size="default">
+        <el-form-item label="伪装发件人">
+          <span>{{ senderTestName }}</span>
+          <span v-if="senderTestAddr" style="color: var(--color-text-tertiary); margin-left: 6px">
+            &lt;{{ senderTestAddr }}&gt;
+          </span>
+        </el-form-item>
+        <el-form-item label="发送通道">
+          <span>{{ senderTestChannel || '—' }}</span>
+        </el-form-item>
+        <el-form-item label="收件邮箱">
+          <el-input v-model="senderTestTo" placeholder="如：zhangsan@company.com" clearable />
+        </el-form-item>
+        <el-alert
+          v-if="senderTestResult"
+          :type="senderTestResult.ok ? 'success' : 'error'"
+          :closable="false"
+          show-icon
+          style="margin-bottom: 12px"
+        >
+          <template #title>{{ senderTestResult.message }}</template>
+        </el-alert>
+        <div v-if="senderTestResult?.note" class="form-hint" style="margin-bottom: 12px">
+          {{ senderTestResult.note }}
+        </div>
+        <div class="form-hint">
+          通过「{{ senderTestChannel }}」真实发送一封测试邮件，收件端将看到伪装发件人的显示名与 From 地址；
+          公共邮箱（QQ/163 等）强制 From 为发送账号，仅保留显示名伪装，完整伪装请用自有演练域名
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="senderTestDialog = false">关闭</el-button>
+        <el-button type="primary" :loading="senderTestLoading" @click="runSenderTest">发送测试邮件</el-button>
       </template>
     </el-dialog>
   </div>
@@ -608,6 +604,25 @@ interface ChannelItem {
   auth_mode?: string
   provider?: string
   signature?: string
+  // 编辑回填字段（后端 list 返回；密码/密钥只回显 has_*）
+  smtp_user?: string
+  smtp_encryption?: string
+  ews_user?: string
+  ews_auth_mode_raw?: string
+  oauth_client_id?: string
+  oauth_tenant_id?: string
+  sms_url?: string
+  sms_key?: string
+  sms_template_id?: string
+  sms_port_dev?: string
+  sms_baudrate?: number
+  sms_sim?: string
+  has_smtp_pass?: boolean
+  has_ews_pass?: boolean
+  has_client_secret?: boolean
+  has_sms_secret?: boolean
+  daily_limit?: number
+  is_default?: boolean
 }
 
 const activeTab = ref('channel')
@@ -638,14 +653,18 @@ const channels = ref<ChannelItem[]>([
     provider: '自定义 HTTP Webhook', signature: '【系统公告】', score: 82, last_test: '2026-08-12 11:15' },
 ])
 
-// ========== 统计卡片（由当前通道 mock 数据计算） ==========
+// ========== 统计卡片 ==========
+// 本月发送总量：由后端从 campaign_target.sent_at 真实聚合（overview 接口）
+const monthlySent = ref(0)
+const dailyAvg = ref(0)
+
 const statCards = computed(() => {
   const okCount = channels.value.filter((c) => c.status === 'ok').length
   return [
     { label: '服务器总数', value: channels.value.length, sub: 'SMTP / EWS / 短信机 三类通道', accent: 'blue', color: '', live: false },
     { label: '正常可用', value: okCount, sub: '运行中，可随时发送', accent: 'green', color: 'var(--color-text-success)', live: true },
     { label: '异常需关注', value: channels.value.length - okCount, sub: '请及时检查连接配置', accent: 'orange', color: 'var(--accent-orange)', live: false },
-    { label: '本月发送总量', value: '12,860', sub: '日均约 415 封', accent: 'teal', color: '', live: false },
+    { label: '本月发送总量', value: monthlySent.value.toLocaleString(), sub: `日均约 ${dailyAvg.value} 封`, accent: 'teal', color: '', live: false },
   ]
 })
 
@@ -702,13 +721,6 @@ interface ChannelFormState {
   // 公共字段
   daily_limit: string
   is_default: boolean
-  // 伪装发件人
-  sender_display_name: string
-  sender_email: string
-  sender_reply_to: string
-  sender_sms_number: string
-  sender_sms_sign: string
-  sender_tags: string[]
 }
 
 function defaultChannelForm(type: ChannelType): ChannelFormState {
@@ -720,8 +732,6 @@ function defaultChannelForm(type: ChannelType): ChannelFormState {
     sms_provider: 'aliyun', sms_url: '', sms_signature: '', sms_api_key: '', sms_api_secret: '',
     sms_template_id: '', sms_port_dev: '', sms_baudrate: '115200', sms_sim: '',
     daily_limit: '5000', is_default: false,
-    sender_display_name: '', sender_email: '', sender_reply_to: '',
-    sender_sms_number: '', sender_sms_sign: '', sender_tags: [],
   }
 }
 
@@ -734,26 +744,27 @@ const channelRules = computed<FormRules>(() => {
   const req = (message: string, trigger: 'blur' | 'change' = 'blur') => ({ required: true, message, trigger })
   const rules: FormRules = {
     name: [req('请输入通道名称')],
-    sender_display_name: [req('请输入发件人显示名称')],
   }
+  // 密码/密钥类：新建必填；编辑时可留空（留空沿用已有密文，placeholder 有提示）
+  const secretRequired = !editingChannel.value
   if (channelForm.type === 'smtp') {
     rules.smtp_host = [req('请输入SMTP服务器地址')]
     rules.smtp_port = [req('请输入端口')]
     rules.smtp_user = [req('请输入发送账号')]
-    rules.smtp_pass = [req('请输入密码 / 授权码')]
+    if (secretRequired) rules.smtp_pass = [req('请输入密码 / 授权码')]
   } else if (channelForm.type === 'ews') {
     rules.ews_url = [req('请输入EWS服务URL')]
     rules.ews_user = [req('请输入认证账号')]
-    rules.ews_pass = [req('请输入密码')]
+    if (secretRequired) rules.ews_pass = [req('请输入密码')]
     if (channelForm.ews_auth_mode === 'oauth') {
       rules.ews_client_id = [req('请输入Client ID')]
-      rules.ews_client_secret = [req('请输入Client Secret')]
+      if (secretRequired) rules.ews_client_secret = [req('请输入Client Secret')]
     }
   } else {
     rules.sms_url = [req(channelForm.sms_provider === '4g' ? '请输入管理IP' : '请输入API地址 / 网关URL')]
     rules.sms_signature = [req('请输入短信签名')]
     rules.sms_api_key = [req('请输入API Key')]
-    rules.sms_api_secret = [req('请输入API Secret')]
+    if (secretRequired) rules.sms_api_secret = [req('请输入API Secret')]
   }
   if (channelForm.type === 'sms') {
     rules.sender_sms_number = [req('请输入短信发送号码')]
@@ -781,6 +792,11 @@ function guessSmsProvider(provider?: string): string {
   return 'aliyun'
 }
 
+/** 密码/密钥输入占位：编辑模式提示已设置可留空（留空=沿用密文，后端不覆盖） */
+function secretPlaceholder(base: string): string {
+  return editingChannel.value ? `已设置，留空保持原值（${base}）` : base
+}
+
 function openChannelDialog(type: ChannelType, channel?: ChannelItem) {
   editingChannel.value = channel ?? null
   // 重置测试邮件状态
@@ -789,16 +805,35 @@ function openChannelDialog(type: ChannelType, channel?: ChannelItem) {
   Object.assign(channelForm, defaultChannelForm(type))
   if (channel) {
     channelForm.name = channel.name
+    channelForm.daily_limit = channel.daily_limit != null ? String(channel.daily_limit) : '5000'
+    channelForm.is_default = !!channel.is_default
     if (channel.type === 'smtp') {
       channelForm.smtp_host = channel.server ?? ''
       channelForm.smtp_port = channel.port ? String(channel.port) : '587'
-      channelForm.smtp_encryption = channel.ssl ? 'SSL' : 'STARTTLS'
+      const enc = (channel.smtp_encryption || (channel.ssl ? 'SSL' : 'STARTTLS')).toUpperCase()
+      channelForm.smtp_encryption = enc === 'NONE' ? 'NONE' : (enc === 'SSL' ? 'SSL' : 'STARTTLS')
+      channelForm.smtp_user = channel.smtp_user ?? ''
+      // 密码已设置：留空表示沿用，校验按编辑模式放行
+      channelForm.smtp_pass = ''
     } else if (channel.type === 'ews') {
       channelForm.ews_url = channel.url ?? ''
-      channelForm.ews_auth_mode = channel.auth_mode?.includes('OAuth') ? 'oauth' : 'basic'
+      channelForm.ews_auth_mode = channel.ews_auth_mode_raw === 'oauth2'
+        ? 'oauth' : (channel.auth_mode?.includes('OAuth') ? 'oauth' : 'basic')
+      channelForm.ews_user = channel.ews_user ?? ''
+      channelForm.ews_client_id = channel.oauth_client_id ?? ''
+      channelForm.ews_tenant_id = channel.oauth_tenant_id ?? ''
+      channelForm.ews_pass = ''
+      channelForm.ews_client_secret = ''
     } else {
       channelForm.sms_provider = guessSmsProvider(channel.provider)
       channelForm.sms_signature = channel.signature ?? ''
+      channelForm.sms_url = channel.sms_url ?? ''
+      channelForm.sms_api_key = channel.sms_key ?? ''
+      channelForm.sms_template_id = channel.sms_template_id ?? ''
+      channelForm.sms_port_dev = channel.sms_port_dev ?? ''
+      channelForm.sms_baudrate = channel.sms_baudrate != null ? String(channel.sms_baudrate) : '115200'
+      channelForm.sms_sim = channel.sms_sim ?? ''
+      channelForm.sms_api_secret = ''
     }
   }
   channelDialogVisible.value = true
@@ -845,7 +880,6 @@ function buildChannelPayload(): Record<string, unknown> {
     daily_limit: Number(channelForm.daily_limit) || 5000,
     is_default: channelForm.is_default,
     config,
-    // TODO: 弹窗内「伪装发件人配置」需单独走 sender-profiles 接口，暂不同时提交
   }
 }
 
@@ -906,32 +940,121 @@ async function submitDomainForm() {
   }
 }
 
-// ========== 伪装发件人（独立 Tab 弹窗，保留原实现） ==========
+// ========== 伪装发件人（独立 Tab） ==========
 const senderDialog = ref(false)
+const editingSenderId = ref<number | null>(null)
 const senderForm = reactive({
-  display_name: '', address: '', reply_to: '', scene_tags: [] as string[], channel: '',
+  display_name: '', address: '', reply_to: '', scene_tags: [] as string[], channel_id: null as number | null,
 })
+
+// 可选关联通道：仅 SMTP 类型（测试/发信仅支持 SMTP 通道）
+const smtpChannels = computed(() => channels.value.filter((c) => c.type === 'smtp'))
+
+function openSenderDialog() {
+  editingSenderId.value = null
+  senderForm.display_name = ''
+  senderForm.address = ''
+  senderForm.reply_to = ''
+  senderForm.scene_tags = []
+  senderForm.channel_id = null
+  senderDialog.value = true
+}
+
+function openSenderEdit(row: SenderRow) {
+  editingSenderId.value = row.id
+  senderForm.display_name = row.display_name
+  senderForm.address = row.address
+  senderForm.reply_to = row.reply_to
+  senderForm.scene_tags = [...(row.scene_tags ?? [])]
+  senderForm.channel_id = row.channel_id ?? null
+  senderDialog.value = true
+}
 
 async function saveSender() {
   if (!senderForm.display_name || !senderForm.address) {
     ElMessage.warning('请填写显示名和发件地址')
     return
   }
+  const payload = {
+    name: senderForm.display_name,
+    channel_type: 'mail',
+    channel_id: senderForm.channel_id,
+    display_name: senderForm.display_name,
+    from_addr: senderForm.address,
+    reply_to: senderForm.reply_to,
+    scene_tags: senderForm.scene_tags,
+  }
   try {
-    await channelApi.createSenderProfile({
-      name: senderForm.display_name,
-      channel_type: 'mail',
-      display_name: senderForm.display_name,
-      from_addr: senderForm.address,
-      reply_to: senderForm.reply_to,
-      scene_tags: senderForm.scene_tags,
-      // TODO: 关联通道(channel) 后端 SenderProfileCreate 暂未支持，默认走默认通道
-    })
+    if (editingSenderId.value) {
+      await channelApi.updateSenderProfile(editingSenderId.value, payload)
+      ElMessage.success('伪装发件人已保存')
+    } else {
+      await channelApi.createSenderProfile(payload)
+      ElMessage.success('伪装发件人已添加')
+    }
     await loadSenderProfiles()
     senderDialog.value = false
-    ElMessage.success('伪装发件人已添加')
   } catch {
     // 失败提示由 http 拦截器统一弹出
+  }
+}
+
+async function deleteSender(row: SenderRow) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除伪装发件人「${row.display_name}」（${row.address}）？被演练引用时后端将拒绝删除。`,
+      '删除伪装发件人',
+      { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await channelApi.deleteSenderProfile(row.id)
+    ElMessage.success(`伪装发件人「${row.display_name}」已删除`)
+    await loadSenderProfiles()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
+}
+
+// 测试发送：通过关联/默认 SMTP 通道真实发一封，验证 From 头伪装效果
+const senderTestDialog = ref(false)
+const senderTestLoading = ref(false)
+const senderTestName = ref('')
+const senderTestAddr = ref('')
+const senderTestChannel = ref('')
+const senderTestTo = ref('')
+const senderTestResult = ref<{ ok: boolean; message: string; note?: string } | null>(null)
+let senderTestTarget: SenderRow | null = null
+
+function openSenderTest(row: SenderRow) {
+  senderTestTarget = row
+  senderTestName.value = row.display_name
+  senderTestAddr.value = row.address
+  senderTestChannel.value = row.channel
+  senderTestTo.value = ''
+  senderTestResult.value = null
+  senderTestDialog.value = true
+}
+
+async function runSenderTest() {
+  const to = senderTestTo.value.trim()
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    ElMessage.warning('请填写正确的收件邮箱地址')
+    return
+  }
+  if (!senderTestTarget) return
+  senderTestLoading.value = true
+  senderTestResult.value = null
+  try {
+    const result = await channelApi.testSenderProfile(senderTestTarget.id, to)
+    senderTestResult.value = { ok: result.ok, message: result.message }
+    if (result.ok) ElMessage.success('测试邮件已发送，请检查收件箱中展示的发件人')
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    senderTestLoading.value = false
   }
 }
 
@@ -942,6 +1065,7 @@ interface SenderRow {
   reply_to: string
   scene_tags: string[]
   channel: string
+  channel_id?: number | null
 }
 
 interface DomainRow {
@@ -954,13 +1078,7 @@ interface DomainRow {
   last_check: string
 }
 
-const senderRows = ref<SenderRow[]>([
-  { id: 1, display_name: '财务部通知', address: 'finance-noreply@phish-mail.company.com', reply_to: '', scene_tags: ['财务报销'], channel: '主SMTP' },
-  { id: 2, display_name: 'IT运维中心', address: 'it-support@phish-mail.company.com', reply_to: 'helpdesk@company.com', scene_tags: ['系统升级', '中奖通知'], channel: '主SMTP' },
-  { id: 3, display_name: '人力资源部', address: 'hr@phish-mail.company.com', reply_to: '', scene_tags: ['HR通知', '节假日'], channel: 'Exchange EWS' },
-  { id: 4, display_name: '员工福利委员会', address: 'welfare@phish-mail.company.com', reply_to: '', scene_tags: ['中奖通知', '节假日'], channel: '备用SMTP' },
-  { id: 5, display_name: '安全中心', address: 'security@phish-mail.company.com', reply_to: '', scene_tags: ['系统升级'], channel: '主SMTP' },
-])
+const senderRows = ref<SenderRow[]>([])
 
 const domainRows = ref<DomainRow[]>([
   { id: 1, domain: 'phish-mail.company.com', spf: 'OK', dkim: 'OK', dmarc: 'OK', score: 99, last_check: '2026-08-15 03:00' },
@@ -972,8 +1090,12 @@ const domainRows = ref<DomainRow[]>([
 // ============ 接口加载（失败时保留演示数据） ============
 async function loadChannels() {
   try {
-    const list = (await channelApi.list()) as ChannelItem[]
+    const [list, ov] = await Promise.all([channelApi.list(), channelApi.overview()])
     if (Array.isArray(list)) channels.value = list
+    if (ov) {
+      monthlySent.value = ov.monthly_sent ?? 0
+      dailyAvg.value = ov.daily_avg ?? 0
+    }
   } catch {
     // 失败提示由 http 拦截器统一弹出；保留已有数据不覆盖
   }
@@ -1269,19 +1391,6 @@ onMounted(() => {
   color: var(--color-text-tertiary);
   margin-top: 4px;
 }
-.sender-block {
-  margin: 4px -20px 18px;
-  padding: 14px 20px 0;
-  background: var(--color-background-secondary);
-  border-top: 1px solid var(--color-border-tertiary);
-  border-bottom: 1px solid var(--color-border-tertiary);
-}
-.sender-block-title {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-text-primary);
-  margin-bottom: 14px;
-}
 .switch-note {
   font-size: 12px;
   color: var(--color-text-secondary);
@@ -1313,5 +1422,11 @@ onMounted(() => {
 }
 .dns-record-type {
   color: var(--color-text-info);
+}
+.channel-default-tag {
+  float: right;
+  font-size: 11px;
+  color: var(--color-primary, #378ADD);
+  margin-left: 12px;
 }
 </style>

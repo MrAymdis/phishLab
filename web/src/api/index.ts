@@ -60,6 +60,10 @@ export const orgApi = {
   createDept: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/depts', payload),
   syncSource: (system: string) => post(`/api/v1/depts/sync?source=${system}`),
+  overview: () =>
+    get<{ total: number; dept_count: number; month_new: number; month_growth: number | null; high_risk: number; trained: number; training_pct: number }>(
+      '/api/v1/emp-users/overview',
+    ),
   users: (q: Record<string, unknown>) => get('/api/v1/emp-users', q),
   user: (id: number) => get(`/api/v1/emp-users/${id}`),
   createUser: (payload: Record<string, unknown>) =>
@@ -110,6 +114,8 @@ export const templateApi = {
 // ---- 发送配置 ----
 export const channelApi = {
   list: () => get('/api/v1/channels'),
+  overview: () =>
+    get<{ monthly_sent: number; daily_avg: number }>('/api/v1/channels/overview'),
   createChannel: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/channels', payload),
   updateChannel: (id: number, payload: Record<string, unknown>) =>
@@ -139,6 +145,13 @@ export const channelApi = {
   senderProfiles: () => get('/api/v1/sender-profiles'),
   createSenderProfile: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/sender-profiles', payload),
+  updateSenderProfile: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/sender-profiles/${id}`, payload),
+  deleteSenderProfile: (id: number) => del(`/api/v1/sender-profiles/${id}`),
+  testSenderProfile: (id: number, to: string) =>
+    post<{ ok: boolean; score: number; latency_ms: number | null; message: string; note?: string }>(
+      `/api/v1/sender-profiles/${id}/test-send`, { to },
+    ),
   domains: () => get('/api/v1/domains'),
   createDomain: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/domains', payload),

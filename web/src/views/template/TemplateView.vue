@@ -817,16 +817,7 @@ const emailCatColor: Record<string, string> = {
   alert: 'var(--accent-red)',
 }
 
-const emailData = ref<EmailTemplate[]>([
-  { id: 1, name: 'OA密码过期提醒', cat: 'upgrade', catText: '系统升级', subject: '【安全提醒】您的OA账号密码即将过期', sender: 'OA系统管理员', stars: 3, used: 28, click: 24.6, preview: 'from OA系统管理员 · 02-20' },
-  { id: 2, name: '年终奖金发放通知', cat: 'finance', catText: '财务报销', subject: '关于2025年度年终奖金发放及个税申报', sender: '财务部-薪酬组', stars: 4, used: 19, click: 31.2, preview: 'from 财务部-薪酬组 · 01-15' },
-  { id: 3, name: '春节红包抽奖活动', cat: 'lottery', catText: '中奖', subject: '【恭喜】您获得春节红包抽奖资格，点击领取', sender: '员工关怀中心', stars: 2, used: 22, click: 28.9, preview: 'from 员工关怀中心 · 02-08' },
-  { id: 4, name: '新员工入职材料提交', cat: 'hr', catText: 'HR通知', subject: '【HR】请于本周五前完成入职材料在线提交', sender: '人力资源部', stars: 3, used: 15, click: 19.8, preview: 'from 人力资源部 · 03-01' },
-  { id: 5, name: '邮箱存储空间告警', cat: 'alert', catText: '安全告警', subject: '【安全告警】您的邮箱存储已满98%，请立即清理', sender: '邮件系统运维', stars: 3, used: 17, click: 22.4, preview: 'from 邮件系统运维 · 03-12' },
-  { id: 6, name: '中秋节福利领取', cat: 'holiday', catText: '节假日', subject: '中秋福利：月饼礼盒领取通知（限员工本人）', sender: '行政部', stars: 2, used: 13, click: 26.7, preview: 'from 行政部 · 09-12' },
-  { id: 7, name: 'VPN账号异常登录', cat: 'alert', catText: '安全告警', subject: '检测到您的VPN账号异地登录，请核实', sender: '信息安全部', stars: 4, used: 11, click: 18.3, preview: 'from 信息安全部 · 04-05' },
-  { id: 8, name: '差旅报销单审批', cat: 'finance', catText: '财务报销', subject: '您的差旅报销单待审批，请登录系统处理', sender: '财务共享中心', stars: 3, used: 14, click: 20.1, preview: 'from 财务共享中心 · 02-28' },
-])
+const emailData = ref<EmailTemplate[]>([])
 
 const emailCat = ref('all')
 const emailKw = ref('')
@@ -1014,14 +1005,7 @@ const ltypeColor: Record<string, string> = {
   custom: 'var(--accent-green)',
 }
 
-const landingData = ref<LandingPage[]>([
-  { id: 1, name: '企业邮箱登录页', type: 'mail', typeText: '邮箱登录', fields: 3, collect: 5, used: 18 },
-  { id: 2, name: 'OA协同办公登录', type: 'oa', typeText: 'OA系统', fields: 4, collect: 6, used: 15 },
-  { id: 3, name: '企业网盘认证页', type: 'pan', typeText: '网盘认证', fields: 3, collect: 4, used: 9 },
-  { id: 4, name: '薪资查询系统登录', type: 'custom', typeText: '自定义', fields: 2, collect: 3, used: 12 },
-  { id: 5, name: '统一支付平台', type: 'pay', typeText: '支付页面', fields: 4, collect: 7, used: 7 },
-  { id: 6, name: 'VPN接入认证页', type: 'custom', typeText: '自定义', fields: 3, collect: 4, used: 11 },
-])
+const landingData = ref<LandingPage[]>([])
 
 const landingType = ref('all')
 const landingKw = ref('')
@@ -1242,16 +1226,7 @@ const ptypeColor: Record<string, string> = {
   other: 'var(--accent-warning)',
 }
 
-const payloadData = ref<PayloadItem[]>([
-  { id: 1, name: '2025薪酬调整通知.docx', type: 'macro', typeText: '宏文档', size: '84 KB', platform: 'Windows', evade: 82, used: 16, status: 'enabled', icon: '📄' },
-  { id: 2, name: 'invoice_q3_2025.xlsm', type: 'macro', typeText: '宏文档', size: '156 KB', platform: 'Windows/macOS', evade: 75, used: 12, status: 'enabled', icon: '📊' },
-  { id: 3, name: '员工通讯录更新.exe', type: 'exe', typeText: '可执行文件', size: '1.2 MB', platform: 'Windows', evade: 68, used: 9, status: 'enabled', icon: '⚙' },
-  { id: 4, name: 'VPN客户端安装包.exe', type: 'exe', typeText: '可执行文件', size: '2.8 MB', platform: 'Windows', evade: 71, used: 7, status: 'enabled', icon: '⚙' },
-  { id: 5, name: '扫码登录认证二维码.png', type: 'qr', typeText: '二维码', size: '24 KB', platform: '全平台', evade: 96, used: 21, status: 'enabled', icon: '▦' },
-  { id: 6, name: '企业邮箱升级二维码.png', type: 'qr', typeText: '二维码', size: '28 KB', platform: '全平台', evade: 93, used: 18, status: 'enabled', icon: '▦' },
-  { id: 7, name: '会议纪要.lnk', type: 'other', typeText: '其他', size: '2 KB', platform: 'Windows', evade: 88, used: 5, status: 'disabled', icon: '🔗' },
-  { id: 8, name: '社保查询系统.jar', type: 'exe', typeText: '可执行文件', size: '420 KB', platform: 'Windows/Linux', evade: 64, used: 4, status: 'enabled', icon: '☕' },
-])
+const payloadData = ref<PayloadItem[]>([])
 
 const payloadType = ref('all')
 const payloadKw = ref('')
@@ -1311,7 +1286,7 @@ async function loadTemplates() {
     }
   }
   if ([emails, landings, payloads].some(r => r.status === 'rejected')) {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    ElMessage.error('素材数据加载失败，请检查网络或后端服务')
   }
 }
 

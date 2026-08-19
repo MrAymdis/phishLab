@@ -52,6 +52,7 @@ class SenderProfile(Base, TimestampMixin):
     id: Mapped[int] = pk()
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     channel_type: Mapped[str] = mapped_column(String(8), comment="mail/sms")
+    channel_id: Mapped[int | None] = mapped_column(BigInteger, comment="关联发送通道ID，空=用默认SMTP通道")
     display_name: Mapped[str | None] = mapped_column(String(128), comment="发件人显示名称")
     from_addr: Mapped[str | None] = mapped_column(String(128), comment="发件邮箱(需绑定已配域名)")
     reply_to: Mapped[str | None] = mapped_column(String(128))

@@ -31,6 +31,7 @@ class DomainCreate(BaseModel):
 class SenderProfileCreate(BaseModel):
     name: str
     channel_type: str  # mail/sms
+    channel_id: int | None = None  # 关联发送通道，空=用默认SMTP通道
     display_name: str | None = None
     from_addr: str | None = None
     reply_to: str | None = None
@@ -42,6 +43,11 @@ class SenderProfileCreate(BaseModel):
 @channels.get("", summary="通道列表")
 def list_channels(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.list_channels(db, account))
+
+
+@channels.get("/overview", summary="发送配置概览（本月发送总量）")
+def channel_overview(account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.channel_overview(db, account))
 
 
 @channels.post("", summary="添加发送配置（SMTP/EWS/SMS）")
@@ -129,3 +135,23 @@ def list_profiles(account=Depends(get_current_account), db: Session = Depends(ge
 @sender_profiles.post("", summary="新建伪装发件人")
 def create_profile(payload: SenderProfileCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_sender_profile(db, account, payload.model_dump())})
+
+
+@sender_profiles.put("/{pid}", summary="更新伪装发件人")
+def update_profile(pid: int, payload: SenderProfileCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"id": service.update_sender_profile(db, account, pid, payload.model_dump())})
+
+
+@sender_profiles.delete("/{pid}", summary="删除伪装发件人（被演练引用时拒绝）")
+def delete_profile(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.delete_sender_profile(db, account, pid)
+    return resp.ok({"id": pid})
+
+
+class SenderProfileTest(BaseModel):
+    to: str
+
+
+@sender_profiles.post("/{pid}/test-send", summary="用伪装发件人通过默认 SMTP 通道发送测试邮件")
+def test_profile(pid: int, payload: SenderProfileTest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.test_sender_profile(db, account, pid, payload.to))

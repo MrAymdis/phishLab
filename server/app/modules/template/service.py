@@ -10,6 +10,7 @@ from sqlalchemy import func, select
 
 from app.core.audit import record_audit
 from app.core.errors import BizError, ErrorCode
+from app.modules.campaign.models import Campaign, CampaignTarget
 
 from .models import (
     AttachmentPayload,
@@ -52,13 +53,46 @@ _VAR_RE = re.compile(r"\{\{\.\w+\}\}")
 
 
 def list_email_templates(db, account, scene=None) -> list[dict]:
-    """模板卡片列表（无分页），按使用次数倒序。"""
-    stmt = select(EmailTemplate).order_by(EmailTemplate.used_count.desc())
+    """模板卡片列表（无分页），按使用次数倒序。
+
+    使用次数/点击率为实时聚合（引用该模板的演练增删后自动正确）：
+    - used  = 引用该模板的演练场次（campaign.template_id 计数）
+    - click = 点击人次（campaign_target.click_count>0 去重）/ 目标人次 × 100
+    """
+    stmt = select(EmailTemplate)
     if scene:
         stmt = stmt.where(EmailTemplate.scene == scene)
     rows = db.scalars(stmt).all()
-    return [
-        {
+    tpl_ids = [t.id for t in rows]
+
+    used_map: dict[int, int] = {}
+    target_map: dict[int, int] = {}
+    click_map: dict[int, int] = {}
+    if tpl_ids:
+        used_map = dict(db.execute(
+            select(Campaign.template_id, func.count(Campaign.id))
+            .where(Campaign.template_id.in_(tpl_ids))
+            .group_by(Campaign.template_id)
+        ).all())
+        agg = db.execute(
+            select(
+                Campaign.template_id,
+                func.count(CampaignTarget.id),
+                func.count(func.if_(CampaignTarget.click_count > 0, 1, None)),
+            )
+            .join(CampaignTarget, CampaignTarget.campaign_id == Campaign.id)
+            .where(Campaign.template_id.in_(tpl_ids))
+            .group_by(Campaign.template_id)
+        ).all()
+        target_map = {t: (trg or 0) for t, trg, _ in agg}
+        click_map = {t: (clk or 0) for t, _, clk in agg}
+
+    items = []
+    for t in rows:
+        targets = target_map.get(t.id, 0)
+        clicks = click_map.get(t.id, 0)
+        click_rate = round(clicks / targets * 100, 2) if targets else 0.0
+        items.append({
             "id": t.id,
             "name": t.name,
             "cat": t.scene,
@@ -66,16 +100,15 @@ def list_email_templates(db, account, scene=None) -> list[dict]:
             "subject": t.subject,
             "sender": t.sender,
             "stars": t.stars,
-            "used": t.used_count,
-            "click": float(t.click_rate or 0),
+            "used": used_map.get(t.id, 0),
+            "click": click_rate,
             "preview": f"{t.subject[:24]}…" if len(t.subject) > 24 else t.subject,
             "created_at": t.created_at.strftime("%Y-%m-%d") if t.created_at else "",
             "track_pixel": bool(t.track_pixel),
             "track_link": bool(t.track_link),
             "track_attach": bool(t.track_attach),
-        }
-        for t in rows
-    ]
+        })
+    return sorted(items, key=lambda i: i["used"], reverse=True)
 
 
 def create_email_template(db, account, payload: dict) -> int:
@@ -240,7 +273,10 @@ def test_send_template(db, account, template_id: int, to: list[str]) -> dict:
 
 
 def list_landing_pages(db, account) -> list[dict]:
-    """落地页列表（无分页），字段数聚合自 landing_form_field。"""
+    """落地页列表（无分页），字段数聚合自 landing_form_field。
+
+    used 为实时聚合：引用该落地页的演练场次（campaign.landing_page_id 计数）。
+    """
     pages = db.scalars(select(LandingPage).order_by(LandingPage.id.desc())).all()
     if not pages:
         return []
@@ -252,11 +288,18 @@ def list_landing_pages(db, account) -> list[dict]:
             .group_by(LandingFormField.page_id)
         ).all()
     )
+    used_map = dict(db.execute(
+        select(Campaign.landing_page_id, func.count(Campaign.id))
+        .where(Campaign.landing_page_id.in_(ids))
+        .group_by(Campaign.landing_page_id)
+    ).all())
     result = []
     for p in pages:
         fields = counts.get(p.id, 0)
         fs = p.form_schema or {}
-        collect = int(fs.get("collect", fields)) if fs else fields
+        # 收集项 = 表单 schema 定义的字段数（与落库行数互为印证，无定义回退行数）
+        schema_fields = (fs.get("fields") or []) if fs else []
+        collect = len(schema_fields) if schema_fields else fields
         result.append(
             {
                 "id": p.id,
@@ -265,7 +308,7 @@ def list_landing_pages(db, account) -> list[dict]:
                 "typeText": _PAGE_TYPE_LABELS.get(p.type, p.type),
                 "fields": fields,
                 "collect": collect,
-                "used": p.used_count,
+                "used": used_map.get(p.id, 0),
                 "created_at": p.created_at.strftime("%Y-%m-%d") if p.created_at else "",
             }
         )

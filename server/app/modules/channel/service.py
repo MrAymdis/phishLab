@@ -8,11 +8,13 @@ import dns.exception
 import dns.resolver
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.audit import record_audit
 from app.core.errors import BizError, ErrorCode
 from app.core.security import encrypt_secret
+
+from app.modules.campaign.models import Campaign, CampaignTarget
 
 from .models import PhishDomain, SendChannel, SenderProfile
 
@@ -48,6 +50,25 @@ def _resolve_probe_target(ch_type: str, cfg: dict) -> tuple[str | None, int | No
     return None, None
 
 
+def channel_overview(db, account) -> dict:
+    """发送配置概览：本月发送总量（campaign_target 真实聚合）。
+
+    口径：本月内已实际发送的目标行（sent/delivered/bounced/failed 均计入，
+    只有 pending 未发出），以 sent_at 落点归月。
+    """
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    total = db.scalar(
+        select(func.count())
+        .select_from(CampaignTarget)
+        .where(
+            CampaignTarget.send_status.in_(["sent", "delivered", "bounced", "failed"]),
+            CampaignTarget.sent_at >= month_start,
+        )
+    ) or 0
+    days = datetime.now().day
+    return {"monthly_sent": total, "daily_avg": round(total / days) if days else 0}
+
+
 def list_channels(db, account) -> list[dict]:
     """通道列表；密码/密钥类字段永不回显。"""
     rows = db.scalars(select(SendChannel).order_by(SendChannel.id)).all()
@@ -78,6 +99,23 @@ def list_channels(db, account) -> list[dict]:
                 "signature": ch.sms_sign,
                 "daily_limit": ch.daily_limit,
                 "is_default": bool(ch.is_default),
+                # 编辑回填用（非敏感字段；密码/密钥类只回显是否已设置）
+                "smtp_user": ch.smtp_username,
+                "smtp_encryption": ch.smtp_encrypt or "",
+                "ews_user": ch.ews_username,
+                "ews_auth_mode_raw": ch.ews_auth_mode,
+                "oauth_client_id": ch.oauth_client_id,
+                "oauth_tenant_id": ch.oauth_tenant_id,
+                "sms_url": ch.sms_api_url,
+                "sms_key": ch.sms_key,
+                "sms_template_id": ch.sms_template_id,
+                "sms_port_dev": ch.serial_port,
+                "sms_baudrate": ch.baud_rate,
+                "sms_sim": ch.sim_number,
+                "has_smtp_pass": bool(ch.smtp_password_enc),
+                "has_ews_pass": bool(ch.ews_password_enc),
+                "has_client_secret": bool(ch.oauth_client_secret_enc),
+                "has_sms_secret": bool(ch.sms_secret_enc),
             }
         )
     return result
@@ -207,10 +245,19 @@ def delete_channel(db, account, channel_id: int) -> None:
     )
 
 
+def _spoof_reject_note(username: str, from_addr: str | None) -> str:
+    """伪装 From 域与发送账号域不一致时的拒收说明（公共邮箱反垃圾机制，非通道故障）。"""
+    acct_domain = username.split("@")[-1].lower() if "@" in username else ""
+    from_domain = (from_addr or "").split("@")[-1].lower() if from_addr and "@" in from_addr else ""
+    if from_addr and acct_domain and from_domain != acct_domain:
+        return "（From 为伪装地址，与发送账号域名不一致；公共邮箱会按反垃圾策略拒收，请用企业内网邮箱收件验证）"
+    return ""
+
+
 def _smtp_send(
     name: str, cfg: dict, to: str,
     subject: str | None = None, html_body: str | None = None,
-    sender_name: str | None = None,
+    sender_name: str | None = None, from_addr: str | None = None,
     attachments: list[dict] | None = None,
 ) -> dict:
     """纯发信：按 SMTP 配置真实发送一封测试邮件（不触碰数据库）。
@@ -266,7 +313,8 @@ def _smtp_send(
     else:
         msg = MIMEText(html_body, "html", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = formataddr((sender_name or name, username))
+    # from_addr 为伪装发件人地址（仅影响收件端展示的 From 头，信封仍用发送账号保证送达）
+    msg["From"] = formataddr((sender_name or name, from_addr or username))
     msg["To"] = to
 
     t0 = time.perf_counter()
@@ -286,7 +334,7 @@ def _smtp_send(
         latency = int((time.perf_counter() - t0) * 1000)
         if refused:
             return {"ok": False, "score": 40, "latency_ms": latency,
-                    "message": f"发送被拒收：{refused}"}
+                    "message": f"发送被拒收：{refused}" + _spoof_reject_note(username, from_addr)}
         return {"ok": True, "score": 100, "latency_ms": latency,
                 "message": f"邮件已发送至 {to}（{latency}ms）"}
     except smtplib.SMTPAuthenticationError:
@@ -300,7 +348,7 @@ def _smtp_send(
                 "message": f"服务器断开连接：{err}（可能是端口/加密方式不匹配）"}
     except (smtplib.SMTPException, OSError) as err:
         return {"ok": False, "score": 40, "latency_ms": None,
-                "message": f"发送失败：{err}"}
+                "message": f"发送失败：{err}" + _spoof_reject_note(username, from_addr)}
     finally:
         if server is not None:
             try:
@@ -615,17 +663,25 @@ def delete_domain(db, account, domain_id: int) -> None:
 
 
 def list_sender_profiles(db, account) -> list[dict]:
-    """伪装发件人列表；channel 取当前默认发送通道名。"""
-    default_channel = db.scalar(select(SendChannel.name).where(SendChannel.is_default == 1))
+    """伪装发件人列表；channel 显示关联通道名（未指定时取默认 SMTP 通道），与 test_sender_profile 口径一致。"""
+    channels = {c.id: c.name for c in db.scalars(select(SendChannel)).all()}
+    default_ch = db.scalar(
+        select(SendChannel)
+        .where(SendChannel.type == "smtp", SendChannel.status != "disabled")
+        .order_by(SendChannel.is_default.desc(), SendChannel.id.desc())
+        .limit(1)
+    )
+    default_name = default_ch.name if default_ch else ""
     rows = db.scalars(select(SenderProfile).order_by(SenderProfile.id.desc())).all()
     return [
         {
             "id": p.id,
+            "channel_id": p.channel_id,
             "display_name": p.display_name or p.name,
             "address": p.from_addr or "",
             "reply_to": p.reply_to or "",
             "scene_tags": p.scene_tags or [],
-            "channel": default_channel or "",
+            "channel": channels.get(p.channel_id) if p.channel_id else default_name,
         }
         for p in rows
     ]
@@ -635,6 +691,7 @@ def create_sender_profile(db, account, payload: dict) -> int:
     p = SenderProfile(
         name=payload["name"],
         channel_type=payload.get("channel_type") or "mail",
+        channel_id=payload.get("channel_id"),
         display_name=payload.get("display_name"),
         from_addr=payload.get("from_addr"),
         reply_to=payload.get("reply_to"),
@@ -650,3 +707,118 @@ def create_sender_profile(db, account, payload: dict) -> int:
         target_type="sender_profile", target_id=p.id,
     )
     return p.id
+
+
+def update_sender_profile(db, account, pid: int, payload: dict) -> int:
+    """更新伪装发件人（编辑保存）。"""
+    p = db.get(SenderProfile, pid)
+    if p is None:
+        raise BizError(ErrorCode.NOT_FOUND, "伪装发件人不存在")
+    p.name = payload["name"]
+    p.channel_type = payload.get("channel_type") or "mail"
+    p.channel_id = payload.get("channel_id")
+    p.display_name = payload.get("display_name")
+    p.from_addr = payload.get("from_addr")
+    p.reply_to = payload.get("reply_to")
+    p.sms_number = payload.get("sms_number")
+    p.sms_sign = payload.get("sms_sign")
+    p.scene_tags = payload.get("scene_tags") or []
+    db.commit()
+    record_audit(
+        db, account=account, module="channel", action="update_sender_profile",
+        target_type="sender_profile", target_id=p.id,
+    )
+    return p.id
+
+
+def delete_sender_profile(db, account, pid: int) -> None:
+    """删除伪装发件人；已被演练引用时拒绝删除。"""
+    p = db.get(SenderProfile, pid)
+    if p is None:
+        raise BizError(ErrorCode.NOT_FOUND, "伪装发件人不存在")
+    used = db.scalar(
+        select(Campaign.id).where(Campaign.sender_profile_id == pid).limit(1)
+    )
+    if used is not None:
+        raise BizError(ErrorCode.BIZ_CONFLICT, "该伪装发件人已被演练引用，请先更换演练中的伪装发件人")
+    db.delete(p)
+    db.commit()
+    record_audit(
+        db, account=account, module="channel", action="delete_sender_profile",
+        target_type="sender_profile", target_id=pid,
+    )
+
+
+# 公共邮箱域：强制 From 地址 == 发送账号（QQ/163 等不允许 From 与账号不一致）
+_PUBLIC_MAIL_DOMAINS = {
+    "qq.com", "foxmail.com", "163.com", "126.com", "139.com",
+    "sina.com", "gmail.com", "outlook.com", "hotmail.com",
+}
+
+
+def test_sender_profile(db, account, pid: int, to: str) -> dict:
+    """用伪装发件人（显示名 + From 地址）通过关联 SMTP 通道真实发送测试邮件。
+
+    未指定关联通道时回退默认 SMTP 通道；发件信封使用通道发送账号（保证送达），
+    收件端展示的 From 头为伪装发件人。公共邮箱通道下 From 地址自动回退为发送账号
+    （仅保留显示名伪装，否则 QQ/163 按反垃圾策略拒收）。
+    """
+    from app.core.security import decrypt_secret
+
+    p = db.get(SenderProfile, pid)
+    if p is None:
+        raise BizError(ErrorCode.NOT_FOUND, "伪装发件人不存在")
+    if not to:
+        raise BizError(ErrorCode.PARAM_INVALID, "请填写测试收件邮箱")
+
+    if p.channel_id:
+        ch = db.get(SendChannel, p.channel_id)
+        if ch is None or ch.type != "smtp" or ch.status == "disabled":
+            raise BizError(ErrorCode.PARAM_INVALID, "关联通道不存在或不可用，请编辑伪装发件人重新选择")
+    else:
+        ch = db.scalar(
+            select(SendChannel)
+            .where(SendChannel.type == "smtp", SendChannel.status != "disabled")
+            .order_by(SendChannel.is_default.desc(), SendChannel.id.desc())
+            .limit(1)
+        )
+    if ch is None:
+        raise BizError(ErrorCode.NOT_FOUND, "未找到可用 SMTP 发送通道，请先配置 SMTP 通道")
+
+    acct = (ch.smtp_username or "").strip()
+    from_addr = p.from_addr or None
+    note = ""
+    if from_addr:
+        acct_domain = acct.split("@")[-1].lower() if "@" in acct else ""
+        if acct_domain in _PUBLIC_MAIL_DOMAINS and from_addr != acct:
+            # 公共邮箱强制 From == 发送账号（含同域不同账号也会拒收），保留显示名伪装
+            from_addr = None
+            note = "该通道为公共邮箱（QQ/163 等），From 地址已自动回退为发送账号；伪装显示名仍生效"
+
+    password = ""
+    if ch.smtp_password_enc:
+        try:
+            password = decrypt_secret(ch.smtp_password_enc)
+        except Exception:
+            password = ""
+    cfg = {
+        "smtp_host": ch.smtp_host,
+        "smtp_port": ch.smtp_port,
+        "smtp_encrypt": ch.smtp_encrypt,
+        "smtp_username": ch.smtp_username,
+        "smtp_password": password,
+    }
+    result = _smtp_send(
+        ch.name, cfg, to,
+        sender_name=p.display_name or p.name,
+        from_addr=from_addr,
+    )
+    if note:
+        result["note"] = note
+    record_audit(
+        db, account=account, module="channel", action="test_sender_profile",
+        target_type="sender_profile", target_id=pid,
+        detail={"to": to, "ok": result["ok"], "display_name": p.display_name,
+                "from_addr": p.from_addr, "actual_from": acct if from_addr is None else from_addr},
+    )
+    return result
