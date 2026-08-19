@@ -684,6 +684,7 @@ def seed_system(db):
         ("icp", "京ICP备2026000000号-1"),
         ("pixel_enabled", "1"),
         ("track_domain", "track.drill-domain.com"),
+        ("drill_domain", "drill.phishlab.cn"),
         ("link_expire", "campaign"),
         ("redirect_url", "https://company.com"),
         ("retention_days", "180"),

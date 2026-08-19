@@ -22,6 +22,7 @@ _DEFAULTS = {
     "icp": "",
     "pixel_enabled": "1",
     "track_domain": "track.drill-domain.com",
+    "drill_domain": "drill.phishlab.cn",
     "link_expire": "campaign",
     "redirect_url": "",
     "retention_drill": "180d",

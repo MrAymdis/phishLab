@@ -10,13 +10,14 @@ from app.core.audit import record_audit
 from app.core.errors import BizError, ErrorCode
 from app.modules.channel.models import SenderProfile
 from app.modules.org.models import EmpDept, EmpRiskProfile, EmpUser
+from app.modules.settings.service import get_setting
 
 from .models import MailReport, ReportRewardLog
 
 VALID_CLASSIFICATION = ("drill", "real_phishing", "false_positive", "spam")
 # 列表「自动识别/人工研判」两列的展示映射
 _CLASS_MAP = {"drill": "drill", "real_phishing": "real", "false_positive": "false", "spam": "false", "pending": ""}
-DRILL_DOMAIN = "drill.phishlab.cn"
+DEFAULT_DRILL_DOMAIN = "drill.phishlab.cn"
 
 
 def list_reports(db, account, *, classification=None, page=1, page_size=20):
@@ -95,7 +96,9 @@ def ingest_from_plugin(db, payload: dict) -> int:
     # 自动分类：演练域名后缀或已配置伪装发件人 → drill；其余默认真实钓鱼待研判
     classification = "real_phishing"
     if from_addr:
-        if from_addr.lower().endswith(DRILL_DOMAIN):
+        # 演练发件域读平台设置（drill_domain），未配置回落默认值
+        drill_domain = (get_setting(db, "drill_domain", DEFAULT_DRILL_DOMAIN) or DEFAULT_DRILL_DOMAIN).strip().lower()
+        if from_addr.lower().endswith(drill_domain):
             classification = "drill"
         elif db.scalar(
             select(func.count()).select_from(SenderProfile)
