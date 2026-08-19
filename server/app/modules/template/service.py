@@ -1,6 +1,8 @@
 """素材模板服务：邮件模板、落地页、附件载荷、二维码。"""
+import ast
 import re
 import secrets
+from html import escape as _html_escape
 from urllib.parse import urlparse
 
 import httpx
@@ -148,6 +150,7 @@ def duplicate_landing_page(db, account, page_id: int) -> int:
         page_schema=p.page_schema,
         form_schema=p.form_schema,
         source="custom",
+        clone_from_url=p.clone_from_url,
         status=p.status,
         created_by=account.id,
         used_count=0,
@@ -386,6 +389,591 @@ def _default_landing_html(page_type: str, page_name: str) -> str:
     return template.replace("{{PAGE_NAME}}", page_name)
 
 
+def normalize_cloned_html(html: str) -> str:
+    """克隆页面 HTML 规范化：目标站服务端模板标签 → 相对路径/移除。
+
+    Coremail 等邮件系统的登录页含服务端渲染标签，如
+    `<img src="{{customLpImg facade_custom.logo 'assets/.../logo.png'}}">`，
+    裸抓取后无法渲染（坏图）。带单引号路径的标签替换为裸路径
+    （配合页面已有 <base> 解析）；无路径的标签连同所在 <img> 元素一并移除。
+    """
+    html = re.sub(r"\{\{\s*[A-Za-z]+[^}]*?'([^']+)'[^}]*\}\}", r"\1", html)
+    html = re.sub(
+        r"<img\b[^>]*src\s*=\s*[\"'][^\"']*\{\{[^}]*\}\}[^\"']*[\"'][^>]*(?:/>|>\s*</img>)",
+        "",
+        html,
+        flags=re.I,
+    )
+    return html
+
+
+# ==================== 克隆页静态渲染与消毒（落地页服务 / 预览接口共用） ====================
+
+FP_SCRIPT = """<script>
+(function () {
+  var n = navigator || {};
+  var s = window.screen || {};
+  var fp = {
+    ua: n.userAgent || '',
+    lang: n.language || '',
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+    screen: (s.width || 0) + 'x' + (s.height || 0) + 'x' + (s.colorDepth || 0),
+    cores: (n.hardwareConcurrency || 0),
+    touch: ('ontouchstart' in window) ? 1 : 0,
+    mem: (n.deviceMemory || 0)
+  };
+  var el = document.getElementById('fp-input');
+  if (el) el.value = JSON.stringify(fp);
+})();
+</script>"""
+
+# {{{expr}}} 原样插值 | {{expr}} 转义插值 | {{#if}}...{{^}}...{{/if}} 等块标签
+_HBS_TOKEN_RE = re.compile(r"\{\{\{(.*?)\}\}\}|\{\{(.*?)\}\}", re.S)
+
+
+def _extract_js_object(html: str, name: str):
+    """提取 `NAME = { ... };` 纯数据 JS 对象字面量 → Python dict；失败返回 None。"""
+    m = re.search(rf"\b{re.escape(name)}\s*=\s*", html)
+    if m is None:
+        return None
+    i = html.find("{", m.end())
+    if i < 0:
+        return None
+    depth, j, quote = 0, i, None
+    while j < len(html):
+        c = html[j]
+        if quote:
+            if c == "\\":
+                j += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in ("'", '"'):
+            quote = c
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return _js_literal_to_py(html[i : j + 1])
+        j += 1
+    return None
+
+
+def _js_literal_to_py(text: str):
+    """JS 字面量 → Python 字面量：仅替换引号外的 true/false/null，不动字符串值。"""
+    buf, i, quote = [], 0, None
+    while i < len(text):
+        c = text[i]
+        if quote:
+            buf.append(c)
+            if c == "\\" and i + 1 < len(text):
+                buf.append(text[i + 1])
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in ("'", '"'):
+            quote = c
+            buf.append(c)
+        else:
+            m = re.match(r"\b(true|false|null)\b", text[i:])
+            if m:
+                buf.append({"true": "True", "false": "False", "null": "None"}[m.group(1)])
+                i += len(m.group(1))
+                continue
+            buf.append(c)
+        i += 1
+    try:
+        return ast.literal_eval("".join(buf))
+    except (SyntaxError, ValueError):
+        return None
+
+
+def _unescape_js_string(s: str) -> str:
+    """反转义 JS 字符串（\\n \\t \\r \\' \\\" \\\\ \\/ \\uXXXX）。"""
+    out, i = [], 0
+    while i < len(s):
+        c = s[i]
+        if c == "\\" and i + 1 < len(s):
+            n = s[i + 1]
+            if n == "n":
+                out.append("\n")
+            elif n == "t":
+                out.append("\t")
+            elif n == "r":
+                out.append("\r")
+            elif n == "u" and i + 6 <= len(s):
+                try:
+                    out.append(chr(int(s[i + 2 : i + 6], 16)))
+                    i += 6
+                    continue
+                except ValueError:
+                    out.append(n)
+            else:
+                out.append(n)
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    return "".join(out)
+
+
+def _extract_hbs_templates(html: str) -> dict:
+    """提取 SYS_CONST.templates 的 Handlebars 模板（logoTpl/contentTpl/asideTpl）。"""
+    m = re.search(r"\bSYS_CONST\s*=\s*\{", html)
+    if m is None:
+        return {}
+    i = html.find("templates:", m.end())
+    j = html.find("{", i) if i >= 0 else -1
+    if j < 0:
+        return {}
+    depth, k, quote = 0, j, None
+    while k < len(html):
+        c = html[k]
+        if quote:
+            if c == "\\":
+                k += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in ("'", '"'):
+            quote = c
+        elif c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        k += 1
+    block = html[j : k + 1]
+    result = {}
+    for key in ("logoTpl", "contentTpl", "asideTpl"):
+        m2 = re.search(rf"'{key}':\s*'((?:[^'\\]|\\.)*)'", block, re.S)
+        if m2:
+            result[key] = _unescape_js_string(m2.group(1))
+    return result
+
+
+def _extract_x_root(html: str) -> str:
+    """提取 X 配置的上下文根 r（Coremail 资源前缀，默认 /coremail）。"""
+    m = re.search(r"\bX\s*=\s*\{", html)
+    if m is None:
+        return "/coremail"
+    m2 = re.search(r"\br\s*:\s*'(/[^']*)'", html[m.end() : m.end() + 900])
+    return m2.group(1) if m2 else "/coremail"
+
+
+def _resolve_path(path: str, stack: list):
+    """Handlebars 路径解析：a.b.c、../a、.、..；缺失时向父级上下文逐层回退。"""
+    p = path.strip()
+    ctxs = list(stack)
+    while p.startswith("../"):
+        p = p[3:]
+        if len(ctxs) > 1:
+            ctxs.pop()
+    if p in ("", ".", "this"):
+        return ctxs[-1] if ctxs else None
+    if p.startswith(".."):
+        p = p[2:].lstrip(".")
+        if len(ctxs) > 1:
+            ctxs.pop()
+        if p in ("", "this"):
+            return ctxs[-1] if ctxs else None
+    segs = [s for s in p.split(".") if s not in ("", "this")]
+    if not segs:
+        return None
+    for ctx in reversed(ctxs):
+        cur = ctx
+        for seg in segs:
+            if isinstance(cur, dict) and seg in cur:
+                cur = cur[seg]
+            else:
+                cur = None
+                break
+        if cur is not None:
+            return cur
+    return None
+
+
+def _eval_arg(token: str, stack: list):
+    """求值 {{expr}} 实参：路径 / 字符串 / true/false/null / 数字。"""
+    t = token.strip()
+    if t in ("true", "True"):
+        return True
+    if t in ("false", "False"):
+        return False
+    if t in ("null", "None"):
+        return None
+    if len(t) >= 2 and ((t.startswith("'") and t.endswith("'")) or (t.startswith('"') and t.endswith('"'))):
+        try:
+            return ast.literal_eval(t)
+        except (SyntaxError, ValueError):
+            return t[1:-1]
+    if re.fullmatch(r"-?\d+(\.\d+)?", t):
+        return float(t) if "." in t else int(t)
+    return _resolve_path(t, stack)
+
+
+def _split_args(body: str) -> list[str]:
+    """按空白拆分 helper 实参，尊重引号。"""
+    args, cur, quote = [], [], None
+    i = 0
+    while i < len(body):
+        c = body[i]
+        if quote:
+            cur.append(c)
+            if c == "\\" and i + 1 < len(body):
+                cur.append(body[i + 1])
+                i += 2
+                continue
+            if c == quote:
+                quote = None
+        elif c in ("'", '"'):
+            quote = c
+            cur.append(c)
+        elif c.isspace():
+            if cur:
+                args.append("".join(cur))
+                cur = []
+        else:
+            cur.append(c)
+        i += 1
+    if cur:
+        args.append("".join(cur))
+    return args
+
+
+def _hbs_falsy(value) -> bool:
+    """Handlebars isEmpty 语义：None/False/空串/空数组为假（0 与 {} 为真）。"""
+    return value is None or value is False or value == "" or (isinstance(value, list) and not value)
+
+
+def _hbs_split_block(template: str, start: int, close_name: str) -> tuple[str, str, int]:
+    """在 start 之后查找配对的 {{/close_name}}，支持 {{^}}/{{else}} 分支与块嵌套。"""
+    depth = 0
+    else_pos = None
+    for m in _HBS_TOKEN_RE.finditer(template, start):
+        body = (m.group(1) or m.group(2) or "").strip()
+        if body.startswith("#"):
+            depth += 1
+        elif body.startswith("/"):
+            if depth == 0:
+                if else_pos:
+                    return template[start : else_pos[0]], template[else_pos[1] : m.start()], m.end()
+                return template[start : m.start()], "", m.end()
+            depth -= 1
+        elif body in ("^", "else") and depth == 0:
+            if else_pos is None:
+                else_pos = (m.start(), m.end())
+    return template[start:], "", len(template)
+
+
+def _hbs_render(template: str, stack: list, partials: dict, helpers: dict) -> str:
+    """迷你 Handlebars 渲染器：#if/#unless/#each/#with、^ 分支、> 局部模板、helper 与插值。"""
+    out, pos = [], 0
+    while True:
+        m = _HBS_TOKEN_RE.search(template, pos)
+        if m is None:
+            out.append(template[pos:])
+            break
+        out.append(template[pos : m.start()])
+        raw = m.group(1) is not None  # {{{expr}}} 原样插值
+        body = (m.group(1) or m.group(2) or "").strip()
+        pos = m.end()
+        if body.startswith("!") or body in ("^", "else"):
+            continue
+        if body.startswith("#if "):
+            branch_t, branch_f, end = _hbs_split_block(template, m.end(), "/if")
+            if not _hbs_falsy(_eval_arg(body[4:], stack)):
+                out.append(_hbs_render(branch_t, stack, partials, helpers))
+            else:
+                out.append(_hbs_render(branch_f, stack, partials, helpers))
+            pos = end
+        elif body.startswith("#unless "):
+            branch_t, branch_f, end = _hbs_split_block(template, m.end(), "/unless")
+            if _hbs_falsy(_eval_arg(body[8:], stack)):
+                out.append(_hbs_render(branch_t, stack, partials, helpers))
+            else:
+                out.append(_hbs_render(branch_f, stack, partials, helpers))
+            pos = end
+        elif body.startswith("#each "):
+            branch_t, branch_f, end = _hbs_split_block(template, m.end(), "/each")
+            value = _eval_arg(body[6:], stack)
+            items = value.values() if isinstance(value, dict) else (value if isinstance(value, list) else [])
+            if items:
+                for item in items:
+                    out.append(_hbs_render(branch_t, stack + [item], partials, helpers))
+            else:
+                out.append(_hbs_render(branch_f, stack, partials, helpers))
+            pos = end
+        elif body.startswith("#with "):
+            branch_t, branch_f, end = _hbs_split_block(template, m.end(), "/with")
+            value = _eval_arg(body[6:], stack)
+            if not _hbs_falsy(value):
+                out.append(_hbs_render(branch_t, stack + [value], partials, helpers))
+            else:
+                out.append(_hbs_render(branch_f, stack, partials, helpers))
+            pos = end
+        elif body.startswith(">"):
+            name = body[1:].strip()
+            tpl = partials.get(name)
+            if tpl:
+                out.append(_hbs_render(tpl, stack, partials, helpers))
+        else:
+            parts = _split_args(body)
+            if parts and parts[0] in helpers:
+                rendered = helpers[parts[0]](*[_eval_arg(a, stack) for a in parts[1:]])
+                out.append("" if rendered is None else str(rendered))
+            else:
+                value = _eval_arg(body, stack)
+                text = "" if value is None else str(value)
+                out.append(text if raw else _html_escape(text))
+    return "".join(out)
+
+
+def _render_coremail_shell(html: str) -> str:
+    """Coremail 等 JS 渲染登录页静态化（原站 login 入口 chunk 的等价渲染）。
+
+    这类登录页的 HTML 只有空壳 div（.content/.aside/.main-middle/.main-bottom），
+    内容由 JS 用 Handlebars 模板（SYS_CONST.templates）+ 数据（CUSTOME_DATA）
+    渲染。剥离脚本后只剩空壳，与原文视觉差异巨大。此处把模板渲染进
+    .content/.aside，自定义背景/按钮/标语落到 .main-bottom/.u-btn/.slogan
+    内联样式；logo/背景图仍热链原站（配合页面 <base> 解析）。
+    无 CUSTOME_DATA/SYS_CONST 标记的页面原样返回。
+    """
+    data = _extract_js_object(html, "CUSTOME_DATA")
+    templates = _extract_hbs_templates(html)
+    if not data or "indexPageData2" not in data or not templates:
+        return html
+    ipd = data.get("indexPageData2") or {}
+    res = ipd.get("real_resource") or {}
+    x_root = _extract_x_root(html)
+
+    def lp_img(name):
+        if isinstance(name, list):
+            if not name:
+                return None
+            nm = name[0]
+        else:
+            nm = name
+        if not nm:
+            return None
+        q = "site=1" if ipd.get("site") else f"org_id={ipd.get('org') or ''}"
+        return f"{x_root}/s?func=lp:getImg&{q}&img_id={nm}"
+
+    helpers = {"customLpImg": lambda name, fallback="": lp_img(name) or fallback}
+    stack = [res]
+    content_html = _hbs_render(templates.get("contentTpl", ""), stack, templates, helpers)
+    aside_html = _hbs_render(templates.get("asideTpl", ""), stack, templates, helpers)
+
+    html = re.sub(
+        r'<div\b[^>]*class\s*=\s*["\']content["\'][^>]*>\s*</div>',
+        f'<div class="content">{content_html}</div>',
+        html,
+        count=1,
+        flags=re.I | re.S,
+    )
+    html = re.sub(
+        r'<div\b[^>]*class\s*=\s*["\']aside["\'][^>]*>\s*</div>',
+        f'<div class="aside">{aside_html}</div>',
+        html,
+        count=1,
+        flags=re.I | re.S,
+    )
+
+    fc = res.get("facade_custom") or {}
+    bg = lp_img(fc.get("background"))
+    if bg or fc.get("background_color"):
+        styles = []
+        if fc.get("background_color"):
+            styles.append(f"background-color:{fc['background_color']}")
+        if bg:
+            styles.append(f"background-image:url('{bg}')")
+        html = re.sub(
+            r'<div\b[^>]*class\s*=\s*["\']main-bottom["\'][^>]*>',
+            f'<div class="main-bottom" style="{";".join(styles)}">',
+            html,
+            count=1,
+            flags=re.I,
+        )
+    else:
+        # 无自定义背景：原站随机选内置背景类，此处固定 0 号（视觉效果等价）
+        html = re.sub(
+            r'<div\b[^>]*class\s*=\s*["\']main-bottom["\'][^>]*>',
+            '<div class="main-bottom main-bottom-0">',
+            html,
+            count=1,
+            flags=re.I,
+        )
+        html = re.sub(
+            r'<div\b[^>]*class\s*=\s*["\']main-middle["\'][^>]*>',
+            '<div class="main-middle main-middle-0">',
+            html,
+            count=1,
+            flags=re.I,
+        )
+    if fc.get("slogan_text") and (fc.get("slogan_color") or fc.get("slogan_fontsize")):
+        styles = []
+        if fc.get("slogan_color"):
+            styles.append(f"color:{fc['slogan_color']}")
+        if fc.get("slogan_fontsize"):
+            styles.append(f"font-size:{fc['slogan_fontsize']}")
+        html = re.sub(
+            r'<label\b[^>]*class\s*=\s*["\'][^"\']*slogan[^"\']*["\'][^>]*>',
+            f'<label class="slogan" style="{";".join(styles)}">',
+            html,
+            count=1,
+            flags=re.I,
+        )
+    if fc.get("submit_button_color"):
+        styles = [f"background-color:{fc['submit_button_color']}"]
+        if fc.get("submit_button_font_color"):
+            styles.append(f"color:{fc['submit_button_font_color']}")
+        html = re.sub(
+            r'<button\b[^>]*class\s*=\s*["\'][^"\']*u-btn[^"\']*["\'][^>]*>',
+            lambda m: m.group(0)[:-1] + f' style="{";".join(styles)}">',
+            html,
+            count=1,
+            flags=re.I,
+        )
+    if fc.get("favor_title"):
+        html = re.sub(
+            r"<title\b[^>]*>[^<]*</title>",
+            f"<title>{_html_escape(fc['favor_title'])}</title>",
+            html,
+            count=1,
+            flags=re.I,
+        )
+    return html
+
+
+_FALLBACK_LOGIN = """<div style="max-width:360px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:32px;font-family:'Microsoft YaHei',Arial,sans-serif;">
+<form method="post" action="/p/{slug}/submit" style="display:flex;flex-direction:column;gap:14px;">
+  <h3 style="margin:0 0 8px;text-align:center;color:#333;font-size:18px;">账号登录</h3>
+  <input type="text" name="uid" placeholder="用户名 / 邮箱" required style="width:100%;padding:11px 14px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:14px;" />
+  <input type="password" name="password" placeholder="密码" required style="width:100%;padding:11px 14px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:14px;" />
+  <input type="hidden" name="token" value="{token}" />
+  <input type="hidden" name="fp" id="fp-input" value="" />
+  <button type="submit" style="width:100%;padding:11px;background:#378ADD;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer;">登 录</button>
+</form>
+</div>"""
+
+
+def _inject_fallback_login(html: str, slug: str, token: str) -> str:
+    """兜底表单注入策略：优先替换常见的 JS 占位容器，否则追加在 </body> 之前。"""
+    form_html = _FALLBACK_LOGIN.format(slug=slug, token=token)
+    # 1) 替换空 content / loginArea 容器
+    for pattern in [
+        r"<div\b[^>]*class\s*=\s*['\"]content['\"][^>]*>\s*</div>",
+        r"<div\b[^>]*class\s*=\s*['\"][^'\"]*loginArea[^'\"]*['\"][^>]*>.*?</div\s*>",
+    ]:
+        if re.search(pattern, html, re.I | re.S):
+            return re.sub(pattern, form_html, html, count=1, flags=re.I | re.S)
+    # 2) 追加在 </body> 之前
+    if re.search(r"</body\s*>", html, re.I):
+        return re.sub(r"</body\s*>", form_html + "</body>", html, count=1, flags=re.I)
+    # 3) 末尾兜底
+    return html + form_html
+
+
+def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: str = "") -> str:
+    """克隆/自定义页服务端渲染 + 消毒，落地页服务与预览接口共用（所见即受害者所见）。
+
+    1) Coremail 等 JS 渲染页面静态化：JS 模板+数据 → 静态壳（内容区/登录侧栏/背景），
+       保证与原页视觉一致；
+    2) 红线消毒：剥离脚本/内联事件/内嵌框架——原页登录 JS 会把口令发回真实系统，
+       消毒后口令只进入本服务的提交端点（仅记录是否输入+长度）；
+    3) 相对资源解析（<base>）、表单重定向 /p/{slug}/submit、注入 token/指纹隐藏域。
+    """
+    html = normalize_cloned_html(_render_coremail_shell(html))
+
+    # 1) 剥离脚本（自闭合/配对两种写法）
+    html = re.sub(r"<script\b[^>]*/>", "", html, flags=re.I)
+    html = re.sub(r"<script\b[^>]*>.*?</script\s*>", "", html, flags=re.I | re.S)
+    # 内嵌框架/外部对象：防止页面内再嵌套真实站点
+    html = re.sub(r"<iframe\b[^>]*(?:/>|>.*?</iframe\s*>)", "", html, flags=re.I | re.S)
+    html = re.sub(r"<(?:object|embed)\b[^>]*(?:>|/>)", "", html, flags=re.I)
+    # 跳转/安全策略 meta：防止刷走受害者页面、防止 CSP 挡住注入脚本
+    html = re.sub(
+        r"<meta\b[^>]*http-equiv\s*=\s*[\"']?(?:refresh|content-security-policy)[^>]*>",
+        "",
+        html,
+        flags=re.I,
+    )
+    # 内联事件处理器与 javascript: 链接
+    html = re.sub(r"\s+on\w+\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)", "", html, flags=re.I)
+    html = re.sub(
+        r"href\s*=\s*[\"']?\s*javascript:[^\"'\s>]+[\"']?",
+        'href="javascript:void(0)"',
+        html,
+        flags=re.I,
+    )
+
+    # 2) 相对资源解析：页面自带 <base> 则保留，否则指向克隆源站
+    if "<base" not in html.lower() and clone_from_url:
+        origin = "{scheme}://{netloc}/".format(
+            scheme=urlparse(clone_from_url).scheme or "https",
+            netloc=urlparse(clone_from_url).netloc,
+        )
+        html = re.sub(
+            r"(<head[^>]*>)",
+            lambda m: m.group(1) + f"\n<base href='{origin}' />",
+            html,
+            count=1,
+            flags=re.I,
+        )
+
+    # 3) 表单重定向：action → /p/{slug}/submit（POST），注入 token 与指纹隐藏域
+    inject = (
+        f'<input type="hidden" name="token" value="{token}" />'
+        f'<input type="hidden" name="fp" id="fp-input" value="" />'
+    )
+
+    def _rewrite_form(m: "re.Match") -> str:
+        tag = m.group(0)
+        if re.search(r"\saction\s*=", tag, re.I):
+            tag = re.sub(
+                r"\saction\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)",
+                f' action="/p/{slug}/submit"',
+                tag,
+                flags=re.I,
+            )
+        else:
+            tag = tag[:-1].rstrip() + f' action="/p/{slug}/submit">'
+        if re.search(r"\s+method\s*=", tag, re.I):
+            tag = re.sub(
+                r"\s+method\s*=\s*(?:\"[^\"]*\"|'[^']*'|[^\s>]+)",
+                ' method="post"',
+                tag,
+                flags=re.I,
+            )
+        else:
+            tag = tag[:-1].rstrip() + ' method="post">'
+        return tag + inject
+
+    html = re.sub(r"<form\b[^>]*>", _rewrite_form, html, flags=re.I)
+
+    # 4) 原站提交按钮多为 type="button"（靠 JS 触发提交）；脚本已剥离，改为原生提交
+    html = re.sub(
+        r'(<button\b[^>]*class\s*=\s*["\'][^"\']*(?:j-submit|submit)[^"\']*["\'][^>]*)\s+type\s*=\s*["\']button["\']',
+        r'\1 type="submit"',
+        html,
+        flags=re.I,
+    )
+
+    # 5) 目标站登录表单可能完全由 JS 生成（静态化后仍无表单）：注入兜底登录表单
+    if not re.search(r"<form\b", html, re.I):
+        html = _inject_fallback_login(html, slug, token)
+
+    # 6) 注入指纹采集（存在 </body> 则前置，否则追加文末）
+    if re.search(r"</body\s*>", html, re.I):
+        html = re.sub(r"</body\s*>", FP_SCRIPT + "</body>", html, count=1, flags=re.I)
+    else:
+        html += FP_SCRIPT
+    return html
+
+
 def get_landing_page(db, page_id: int) -> dict:
     """获取落地页详情（含 html_content 全文 + form_schema）。"""
     p = db.get(LandingPage, page_id)
@@ -396,6 +984,8 @@ def get_landing_page(db, page_id: int) -> dict:
         select(LandingFormField).where(LandingFormField.page_id == page_id)
     ).all()
     html = p.html_content or _default_landing_html(p.type, p.name)
+    if p.html_content:
+        html = normalize_cloned_html(html)
     return {
         "id": p.id,
         "name": p.name,
@@ -414,6 +1004,24 @@ def get_landing_page(db, page_id: int) -> dict:
             for f in fields
         ],
         "used_count": p.used_count,
+    }
+
+
+def get_landing_page_preview(db, page_id: int) -> dict:
+    """落地页预览：返回与线上 /p/{slug} 完全一致的消毒后渲染 HTML。
+
+    与 get_landing_page（编辑器用，返回原始 HTML）分离：克隆页原始内容含
+    目标站登录 JS，直接放进预览 iframe 既与原站视觉不一致，也可能把
+    测试口令发回真实系统。
+    """
+    p = db.get(LandingPage, page_id)
+    if p is None:
+        raise ValueError("落地页不存在")
+    raw = p.html_content or _default_landing_html(p.type, p.name)
+    return {
+        "id": p.id,
+        "slug": p.slug,
+        "html_content": render_cloned_html(raw, p.slug, "", p.clone_from_url or ""),
     }
 
 
@@ -498,7 +1106,7 @@ def clone_url(db, account, url: str) -> int:
         name=f"克隆-{host}",
         type="cloned",
         slug=secrets.token_hex(6),
-        html_content=resp.text[:50000],
+        html_content=resp.text[:500000],
         source="cloned",
         clone_from_url=url,
         status="draft",

@@ -509,10 +509,16 @@
         </div>
         <div class="email-preview-divider"></div>
         <iframe
-          v-if="landingPreviewData.html_content"
+          v-if="landingPreviewSrc && !landingSrcFailed"
+          :src="landingPreviewSrc"
+          class="email-preview-iframe"
+          @error="landingSrcFailed = true"
+        />
+        <iframe
+          v-else-if="landingPreviewData.html_content"
           :srcdoc="landingPreviewData.html_content"
           class="email-preview-iframe"
-          sandbox="allow-same-origin"
+          sandbox="allow-scripts"
         />
         <el-empty v-else description="暂无页面内容（该落地页可能仅注册了表单结构，无自定义HTML）" />
       </div>
@@ -1054,17 +1060,31 @@ const landingPreviewData = reactive({
   fields: [] as { name: string; label: string; input_type: string; required: boolean }[],
 })
 
+// 走真实链路预览（落地页服务 /p/{slug}），所见即受害者所见；不可达时回退 srcdoc。
+const landingSrcFailed = ref(false)
+const landingPreviewSrc = computed(() => {
+  const slug = landingPreviewData.slug
+  if (!slug) return ''
+  const base = (import.meta.env.VITE_LANDING_BASE as string) || `http://${location.hostname}:8082`
+  return `${base}/p/${slug}`
+})
+
 async function previewLanding(row: LandingPage) {
   landingPreviewVisible.value = true
   landingPreviewLoading.value = true
+  landingSrcFailed.value = false
   landingPreviewData.name = row.name
   landingPreviewData.type = row.type
   landingPreviewData.typeText = row.typeText || row.type
   landingPreviewData.html_content = ''
   landingPreviewData.fields = []
   try {
-    const detail = await templateApi.getLandingPage(row.id) as Record<string, unknown>
-    landingPreviewData.html_content = (detail.html_content as string) || ''
+    // 预览与详情分离：srcdoc 兜底用消毒后渲染的 HTML（与线上 /p/{slug} 一致，防原页 JS 外发口令）
+    const [detail, preview] = await Promise.all([
+      templateApi.getLandingPage(row.id),
+      templateApi.getLandingPagePreview(row.id),
+    ]) as [Record<string, unknown>, Record<string, unknown>]
+    landingPreviewData.html_content = (preview.html_content as string) || (detail.html_content as string) || ''
     landingPreviewData.slug = (detail.slug as string) || ''
     landingPreviewData.fields = (detail.fields as { name: string; label: string; input_type: string; required: boolean }[]) || []
   } catch {

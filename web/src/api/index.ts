@@ -88,6 +88,7 @@ export const templateApi = {
     post(`/api/v1/email-templates/${id}/test-send`, to),
   landingPages: () => get('/api/v1/landing-pages'),
   getLandingPage: (id: number) => get(`/api/v1/landing-pages/${id}`),
+  getLandingPagePreview: (id: number) => get(`/api/v1/landing-pages/${id}/preview`),
   createLandingPage: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/landing-pages', payload),
   updateLandingPage: (id: number, payload: Record<string, unknown>) =>

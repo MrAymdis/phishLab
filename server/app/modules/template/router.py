@@ -79,6 +79,11 @@ def get_page(pid: int, account=Depends(get_current_account), db: Session = Depen
     return resp.ok(service.get_landing_page(db, pid))
 
 
+@landing_pages.get("/{pid}/preview", summary="落地页预览（消毒后渲染，与线上 /p/{slug} 一致）")
+def preview_page(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.get_landing_page_preview(db, pid))
+
+
 @landing_pages.post("", summary="新建落地页")
 def create_page(payload: LandingPageCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_landing_page(db, account, payload.model_dump())})

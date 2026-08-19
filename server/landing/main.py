@@ -28,6 +28,7 @@ _EDU_POPUP = """<!DOCTYPE html>
 
 def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "") -> str:
     """渲染仿冒登录页：标题 + 表单字段 + 轻量指纹采集 JS（提交时回传）。"""
+    from app.modules.template.service import FP_SCRIPT
     inputs = []
     for f in fields:
         key = f.get("field_key") or f.get("label") or "field"
@@ -57,39 +58,43 @@ def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "
   </form>
   <p style="text-align:center;color:#aaa;font-size:11px;margin-top:16px">© 企业信息安全中心 · 内部系统</p>
 </div>
-<script>
-// 轻量浏览器指纹：提交时采集（组件仅用于演练环境识别，不含个人敏感信息）
-(function () {{
-  var n = navigator || {{}};
-  var s = window.screen || {{}};
-  var fp = {{
-    ua: n.userAgent || '',
-    lang: n.language || '',
-    tz: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
-    screen: (s.width || 0) + 'x' + (s.height || 0) + 'x' + (s.colorDepth || 0),
-    cores: (n.hardwareConcurrency || 0),
-    touch: ('ontouchstart' in window) ? 1 : 0,
-    mem: (n.deviceMemory || 0)
-  }};
-  document.getElementById('fp-input').value = JSON.stringify(fp);
-}})();
-</script>
-</body></html>"""
+</body></html>""" + FP_SCRIPT
 
 
-def _load_page_fields(slug: str) -> tuple[str, list[dict]]:
-    """slug → (页面名, 表单字段)。TODO(三期)：接入 Redis 缓存。"""
+def _render_custom_html(page, slug: str, token: str) -> str:
+    """渲染自定义/克隆页面：静态渲染 + 消毒 + 表单重定向 + token/指纹注入，
+    逻辑收敛在 template.service.render_cloned_html（预览接口共用，保证一致）。"""
+    from app.modules.template.service import render_cloned_html
+
+    return render_cloned_html(page.html_content or "", slug, token, page.clone_from_url or "")
+
+
+def _load_page(slug: str):
+    """slug → LandingPage；独立部署下与主库同库。TODO(三期)：接入 Redis 缓存。"""
     from app.db.session import SessionLocal
-    from app.modules.template.models import LandingFormField, LandingPage
+    from app.modules.template.models import LandingPage
 
     db = SessionLocal()
     try:
-        page = db.query(LandingPage).filter(LandingPage.slug == slug).first()
-        if page is None:
-            return "统一认证平台", [
-                {"field_key": "username", "label": "用户名"},
-                {"field_key": "password", "label": "密码", "sensitive_flag": 1},
-            ]
+        return db.query(LandingPage).filter(LandingPage.slug == slug).first()
+    finally:
+        db.close()
+
+
+def _load_page_fields(slug: str, page=None) -> tuple[str, list[dict]]:
+    """slug → (页面名, 表单字段)。TODO(三期)：接入 Redis 缓存。"""
+    from app.db.session import SessionLocal
+    from app.modules.template.models import LandingFormField
+
+    if page is None:
+        page = _load_page(slug)
+    if page is None:
+        return "统一认证平台", [
+            {"field_key": "username", "label": "用户名"},
+            {"field_key": "password", "label": "密码", "sensitive_flag": 1},
+        ]
+    db = SessionLocal()
+    try:
         fields = [
             {"field_key": f.field_key, "label": f.label or f.field_key,
              "sensitive_flag": f.sensitive_flag}
@@ -97,14 +102,14 @@ def _load_page_fields(slug: str) -> tuple[str, list[dict]]:
             .filter(LandingFormField.page_id == page.id)
             .order_by(LandingFormField.sort).all()
         ]
-        if not fields:
-            fields = [
-                {"field_key": "username", "label": "用户名"},
-                {"field_key": "password", "label": "密码", "sensitive_flag": 1},
-            ]
-        return page.name, fields
     finally:
         db.close()
+    if not fields:
+        fields = [
+            {"field_key": "username", "label": "用户名"},
+            {"field_key": "password", "label": "密码", "sensitive_flag": 1},
+        ]
+    return page.name, fields
 
 
 @app.get("/health")
@@ -132,7 +137,8 @@ def pixel(token: str, request: Request):
 
 @app.get("/p/{slug}", response_class=HTMLResponse)
 def serve(slug: str, request: Request, token: str = ""):
-    """渲染仿冒登录页；带 token 访问即记录 click 事件（点击邮件链接）。"""
+    """渲染落地页：自定义/克隆页面渲染 html_content（消毒后），内置类型渲染通用登录卡片。
+    带 token 访问即记录 click 事件（点击邮件链接）。"""
     from app.modules.tracking.stream import push_event
 
     if token:
@@ -141,8 +147,14 @@ def serve(slug: str, request: Request, token: str = ""):
             ip=request.client.host if request.client else "",
             ua=request.headers.get("user-agent", ""),
         )
-    title, fields = _load_page_fields(slug)
+    page = _load_page(slug)
+    if page is not None and page.html_content:
+        return HTMLResponse(
+            _render_custom_html(page, slug, token),
+            headers={"Cache-Control": "no-store"},
+        )
     # TODO(一期)：注入指纹采集 JS（Canvas/WebGL/字体），写入 fingerprint 表
+    title, fields = _load_page_fields(slug, page)
     return _render_login_page(title, fields, slug, token=token)
 
 
