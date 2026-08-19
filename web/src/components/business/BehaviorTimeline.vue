@@ -83,12 +83,12 @@ async function revealFields(ev: TimelineEvent): Promise<void> {
       .map((r) => `<tr><td style="padding:4px 12px;color:#a32d2d;background:rgba(163,45,45,.08);white-space:nowrap;font-weight:600;border:1px solid rgba(163,45,45,.25)">${r.label}</td><td style="padding:4px 12px;word-break:break-all;border:1px solid rgba(163,45,45,.25)">${r.value}</td></tr>`)
       .join('')
     ElMessageBox.alert(
-      `<table style="border-collapse:collapse;font-size:13px;width:100%">${rows}</table>`,
+      `<table style="border-collapse:collapse;font-size:13px;width:100%">${rows}</table>
+       <p style="font-size:12px;color:#999;margin-top:10px">该操作已记录审计日志（${ev.user} 提交事件的完整明文）</p>`,
       `提交的全部明文 · ${ev.user}`,
       {
         dangerouslyUseHTMLString: true,
         confirmButtonText: '我知道了',
-        message: `该操作已记录审计日志（${ev.user} 提交事件的完整明文）`,
       },
     )
   } catch (err) {
