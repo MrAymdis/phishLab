@@ -26,6 +26,9 @@ export interface CampaignQuery {
   status?: string
   type?: string
   kw?: string
+  /** 时间范围（YYYY-MM-DD，服务端按演练起止时间过滤） */
+  start_date?: string
+  end_date?: string
   page?: number
   pageSize?: number
 }

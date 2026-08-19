@@ -165,23 +165,9 @@ const TYPE_LABEL: Record<string, string> = {
   mail: '邮件钓鱼', sms: '短信钓鱼', social: '社交媒体', usb: 'USB实物',
 }
 
-const statCards = ref<{ key: string; label: string; value: string | number; sub: string; accent: string }[]>([
-  { key: '', label: '演练总数', value: 128, sub: '↑ 12 本月', accent: 'blue' },
-  { key: '', label: '演练总人次', value: '48,260', sub: '累计覆盖员工', accent: 'orange' },
-  { key: 'running', label: '进行中', value: 3, sub: '覆盖 4,200 人', accent: 'green' },
-  { key: 'scheduled', label: '待开始', value: 5, sub: '计划本周 3 场', accent: 'purple' },
-  { key: 'completed', label: '已完成', value: 115, sub: '平均中招率 17.8%', accent: 'teal' },
-  { key: 'terminated', label: '已终止', value: 5, sub: '异常终止 2 场', accent: 'red' },
-])
+const statCards = ref<{ key: string; label: string; value: string | number; sub: string; accent: string }[]>([])
 
-const allRows = ref<CampaignRow[]>([
-  { id: 1, name: 'Q3全员防钓鱼演练', type: 'mail', time_range: '08-15 ~ 08-22', start_date: '2026-08-15', end_date: '2026-08-22', started_at: '2026-08-15', target_count: 3580, deliver_rate: 100, open_rate: 71, click_rate: 27, victim_rate: 16, status: 'running' },
-  { id: 2, name: '财务人员专项演练', type: 'mail', time_range: '08-26 ~ 08-28', start_date: '2026-08-26', end_date: '2026-08-28', target_count: 56, deliver_rate: 0, open_rate: 0, click_rate: 0, victim_rate: 0, status: 'scheduled' },
-  { id: 3, name: 'Q2全员钓鱼演练', type: 'mail', time_range: '06-10 ~ 06-18', start_date: '2026-06-10', end_date: '2026-06-18', target_count: 3512, deliver_rate: 100, open_rate: 68, click_rate: 31, victim_rate: 19, status: 'completed' },
-  { id: 4, name: '短信钓鱼试点', type: 'sms', time_range: '05-20 ~ 05-22', start_date: '2026-05-20', end_date: '2026-05-22', target_count: 420, deliver_rate: 100, open_rate: 52, click_rate: 18, victim_rate: 8, status: 'completed' },
-  { id: 5, name: 'USB投放测试（研发楼）', type: 'usb', time_range: '04-02 ~ 04-03', start_date: '2026-04-02', end_date: '2026-04-03', target_count: 200, deliver_rate: 100, open_rate: 40, click_rate: 12, victim_rate: 5, status: 'terminated' },
-  { id: 6, name: '新员工安全意识测试', type: 'mail', time_range: '08-10 ~ 08-20', start_date: '2026-08-10', end_date: '2026-08-20', started_at: '2026-08-10', target_count: 30, deliver_rate: 100, open_rate: 63, click_rate: 23, victim_rate: 10, status: 'paused' },
-])
+const allRows = ref<CampaignRow[]>([])
 
 // 状态筛选计数徽标（基于服务端返回的 stats 汇总，而非当前页数据）
 const statusCounts = computed(() => {
@@ -196,25 +182,10 @@ const statusCounts = computed(() => {
   }
 })
 
-// 日期范围仍为客户端过滤（status/type/kw 已由服务端过滤，此处重复校验无副作用）
-const filteredRows = computed(() => allRows.value.filter((r) => {
-  if (statusFilter.value && r.status !== statusFilter.value) return false
-  if (typeFilter.value && r.type !== typeFilter.value) return false
-  if (kw.value.trim() && !r.name.toLowerCase().includes(kw.value.trim().toLowerCase())) return false
-  if (dateRange.value) {
-    const selStart = new Date(dateRange.value[0]); selStart.setHours(0, 0, 0, 0)
-    const selEnd = new Date(dateRange.value[1]); selEnd.setHours(23, 59, 59, 999)
-    const rowStart = new Date(r.start_date).getTime()
-    const rowEnd = new Date(r.end_date).getTime() + 24 * 3600 * 1000 - 1
-    if (rowEnd < selStart.getTime() || rowStart > selEnd.getTime()) return false
-  }
-  return true
-}))
+// 所有筛选（status/type/kw/日期范围）均由服务端过滤 + 分页，此处不做客户端切片
+const pagedRows = computed(() => allRows.value)
 
-// 服务端已按 status/type/kw + page/pageSize 分页返回当页数据，不再本地切片
-const pagedRows = computed(() => filteredRows.value)
-
-// 筛选条件变化：重置页码并重新加载（日期范围仅客户端过滤，不作为请求参数）
+// 筛选条件变化：重置页码并重新加载
 watch([statusFilter, typeFilter, kw, dateRange], () => {
   page.value = 1
   load()
@@ -230,12 +201,19 @@ interface CampaignListData {
   pageSize: number
 }
 
+function fmtDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
 async function load() {
   try {
     const d = (await campaignApi.list({
       status: statusFilter.value,
       type: typeFilter.value,
       kw: kw.value,
+      start_date: dateRange.value ? fmtDate(dateRange.value[0]) : undefined,
+      end_date: dateRange.value ? fmtDate(dateRange.value[1]) : undefined,
       page: page.value,
       pageSize: pageSize.value,
     })) as CampaignListData | null
@@ -245,7 +223,7 @@ async function load() {
       total.value = d.total ?? 0
     }
   } catch {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    ElMessage.error('演练列表加载失败，请检查网络或后端服务')
   }
 }
 

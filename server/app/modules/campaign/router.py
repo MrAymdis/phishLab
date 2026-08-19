@@ -25,12 +25,17 @@ def list_campaigns(
     status: str | None = Query(None, description="draft/scheduled/sending/running/paused/completed/terminated"),
     type: str | None = Query(None, alias="type", description="mail/sms/social/usb"),
     kw: str | None = None,
+    start_date: str | None = Query(None, description="时间范围起 YYYY-MM-DD"),
+    end_date: str | None = Query(None, description="时间范围止 YYYY-MM-DD"),
     paging: tuple[int, int] = Depends(page_params),
     account=Depends(get_current_account),
     db: Session = Depends(get_db),
 ):
     page, page_size = paging
-    return resp.ok(service.list_campaigns(db, account, status=status, type=type, kw=kw, page=page, page_size=page_size))
+    return resp.ok(service.list_campaigns(
+        db, account, status=status, type=type, kw=kw,
+        start_date=start_date, end_date=end_date, page=page, page_size=page_size,
+    ))
 
 
 @campaigns.post("", summary="创建演练（7步向导）")

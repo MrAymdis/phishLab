@@ -120,7 +120,9 @@ def _expand_target_ids(db, target_mode: str, snapshot: dict) -> list[int]:
     ).all())
 
 
-def list_campaigns(db, account, *, status=None, type=None, kw=None, page=1, page_size=20):
+def list_campaigns(db, account, *, status=None, type=None, kw=None,
+                   start_date: str | None = None, end_date: str | None = None,
+                   page=1, page_size=20):
     """演练列表 + 统计卡片：campaign 关联 campaign_stat，强制 apply_data_scope。"""
     # 数据权限：演练仅按创建人过滤（无部门列）
     base = apply_data_scope(
@@ -134,6 +136,14 @@ def list_campaigns(db, account, *, status=None, type=None, kw=None, page=1, page
         stmt = stmt.where(Campaign.type == type)
     if kw:
         stmt = stmt.where(func.lower(Campaign.name).like(f"%{kw.lower()}%"))
+    # 时间范围：与列表"时间范围"列同口径（开始=started_at/schedule_at/created_at，
+    # 结束=ended_at，无结束时间按开始+7天），区间有交集即命中
+    if start_date and end_date:
+        sel_start = datetime.strptime(start_date, "%Y-%m-%d")
+        sel_end_excl = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        row_start = func.coalesce(Campaign.started_at, Campaign.schedule_at, Campaign.created_at)
+        row_end = func.coalesce(Campaign.ended_at, row_start + timedelta(days=7))
+        stmt = stmt.where(row_end >= sel_start, row_start < sel_end_excl)
 
     total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
     rows = db.scalars(
@@ -155,16 +165,32 @@ def list_campaigns(db, account, *, status=None, type=None, kw=None, page=1, page
     ]
     avg_victim = (sum(victim_rates) / len(victim_rates)) if victim_rates else 0.0
 
+    # 副文案真实化：本月新增 / 未来 7 天排期 / 终止覆盖人次
+    now = datetime.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_new = int(db.scalar(
+        select(func.count()).select_from(base.where(Campaign.created_at >= month_start).subquery())
+    ) or 0)
+    week_plan = int(db.scalar(
+        select(func.count()).select_from(base.where(
+            Campaign.status == "scheduled",
+            Campaign.schedule_at >= now,
+            Campaign.schedule_at <= now + timedelta(days=7),
+        ).subquery())
+    ) or 0)
+    terminated_targets = sum(c.target_count for c in scoped if c.status == "terminated")
+
     stats = [
-        {"key": "", "label": "演练总数", "value": len(scoped), "sub": "↑ 12 本月", "accent": "blue"},
+        {"key": "", "label": "演练总数", "value": len(scoped),
+         "sub": f"本月新增 {month_new} 场" if month_new else "本月暂无新增", "accent": "blue"},
         {"key": "running", "label": "进行中", "value": _count(_IN_PROGRESS),
          "sub": f"覆盖 {running_targets:,} 人", "accent": "green"},
         {"key": "scheduled", "label": "待开始", "value": _count(("scheduled",)),
-         "sub": "计划本周 3 场", "accent": "purple"},
+         "sub": f"未来 7 天计划 {week_plan} 场" if week_plan else "暂无排期", "accent": "purple"},
         {"key": "completed", "label": "已完成", "value": len(completed),
          "sub": f"平均中招率 {avg_victim:.1f}%", "accent": "teal"},
         {"key": "terminated", "label": "已终止", "value": _count(("terminated",)),
-         "sub": "异常终止 2 场", "accent": "red"},
+         "sub": f"覆盖 {terminated_targets:,} 人", "accent": "red"},
         {"key": "draft", "label": "草稿", "value": _count(("draft",)),
          "sub": "编辑中的演练", "accent": "gray"},
     ]
