@@ -354,7 +354,7 @@
       <template v-else-if="step === 6">
         <div class="form-group">
           <label class="form-label">中招后处理方式<span class="required">*</span></label>
-          <div class="option-grid cols-3">
+          <div class="option-grid cols-2">
             <div class="option-card" :class="{ selected: trainForm.mode === 'train' }" @click="trainForm.mode = 'train'">
               <div class="option-card-header">
                 <div class="option-card-icon" style="background:#1D9E75;">✅</div>
@@ -369,6 +369,13 @@
               </div>
               <p class="option-card-desc">显示警示信息后关闭</p>
             </div>
+            <div class="option-card" :class="{ selected: trainForm.mode === 'url' }" @click="trainForm.mode = 'url'">
+              <div class="option-card-header">
+                <div class="option-card-icon" style="background:#378ADD;">🔗</div>
+                <div class="option-card-title">跳转到指定页面</div>
+              </div>
+              <p class="option-card-desc">自定义跳转目标（如安全知识库）</p>
+            </div>
             <div class="option-card" :class="{ selected: trainForm.mode === 'none' }" @click="trainForm.mode = 'none'">
               <div class="option-card-header">
                 <div class="option-card-icon" style="background:#8c8c8c;">🚫</div>
@@ -378,12 +385,16 @@
             </div>
           </div>
         </div>
+        <div v-if="trainForm.mode === 'url'" class="form-group">
+          <label class="form-label">跳转页面地址<span class="required">*</span></label>
+          <el-input v-model="trainForm.redirect_url" class="form-input"
+            placeholder="https://company.com/security/knowledge-base" />
+          <p class="form-hint">仅支持 http/https，提交后员工将被 302 重定向到该页面（不经过教育弹窗）</p>
+        </div>
         <div class="form-group">
           <label class="form-label">关联培训课程</label>
           <el-select v-model="trainForm.course_id" class="form-input">
-            <el-option label="《钓鱼邮件识别与防范》(15分钟)" value="1" />
-            <el-option label="《全员信息安全意识》(30分钟)" value="2" />
-            <el-option label="《财务人员专项安全课》(25分钟)" value="3" />
+            <el-option v-for="c in courses" :key="c.id" :label="`${c.title}(${c.duration_min}分钟)`" :value="String(c.id)" />
           </el-select>
         </div>
         <div class="form-group">
@@ -434,7 +445,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElLink } from 'element-plus'
 import type { ElTree, UploadFile } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
-import { campaignApi, orgApi, templateApi, channelApi } from '@/api'
+import { campaignApi, orgApi, templateApi, channelApi, trainingApi } from '@/api'
 
 const router = useRouter()
 const step = ref(0)
@@ -473,6 +484,9 @@ onMounted(() => {
     .catch(() => ElMessage.warning('组织架构加载失败，请稍后重试'))
   orgApi.tags()
     .then((list) => { if (Array.isArray(list)) tagList.value = list as TagRow[] })
+    .catch(() => {})
+  trainingApi.courses()
+    .then((list) => { if (Array.isArray(list)) courses.value = list as { id: number; title: string; duration_min: number }[] })
     .catch(() => {})
   loadWizardAssets()
 })
@@ -701,10 +715,14 @@ const triggerForm = reactive({
 })
 
 const trainForm = reactive({
-  mode: 'train' as 'train' | 'popup' | 'none',
+  mode: 'train' as 'train' | 'popup' | 'none' | 'url',
   course_id: '1',
+  redirect_url: '',
   rule: [true, true, false],
 })
+
+// 培训课程库（redirect 落点 /learn/{course_id} 按真实课程渲染）
+const courses = ref<{ id: number; title: string; duration_min: number }[]>([])
 
 const summaryRows = computed(() => [
   { key: '演练名称', val: form.name },
@@ -714,7 +732,14 @@ const summaryRows = computed(() => [
   { key: '落地页', val: landingPages.value.find(p => p.id === landingForm.page_id)?.name || '-' },
   { key: '发送配置', val: sendChannels.value.find((ch) => ch.id === sendChannelId.value)?.name || '-' },
   { key: '发送时间', val: triggerForm.mode === 'schedule' ? `${triggerForm.schedule_time}（分3批）` : '立即发送' },
-  { key: '培训设置', val: `立即跳转《钓鱼识别与防范》` },
+  {
+    key: '培训设置',
+    val: trainForm.mode === 'train'
+      ? `立即跳转${courses.value.find(c => c.id === Number(trainForm.course_id))?.title ?? ''}`
+      : trainForm.mode === 'url'
+        ? `跳转指定页面：${trainForm.redirect_url || '-'}`
+        : trainForm.mode === 'popup' ? '仅显示教育弹窗' : '不强制处理',
+  },
 ])
 
 /** 下一步：步骤 2 需校验目标与授权勾选（红线） */
@@ -767,7 +792,9 @@ async function submit() {
       schedule_type: triggerForm.mode === 'now' ? 'now' : 'timed',
       schedule_at: triggerForm.mode === 'schedule' ? triggerForm.schedule_time : null,
       batch_count: 3,
-      training_policy: trainForm.mode as 'redirect' | 'popup' | 'none',
+      // 前端 mode：train/popup/none/url；后端 policy：redirect/popup/none/url（train→redirect 映射）
+      training_policy: trainForm.mode === 'train' ? 'redirect' : trainForm.mode,
+      training_redirect_url: trainForm.mode === 'url' ? trainForm.redirect_url.trim() : '',
       course_ids: trainForm.mode === 'train' ? [Number(trainForm.course_id)] : [],
       auth_confirmed: true,
     })

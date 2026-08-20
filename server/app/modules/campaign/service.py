@@ -254,6 +254,7 @@ def create_campaign(db, account, payload) -> int:
         time_jitter_sec=payload.time_jitter_sec,
         pixel_degrade=int(payload.pixel_degrade),
         training_policy=payload.training_policy,
+        training_redirect_url=payload.training_redirect_url,
         course_ids=payload.course_ids or [],
         force_training_rules=payload.force_training_rules or [],
         auth_confirmed=1,
@@ -391,6 +392,7 @@ def update_draft(db, account, campaign_id: int, payload):
     c.time_jitter_sec = payload.time_jitter_sec
     c.pixel_degrade = int(payload.pixel_degrade)
     c.training_policy = payload.training_policy
+    c.training_redirect_url = payload.training_redirect_url
     c.course_ids = payload.course_ids or []
     c.force_training_rules = payload.force_training_rules or []
     c.auth_confirmed = int(payload.auth_confirmed)

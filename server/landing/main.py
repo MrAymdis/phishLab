@@ -2,12 +2,18 @@
 
 红线：口令类字段永不存明文——只记录字段名与输入长度。
 演示模式：绑定 8082 端口，开发机 hosts 映射演练域名后即可完整演示
-（点击邮件链接 → 仿冒登录页 → 提交 → 教育弹窗）。
+（点击邮件链接 → 仿冒登录页 → 提交 → 按 training_policy 处理）。
+
+提交后行为按演练 training_policy 分支：
+  none     → 空白页（仅记录数据，不告知中招）
+  popup    → 教育弹窗（可关闭）
+  redirect → 302 培训学习页 /learn/{course_id}
 """
 import logging
+from urllib.parse import quote
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from app.core.config import settings
 
@@ -18,12 +24,18 @@ app = FastAPI(title="PhishLab Landing", docs_url=None)
 
 _EDU_POPUP = """<!DOCTYPE html>
 <html lang="zh"><head><meta charset="utf-8"><title>安全演练提示</title></head>
-<body style="font-family:sans-serif;display:flex;justify-content:center;padding-top:80px">
-<div style="max-width:520px;border:1px solid #d1d5db;border-radius:12px;padding:32px">
-<h2 style="color:#D85A30">⚠️ 这是一次钓鱼演练</h2>
-<p>您刚才差点泄露了密码！请放心，本次为内部安全演练，您输入的内容<b>不会被记录</b>。</p>
-<p>请记住三点：核对发件人域名、不点击可疑链接、可疑邮件及时举报。</p>
-</div></body></html>"""
+<body style="margin:0;font-family:sans-serif">
+<div id="overlay" style="position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center">
+<div style="max-width:480px;width:88%;background:#fff;border-radius:12px;padding:28px 32px;text-align:center;box-shadow:0 8px 30px rgba(0,0,0,.2)">
+<h2 style="color:#D85A30;margin:0 0 12px">⚠️ 这是一次钓鱼演练</h2>
+<p style="color:#555;line-height:1.7;margin:0 0 8px">您刚才差点泄露了密码！请放心，本次为内部安全演练，您输入的内容<b>不会被记录</b>。</p>
+<p style="color:#555;line-height:1.7;margin:0 0 20px">请记住三点：核对发件人域名、不点击可疑链接、可疑邮件及时举报。</p>
+<button onclick="document.getElementById('overlay').style.display='none'" style="padding:8px 28px;background:#378ADD;color:#fff;border:none;border-radius:6px;font-size:14px;cursor:pointer">知道了</button>
+</div></div>
+</body></html>"""
+
+_NONE_PAGE = """<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><title>提交成功</title></head>
+<body style="margin:0"></body></html>"""
 
 
 def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "") -> str:
@@ -84,6 +96,55 @@ def _load_page(slug: str):
         return db.query(LandingPage).filter(LandingPage.slug == slug).first()
     finally:
         db.close()
+
+
+def _load_policy(token: str) -> tuple[str, list | None, str | None]:
+    """token → (training_policy, course_ids, training_redirect_url)。
+
+    token 无效/查不到演练时回退 popup（保持教育提示兜底，避免中招员工零提示）。
+    """
+    from app.db.session import SessionLocal
+    from app.modules.campaign.models import Campaign, CampaignTarget
+
+    if not token:
+        return "popup", None, None
+    db = SessionLocal()
+    try:
+        t = db.query(CampaignTarget).filter(CampaignTarget.token == token).first()
+        if t is None:
+            return "popup", None, None
+        c = db.get(Campaign, t.campaign_id)
+        if c is None:
+            return "popup", None, None
+        return c.training_policy or "none", c.course_ids or [], c.training_redirect_url
+    finally:
+        db.close()
+
+
+@app.get("/learn/{course_id}", response_class=HTMLResponse)
+def learn(course_id: int):
+    """员工端培训学习页（redirect 模式 302 落点）。TODO(三期)：接入真实课件。"""
+    from app.db.session import SessionLocal
+    from app.modules.training.models import Course
+
+    title = "安全培训课程"
+    desc = ""
+    db = SessionLocal()
+    try:
+        c = db.get(Course, course_id)
+        if c is not None:
+            title = c.title
+            desc = c.description or f"课件形态：{c.material or c.type} · 时长 {c.duration_min} 分钟"
+    finally:
+        db.close()
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"><title>{title}</title></head>
+<body style="margin:0;background:#f5f7fa;font-family:'Microsoft YaHei',sans-serif;display:flex;justify-content:center;padding-top:80px">
+<div style="max-width:520px;background:#fff;border-radius:12px;padding:32px;text-align:center">
+<h2 style="color:#1D9E75;margin:0 0 8px">✅ 您已进入安全培训</h2>
+<p style="color:#555;margin:0 0 20px">{title}</p>
+<p style="color:#999;font-size:12px;line-height:1.7">{desc or "培训课件接入中，敬请期待。"}</p>
+</div></body></html>""")
 
 
 def _load_page_fields(slug: str, page=None) -> tuple[str, list[dict]]:
@@ -199,7 +260,7 @@ async def submit(slug: str, request: Request):
 
     detail 结构：口令 {len, first?, last?} / 非口令 *_mask（展示）；*_plain {encrypted}（取证）。
 
-    TODO(一期)：token 反查 campaign → training_policy：redirect(302 培训页)/popup/none
+    提交后行为按 campaign.training_policy 分支（none 空白页 / popup 教育弹窗 / redirect 302 培训学习页）。
     """
     import base64
 
@@ -236,4 +297,17 @@ async def submit(slug: str, request: Request):
         detail=detail,
     )
     logger.info("submit captured slug=%s fields=%s fp=%s", slug, list(detail), (fp_hash or "")[:8])
+    policy, course_ids, redirect_url = _load_policy(token)
+    if policy == "none":
+        # 仅记录数据，不做任何提示
+        return HTMLResponse(_NONE_PAGE)
+    if policy == "url" and redirect_url:
+        # 跳转到自定义指定页面（仅允许 http/https，防止 javascript: 等伪协议）
+        if redirect_url.startswith(("http://", "https://")):
+            return RedirectResponse(redirect_url, status_code=302)
+    if policy == "redirect" and course_ids:
+        cid = course_ids[0]
+        if cid:
+            url = f"/learn/{cid}" + (f"?token={quote(token)}" if token else "")
+            return RedirectResponse(url, status_code=302)
     return HTMLResponse(_EDU_POPUP)

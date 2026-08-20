@@ -34,7 +34,10 @@ class Campaign(Base, TimestampMixin):
     randomize_content: Mapped[int] = mapped_column(Integer, default=0, comment="内容随机化")
     time_jitter_sec: Mapped[int] = mapped_column(Integer, default=0, comment="发送时刻抖动")
     pixel_degrade: Mapped[int] = mapped_column(Integer, default=0, comment="追踪像素降级")
-    training_policy: Mapped[str] = mapped_column(String(8), default="none", comment="redirect/popup/none")
+    training_policy: Mapped[str] = mapped_column(String(8), default="none", comment="redirect/popup/none/url")
+    training_redirect_url: Mapped[str | None] = mapped_column(
+        String(512), comment="url 模式：提交后 302 跳转的自定义页面"
+    )
     course_ids: Mapped[list | None] = mapped_column(JSON, comment="关联培训课程")
     force_training_rules: Mapped[list | None] = mapped_column(JSON, comment="强制培训触发条件")
     auth_confirmed: Mapped[int] = mapped_column(Integer, default=0, comment="授权确认勾选")
