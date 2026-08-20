@@ -12,7 +12,7 @@ class PlatformSetting(Base):
 
     setting_key: Mapped[str] = mapped_column(
         String(64), primary_key=True,
-        comment="logo/name/copyright/pixel_enabled/retention_days/disclaimer/ai_switches",
+        comment="logo/name/copyright/retention_days/disclaimer/ai_switches",
     )
     setting_value: Mapped[str | None] = mapped_column(Text)
     updated_by: Mapped[int | None] = mapped_column(BigInteger)

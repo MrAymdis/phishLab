@@ -275,11 +275,13 @@
                   <el-form-item label="平台 Logo">
                     <el-upload
                       class="logo-uploader"
-                      action="#"
                       :show-file-list="false"
-                      :auto-upload="false"
+                      :auto-upload="true"
+                      :http-request="uploadLogo"
+                      accept="image/*"
                     >
-                      <div class="logo-placeholder">
+                      <img v-if="brand.logo" :src="logoPreview" class="logo-preview" alt="平台 Logo" />
+                      <div v-else class="logo-placeholder">
                         <el-icon :size="28" color="#67c23a"><Picture /></el-icon>
                         <div style="font-size: 11px; color: var(--color-text-secondary); margin-top: 4px">点击上传 200x60</div>
                       </div>
@@ -296,33 +298,6 @@
                   </el-form-item>
                   <el-form-item>
                     <el-button type="primary" size="small" @click="saveBrand">保存品牌设置</el-button>
-                  </el-form-item>
-                </el-form>
-              </div>
-            </el-col>
-            <el-col :span="8">
-              <div class="card card-blue" style="margin: 0">
-                <div class="card-title">邮件追踪配置</div>
-                <el-form label-width="110px" style="margin-top: 12px" size="default">
-                  <el-form-item label="追踪像素">
-                    <el-switch v-model="privacy.tracking_pixel" />
-                    <span style="font-size: 11px; color: var(--color-text-tertiary); margin-left: 8px">检测邮件是否被打开</span>
-                  </el-form-item>
-                  <el-form-item label="追踪域名">
-                    <el-input v-model="track.domain" placeholder="track.drill-domain.com" />
-                  </el-form-item>
-                  <el-form-item label="链接过期时间">
-                    <el-select v-model="track.link_expire" style="width: 100%">
-                      <el-option label="7 天" value="7d" />
-                      <el-option label="30 天" value="30d" />
-                      <el-option label="演练结束即失效" value="campaign" />
-                    </el-select>
-                  </el-form-item>
-                  <el-form-item label="点击重定向">
-                    <el-input v-model="track.redirect_url" placeholder="https://company.com" />
-                  </el-form-item>
-                  <el-form-item>
-                    <el-button type="primary" size="small" @click="saveTracking">保存追踪配置</el-button>
                   </el-form-item>
                 </el-form>
               </div>
@@ -480,10 +455,12 @@ import {
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { systemApi } from '@/api'
+import { useBrand } from '@/composables/useBrand'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 
 const activeTab = ref('rbac')
+const { updateBrand } = useBrand()
 const activeRole = ref(1)
 const ssoEnabled = ref(true)
 const ssoType = ref('oidc')
@@ -502,16 +479,11 @@ const deptOptions = ['技术部', '财务部', '市场部', '人力资源部', '
 
 const brand = reactive({
   name: '企业防钓鱼演练平台',
+  logo: '',
   copyright: '© 2026 公司信息安全部 版权所有',
   icp: '京ICP备2026000000号-1',
 })
-const track = reactive({
-  domain: 'track.drill-domain.com',
-  link_expire: 'campaign',
-  redirect_url: 'https://company.com',
-})
 const privacy = reactive({
-  tracking_pixel: true,
   retention_drill: '180d',
   retention_behavior: '180d',
   retention_log: '1y',
@@ -594,23 +566,28 @@ const loadWarning = () => ElMessage.warning('接口数据加载失败，已展�
 const toFlag = (v: unknown) => v === '1' || v === 1 || v === true
 
 // ---- 保存（基础参数 → platform_setting）----
+const logoBust = ref(0)
+/** Logo 预览地址：上传替换后拼时间戳，规避浏览器缓存旧图 */
+const logoPreview = computed(() => (brand.logo ? `${brand.logo}?v=${logoBust.value}` : ''))
+const uploadLogo = async (opt: { file: File }) => {
+  try {
+    const res = (await systemApi.uploadLogo(opt.file)) as { logo?: string }
+    if (res?.logo) {
+      brand.logo = res.logo
+      logoBust.value = Date.now()
+      updateBrand({ logo: res.logo }) // 侧边栏/登录页（同会话）立即生效
+    }
+    ElMessage.success('平台 Logo 已更新')
+  } catch (err) {
+    ElMessage.error(`上传失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+}
 const saveBrand = async () => {
   try {
     await systemApi.updateSettings({
       name: brand.name, copyright: brand.copyright, icp: brand.icp,
     })
     ElMessage.success('品牌设置已保存')
-  } catch (err) {
-    ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
-  }
-}
-const saveTracking = async () => {
-  try {
-    await systemApi.updateSettings({
-      track_domain: track.domain, link_expire: track.link_expire, redirect_url: track.redirect_url,
-      pixel_enabled: privacy.tracking_pixel ? '1' : '0',
-    })
-    ElMessage.success('追踪配置已保存')
   } catch (err) {
     ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
   }
@@ -676,18 +653,17 @@ onMounted(async () => {
     const s = (await systemApi.settings()) as Record<string, any>
     if (s && typeof s === 'object') {
       if (s.name) brand.name = s.name
+      if (s.logo) brand.logo = s.logo
       if (s.copyright) brand.copyright = s.copyright
       if (s.icp) brand.icp = s.icp
-      if (s.track_domain) track.domain = s.track_domain
-      if (s.link_expire) track.link_expire = s.link_expire
-      if (s.redirect_url) track.redirect_url = s.redirect_url
-      if (s.pixel_enabled !== undefined && s.pixel_enabled !== null) privacy.tracking_pixel = toFlag(s.pixel_enabled)
       if (s.retention_drill) privacy.retention_drill = s.retention_drill
       if (s.retention_behavior) privacy.retention_behavior = s.retention_behavior
       if (s.retention_log) privacy.retention_log = s.retention_log
       if (s.disclaimer) privacy.disclaimer = s.disclaimer
       if (s.compliance_confirm !== undefined && s.compliance_confirm !== null) privacy.compliance_confirm = toFlag(s.compliance_confirm)
       if (s.reveal_operation_pwd) revealPwdConfigured.value = true
+      // 同步到共享品牌（侧边栏/登录页）
+      updateBrand({ name: brand.name, logo: brand.logo, copyright: brand.copyright, icp: brand.icp })
     }
   } catch { loadWarning() }
 
@@ -821,6 +797,15 @@ onMounted(async () => {
   :deep(.el-upload) {
     width: 100%;
   }
+}
+.logo-preview {
+  width: 200px;
+  height: 60px;
+  object-fit: contain;
+  border: 1px dashed var(--color-border-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  &:hover { border-color: var(--color-primary); }
 }
 .logo-placeholder {
   width: 200px;

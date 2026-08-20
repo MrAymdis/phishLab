@@ -2,8 +2,9 @@
   <el-container class="layout">
     <el-aside width="200px" class="aside">
       <div class="logo">
-        <el-icon :size="20" color="#378ADD"><Aim /></el-icon>
-        <span>钓鱼演练平台</span>
+        <img v-if="brand.logo" :src="logoSrc()" class="aside-logo-img" alt="平台 Logo" />
+        <el-icon v-else :size="20" color="#378ADD"><Aim /></el-icon>
+        <span>{{ brand.name }}</span>
       </div>
       <el-menu
         :default-active="route.path"
@@ -69,12 +70,13 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Bell, ChatDotRound } from '@element-plus/icons-vue'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import { useCopilotStore } from '@/stores/copilot'
+import { useBrand } from '@/composables/useBrand'
 import AiCopilotDrawer from '@/components/ai/AiCopilotDrawer.vue'
 
 const route = useRoute()
@@ -82,10 +84,21 @@ const router = useRouter()
 const user = useUserStore()
 const permission = usePermissionStore()
 const copilot = useCopilotStore()
+const { brand, loadBrand, logoSrc } = useBrand()
 
 onMounted(() => {
   if (user.isLoggedIn) permission.loadMenus()
+  void loadBrand()
 })
+
+// 浏览器标题跟随平台名称（品牌加载完成后覆盖硬编码后缀）
+watch(
+  () => [route.meta.title, brand.value.name] as const,
+  ([title, name]) => {
+    document.title = `${String(title || '')} - ${name}`
+  },
+  { immediate: true },
+)
 
 /** 顶栏通知（mock，后续接 websocket/轮询） */
 const notifications = ref([
@@ -120,6 +133,11 @@ function onCommand(cmd: string) {
   font-weight: 600;
   font-size: 15px;
   border-bottom: 1px solid var(--color-border-tertiary);
+}
+.aside-logo-img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
 }
 .nav-menu {
   border-right: none;

@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     # 落地页服务演示端口：开发机用 http://{演练域名}:{port}/p/{slug} 直连（hosts 映射域名后即可点击演示）
     landing_port: int = 8082
 
+    # 平台静态资源目录（Logo 等上传文件，经 /static 挂载访问）
+    static_dir: str = "static"
+
 
 @lru_cache
 def get_settings() -> Settings:

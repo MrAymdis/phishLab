@@ -2,10 +2,11 @@
 import importlib
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.core import response as resp
 from app.core.config import settings
@@ -53,6 +54,18 @@ def create_app() -> FastAPI:
     @app.get("/api/v1/health", tags=["系统"])
     def health():
         return resp.ok({"status": "up", "env": settings.env, "app": settings.app_name})
+
+    # 平台静态资源（Logo 等上传文件）；no-cache 保证替换后不被浏览器缓存
+    static_path = Path(settings.static_dir).resolve()
+    static_path.mkdir(parents=True, exist_ok=True)
+
+    @app.api_route("/static/{file_path:path}", methods=["GET", "HEAD"], include_in_schema=False)
+    def static_files(file_path: str):
+        target = (static_path / file_path).resolve()
+        # 路径穿越防护：目标必须位于静态目录内
+        if static_path not in target.parents or not target.is_file():
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        return FileResponse(str(target), headers={"Cache-Control": "no-cache"})
 
     for name in ROUTED_MODULES:
         router_mod = importlib.import_module(f"app.modules.{name}.router")

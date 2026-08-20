@@ -22,6 +22,11 @@ export default defineConfig({
         target: 'http://127.0.0.1:8080',
         changeOrigin: true,
       },
+      // 平台静态资源（上传的 Logo 等，后端 /static 挂载）
+      '/static': {
+        target: 'http://127.0.0.1:8080',
+        changeOrigin: true,
+      },
     },
   },
 })
