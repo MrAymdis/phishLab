@@ -847,6 +847,7 @@ async function testWebhook() {
 }
 
 onMounted(async () => {
+  loadAccounts()
   loadWebhook()
   // 角色列表
   try {
