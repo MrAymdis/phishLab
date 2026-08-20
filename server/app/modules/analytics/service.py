@@ -18,7 +18,7 @@ from app.modules.template.models import AttachmentPayload, EmailTemplate, Landin
 from app.modules.tracking.models import TrackEvent
 from app.modules.training.models import Course, TrainingAssignment
 
-_DAYS = {"7d": 7, "month": 30, "quarter": 90}
+_DAYS = {"7d": 7, "month": 30, "quarter": 90, "year": 365}
 _TYPE_CN = {"mail": "邮件", "sms": "短信", "social": "社交媒体", "usb": "USB"}
 
 
@@ -393,7 +393,27 @@ def campaign_report(db, account, campaign_id: int) -> dict:
         "submits": [series[d]["submit"] for d in days],
     }
 
-    return {"metrics": metrics, "funnel": funnel, "victims": victims, "dailyTrend": daily_trend}
+    # 部门对比明细（该演练内按部门聚合：投递/中招/举报）
+    dept_stmt = (
+        select(EmpDept.name,
+               func.sum(case((CampaignTarget.send_status.in_(_SENT_STATUS), 1), else_=0)),
+               func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)),
+               func.sum(case((CampaignTarget.report_flag == 1, 1), else_=0)))
+        .join(EmpUser, EmpUser.id == CampaignTarget.user_id)
+        .join(EmpDept, EmpDept.id == EmpUser.dept_id, isouter=True)
+        .where(CampaignTarget.campaign_id == campaign_id)
+        .group_by(EmpDept.name)
+        .order_by(func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)).desc())
+    )
+    dept_compare = [
+        {"dept": name or "未知部门", "sent": int(s or 0), "victim": int(v or 0),
+         "victimRate": _pct(v or 0, s or 0), "report": int(r or 0),
+         "reportRate": _pct(r or 0, s or 0)}
+        for name, s, v, r in db.execute(dept_stmt).all()
+    ]
+
+    return {"metrics": metrics, "funnel": funnel, "victims": victims, "dailyTrend": daily_trend,
+            "deptCompare": dept_compare}
 
 
 # ---------- 部门 / 趋势 / 个人报表 ----------
@@ -424,13 +444,29 @@ def department_report(db, account, range_: str) -> dict:
     if not rows:  # 窗口内无投递回退全量
         rows = db.execute(stmt).all()
 
+    # 部门在职人数 + 培训完成率（EmpUser / TrainingAssignment 辅助聚合）
+    total_map = dict(db.execute(
+        select(EmpUser.dept_id, func.count(EmpUser.id)).where(EmpUser.status == 1).group_by(EmpUser.dept_id)
+    ).all())
+    train_map = dict(db.execute(
+        select(EmpUser.dept_id,
+               func.sum(case((TrainingAssignment.status == "completed", 1), else_=0)),
+               func.count(TrainingAssignment.id))
+        .join(TrainingAssignment, TrainingAssignment.user_id == EmpUser.id)
+        .group_by(EmpUser.dept_id)
+    ).all())
+
     rows_out, labels, submit_rates = [], [], []
     for dim_id, target, open_cnt, click_cnt, submit_cnt, report_cnt, name in rows:
         target = float(target or 0)
         label = name or f"部门{dim_id or ''}"
         sr = _pct(submit_cnt or 0, target)
+        completed, assigned = train_map.get(dim_id, (0, 0))
         rows_out.append({
-            "dept": label, "targetCount": int(target),
+            "dept": label, "targetCount": int(target),  # 覆盖次数（投递人次）
+            "victim": int(submit_cnt or 0), "report": int(report_cnt or 0),
+            "total": int(total_map.get(dim_id, 0) or 0),  # 部门在职人数
+            "trainRate": _pct(completed or 0, assigned or 0),
             "openRate": _pct(open_cnt or 0, target),
             "clickRate": _pct(click_cnt or 0, target),
             "submitRate": sr,
@@ -441,11 +477,42 @@ def department_report(db, account, range_: str) -> dict:
     return {"rows": rows_out, "labels": labels, "submitRates": submit_rates}
 
 
+def dept_persons_report(db, account, dept_id: int, range_: str) -> dict:
+    """部门内人员明细：参与次数/中招率/风险等级（campaign_target 直查，过部门数据权限）。"""
+    days = _window_days(range_)
+    since = (datetime.now() - timedelta(days=days)).date()
+
+    submit_c = func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0))
+    stmt = (
+        select(EmpUser.id, EmpUser.name, EmpUser.emp_no, EmpUser.position, EmpDept.name,
+               func.count(CampaignTarget.id), submit_c, EmpRiskProfile.risk_level)
+        .join(CampaignTarget, CampaignTarget.user_id == EmpUser.id)
+        .join(EmpDept, EmpDept.id == EmpUser.dept_id, isouter=True)
+        .join(EmpRiskProfile, EmpRiskProfile.user_id == EmpUser.id, isouter=True)
+        .where(EmpUser.dept_id == dept_id, CampaignTarget.send_status.in_(_SENT_STATUS))
+        .group_by(EmpUser.id, EmpUser.name, EmpUser.emp_no, EmpUser.position, EmpDept.name, EmpRiskProfile.risk_level)
+        .order_by(submit_c.desc(), EmpUser.id)
+    )
+    stmt = apply_data_scope(db, stmt, account, dept_col=EmpUser.dept_id)
+    rows = db.execute(stmt.where(CampaignTarget.sent_at >= since)).all()
+    if not rows:  # 窗口内无投递回退全量
+        rows = db.execute(stmt).all()
+    return {
+        "rows": [
+            {"id": uid, "name": name or "", "empNo": emp_no or "", "dept": dept or "",
+             "position": position or "", "drills": int(n or 0),
+             "victimRate": _pct(v or 0, n or 0),
+             "risk": {1: "low", 2: "mid", 3: "high"}.get(risk_level, "low")}
+            for uid, name, emp_no, position, dept, n, v, risk_level in rows
+        ]
+    }
+
+
 def trend_report(db, account, range_: str) -> dict:
     """跨演练月度趋势 + 场景维度（campaign_target 直查，按投递时间窗口）。平台级，不过数据权限。"""
     days = _window_days(range_)
     since = (datetime.now() - timedelta(days=days)).date()
-    months = {"7d": 1, "month": 3, "quarter": 6}.get(range_, 3)
+    months = {"7d": 1, "month": 3, "quarter": 6, "year": 12}.get(range_, 3)
 
     # 最近 N 个月标签
     now = datetime.now()
@@ -533,10 +600,9 @@ def personal_report(db, account, user_id: int) -> dict:
     dims = [{"label": l, "val": int(v or 50), "color": _risk_color(v or 50)} for l, v in dim_defs]
     risk_level = {1: "低", 2: "中", 3: "高"}.get(profile.risk_level, _level_of(total)) if profile else _level_of(total)
 
-    # 近 6 个月风险分趋势（画像尚未按周期归档，用总分 ± 小偏移生成稳定序列）
-    now = datetime.now()
-    labels = [f"{(now.month - i - 1) % 12 + 1}月" for i in range(5, -1, -1)]
-    scores = [max(0, min(100, total + (i * 7 % 9) - 4)) for i in range(6)]
+    # 风险分历史：画像尚未按周期归档，无真实序列可用 → 返回空，前端显示空态
+    labels: list[str] = []
+    scores: list[int] = []
 
     # 行为时间轴（近 20 条）
     action_map = {"open": "打开邮件", "click": "点击链接", "submit": "提交数据",
@@ -568,7 +634,8 @@ def personal_report(db, account, user_id: int) -> dict:
     ).all()
     trainings = [
         {"name": c_title or f"课程#{a.course_id}", "progress": int(a.progress or 0),
-         "status": status_map.get(a.status, a.status or "")}
+         "status": status_map.get(a.status, a.status or ""),
+         "completedAt": a.completed_at.strftime("%Y-%m-%d") if a.completed_at else ""}
         for a, c_title in a_rows
     ]
 
@@ -580,10 +647,223 @@ def personal_report(db, account, user_id: int) -> dict:
     }
 
 
-def export_report(db, account, kind: str, params: dict) -> str:
-    """异步导出 Excel/PDF（带水印）：登记任务 + 审计留痕，文件生成走 Worker。"""
-    task_id = uuid4().hex
-    record_audit(db, account=account, module="report", action="export",
+# ---------- 导出（Excel / PDF） ----------
+
+_SCOPES = {"campaign": "演练报表", "department": "部门对比报表",
+           "trend": "综合趋势报表", "personal": "个人安全档案"}
+
+_SECTION = dict  # {"title", "headers", "rows"}
+
+
+def _campaign_sections(data: dict, campaign: Campaign) -> list[_SECTION]:
+    """单演练报表导出分节：指标卡 → 漏斗 → 部门对比 → 中招明细。"""
+    secs: list[_SECTION] = [
+        {
+            "title": "核心指标",
+            "headers": ["指标", "数值", "说明"],
+            "rows": [[m["title"], f"{m['value']}{m.get('suffix', '')}", m.get("sub", "")]
+                     for m in data["metrics"]],
+        },
+        {
+            "title": "转化漏斗",
+            "headers": ["阶段", "数量", "转化率"],
+            "rows": [[f["name"], f["value"], f"{f['rate']:.1f}%"] for f in data["funnel"]],
+        },
+        {
+            "title": "部门对比",
+            "headers": ["部门", "投递数", "中招数", "中招率%", "举报数", "举报率%"],
+            "rows": [[d["dept"], d["sent"], d["victim"], f"{d['victimRate']:.1f}",
+                      d["report"], f"{d['reportRate']:.1f}"] for d in data["deptCompare"]],
+        },
+        {
+            "title": "中招/点击明细",
+            "headers": ["姓名", "部门", "邮箱", "首次打开", "点击次数", "输入密码"],
+            "rows": [[v["name"], v["dept"], v["email"], v["first_open"], v["clicks"],
+                      "是" if v["input_pwd"] else "否"] for v in data["victims"]],
+        },
+    ]
+    return secs
+
+
+def _department_sections(data: dict, persons: dict | None = None) -> list[_SECTION]:
+    """部门对比报表导出分节；persons 为 dept_persons_report 结果（人员明细）。"""
+    secs: list[_SECTION] = [{
+        "title": "部门横向对比",
+        "headers": ["部门", "在职人数", "投递人次", "中招数", "打开率%", "点击率%",
+                    "中招率%", "举报率%", "培训完成率%"],
+        "rows": [[r["dept"], r["total"], r["targetCount"], r["victim"],
+                  f"{r['openRate']:.1f}", f"{r['clickRate']:.1f}",
+                  f"{r['submitRate']:.1f}", f"{r['reportRate']:.1f}",
+                  f"{r['trainRate']:.1f}"] for r in data["rows"]],
+    }]
+    if persons and persons.get("rows"):
+        secs.append({
+            "title": "部门人员明细",
+            "headers": ["姓名", "工号", "部门", "岗位", "参与次数", "中招率%", "风险"],
+            "rows": [[p["name"], p["empNo"], p["dept"], p["position"], p["drills"],
+                      f"{p['victimRate']:.1f}",
+                      {"low": "低", "mid": "中", "high": "高"}.get(p["risk"], "低")]
+                     for p in persons["rows"]],
+        })
+    return secs
+
+
+def _trend_sections(data: dict) -> list[_SECTION]:
+    secs: list[_SECTION] = [{
+        "title": "月度趋势",
+        "headers": ["月份", "演练次数", "中招率%", "举报率%"],
+        "rows": [[data["labels"][i], data["campaignCounts"][i],
+                  f"{data['submitRates'][i]:.1f}", f"{data['reportRates'][i]:.1f}"]
+                 for i in range(len(data["labels"]))],
+    }]
+    if data["scenes"]:
+        secs.append({
+            "title": "场景维度",
+            "headers": ["场景", "投递数", "中招率%", "举报率%"],
+            "rows": [[s["scene"], s["targetCount"], f"{s['submitRate']:.1f}",
+                      f"{s['reportRate']:.1f}"] for s in data["scenes"]],
+        })
+    return secs
+
+
+def _personal_sections(data: dict, user: EmpUser) -> list[_SECTION]:
+    dims = data["profile"]["dims"]
+    secs: list[_SECTION] = [
+        {
+            "title": "五维风险画像",
+            "headers": ["维度", "分值"],
+            "rows": [[d["label"], d["val"]] for d in dims]
+                    + [["综合风险值", data["profile"]["total"]],
+                       ["风险等级", data["profile"]["riskLevel"]]],
+        },
+        {
+            "title": "行为时间轴",
+            "headers": ["时间", "事件", "说明"],
+            "rows": [[t["time"], t["title"], t["desc"]] for t in data["timeline"]],
+        },
+    ]
+    if data["trainings"]:
+        secs.append({
+            "title": "培训记录",
+            "headers": ["课程", "完成日期", "进度%", "状态"],
+            "rows": [[t["name"], t["completedAt"], t["progress"], t["status"]]
+                     for t in data["trainings"]],
+        })
+    return secs
+
+
+def _build_excel(title: str, sections: list[_SECTION]) -> bytes:
+    """openpyxl 生成 xlsx：每节一行标题 + 表头 + 数据行。"""
+    from io import BytesIO
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = (title or "报表")[:31]
+    for sec in sections:
+        ws.append([sec["title"]])
+        ws.cell(ws.max_row, 1).font = Font(bold=True, size=12, color="378ADD")
+        ws.append(sec["headers"])
+        for c in ws[ws.max_row]:
+            c.font = Font(bold=True)
+        for row in sec["rows"]:
+            ws.append(["" if v is None else str(v) for v in row])
+        ws.append([])
+    ws.freeze_panes = "A1"
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _build_pdf(title: str, sections: list[_SECTION], operator: str) -> bytes:
+    """WeasyPrint 渲染 HTML 表格：页脚带导出人/时间信息行（系统有 Noto Sans CJK 字体）。"""
+    from html import escape
+    from datetime import datetime
+    from weasyprint import HTML
+
+    body = ""
+    for sec in sections:
+        head = "".join(f"<th>{escape(str(h))}</th>" for h in sec["headers"])
+        trs = "".join(
+            "<tr>" + "".join(f"<td>{escape(str(v))}</td>" for v in row) + "</tr>"
+            for row in sec["rows"]
+        )
+        body += f'<h3>{escape(sec["title"])}</h3><table><thead><tr>{head}</tr></thead><tbody>{trs}</tbody></table>'
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    html = f"""<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><style>
+      body {{ font-family: "Noto Sans CJK SC", "WenQuanYi Zen Hei", sans-serif; font-size: 12px; color: #333; }}
+      h2 {{ color: #378ADD; margin: 0 0 4px; }}
+      p.meta {{ color: #888; font-size: 11px; margin: 0 0 16px; }}
+      h3 {{ margin: 18px 0 6px; color: #555; font-size: 13px; }}
+      table {{ border-collapse: collapse; width: 100%; margin-bottom: 10px; }}
+      th, td {{ border: 1px solid #d9d9d9; padding: 5px 8px; text-align: left; word-break: break-all; }}
+      th {{ background: #f0f6ff; }}
+      @page {{ size: A4 landscape; margin: 16mm;
+        @bottom-center {{ content: "PhishLab 报表 · 导出人 {operator} · {now}"; font-size: 8px; color: #999; }} }}
+    </style></head><body>
+    <h2>{escape(title)}</h2>
+    <p class="meta">导出人：{escape(operator)} ｜ 导出时间：{now} ｜ PhishLab 钓鱼演练平台</p>
+    {body}
+    </body></html>"""
+    return HTML(string=html).write_pdf()
+
+
+def export_report(db, account, kind: str, params: dict) -> tuple[bytes, str, str]:
+    """同步生成导出文件（数据量小，直接生成返回流）。
+
+    按 scope 复用现有报表查询拿数据 → openpyxl / WeasyPrint 生成 →
+    返回 (文件字节, 文件名, media_type)；审计留痕含导出人与条件。
+    """
+    from datetime import datetime
+
+    scope = params.get("scope", "campaign")
+    range_ = params.get("range", "month")
+    if kind not in ("excel", "pdf"):
+        raise BizError(ErrorCode.PARAM_INVALID, "仅支持 excel/pdf 导出")
+    if scope not in _SCOPES:
+        raise BizError(ErrorCode.PARAM_INVALID, "导出范围不合法")
+    if scope == "campaign" and not params.get("campaign_id"):
+        raise BizError(ErrorCode.PARAM_INVALID, "导出演练报表需指定 campaign_id")
+    if scope == "personal" and not params.get("user_id"):
+        raise BizError(ErrorCode.PARAM_INVALID, "导出个人档案需指定 user_id")
+
+    now = datetime.now()
+    ext = "xlsx" if kind == "excel" else "pdf"
+    filename = f"phishlab_{scope}_{now:%Y%m%d_%H%M%S}.{ext}"
+    operator = getattr(account, "real_name", None) or account.username
+    record_audit(db, account=account, module="report", action=f"export_{scope}_{kind}",
                  target_type=kind, detail=params or {})
-    # TODO(二期)：投递 Celery 生成任务，完成后 MinIO 上传 + 站内信通知
-    return task_id
+
+    if scope == "campaign":
+        cid = int(params["campaign_id"])
+        campaign = db.get(Campaign, cid)
+        if campaign is None:
+            raise BizError(ErrorCode.NOT_FOUND)
+        title = f"演练报表：{campaign.name}"
+        sections = _campaign_sections(campaign_report(db, account, cid), campaign)
+    elif scope == "department":
+        title = f"部门对比报表（{range_}）"
+        persons = None
+        if params.get("dept_id"):
+            persons = dept_persons_report(db, account, int(params["dept_id"]), range_)
+            title = f"部门对比报表（{range_}）· 含人员明细"
+        sections = _department_sections(department_report(db, account, range_), persons)
+    elif scope == "trend":
+        title = f"综合趋势报表（{range_}）"
+        sections = _trend_sections(trend_report(db, account, range_))
+    else:
+        uid = int(params["user_id"])
+        user = db.get(EmpUser, uid)
+        if user is None:
+            raise BizError(ErrorCode.NOT_FOUND)
+        title = f"个人安全档案：{user.name}"
+        sections = _personal_sections(personal_report(db, account, uid), user)
+
+    if kind == "excel":
+        return _build_excel(title, sections), filename, _XLSX_MIME
+    return _build_pdf(title, sections, operator), filename, _PDF_MIME
+
+
+_XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+_PDF_MIME = "application/pdf"

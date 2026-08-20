@@ -35,6 +35,7 @@ http.interceptors.request.use((config) => {
 
 http.interceptors.response.use(
   (response) => {
+    if (response.config.responseType === 'blob') return response // 文件流：跳过统一包装，保留 headers
     const body = response.data as ApiResult
     if (body && typeof body.code === 'number') {
       if (body.code === 0) return body as never
@@ -78,4 +79,32 @@ export async function put<T>(url: string, data?: unknown): Promise<T> {
 export async function del<T>(url: string): Promise<T> {
   const res = (await http.delete(url)) as unknown as ApiResult<T>
   return res.data
+}
+
+/** 文件下载：POST + blob，解析 Content-Disposition 文件名触发浏览器下载。 */
+export async function download(url: string, data?: unknown): Promise<void> {
+  const res = await http.post(url, data, { responseType: 'blob' })
+  const blob = res.data as Blob
+  // 后端错误响应是 JSON 但被按 blob 接收，兜底解析提示
+  if (blob.type.includes('json')) {
+    const err = (await blob.text()) as string
+    try {
+      const body = JSON.parse(err) as ApiResult
+      ElMessage.error(body.message || '导出失败')
+    } catch {
+      ElMessage.error('导出失败')
+    }
+    throw new Error('export failed')
+  }
+  const disp = (res.headers['content-disposition'] as string) || ''
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(disp)
+  const name = m ? decodeURIComponent(m[1]) : `export_${Date.now()}.bin`
+  const urlObj = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = urlObj
+  a.download = name
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(urlObj)
 }

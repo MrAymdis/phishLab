@@ -1,4 +1,9 @@
+from io import BytesIO
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
@@ -29,6 +34,12 @@ def department_report(range: str = Query("month", alias="range"),
     return resp.ok(service.department_report(db, account, range))
 
 
+@reports.get("/department/{dept_id}/persons", summary="部门内人员明细（参与次数/中招率/风险）")
+def dept_persons(dept_id: int, range: str = Query("month", alias="range"),
+                 account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.dept_persons_report(db, account, dept_id, range))
+
+
 @reports.get("/trend", summary="综合趋势（跨演练 + 场景）")
 def trend_report(range: str = Query("quarter", alias="range"),
                  account=Depends(get_current_account), db: Session = Depends(get_db)):
@@ -40,6 +51,22 @@ def personal_report(uid: int, account=Depends(get_current_account), db: Session 
     return resp.ok(service.personal_report(db, account, uid))
 
 
-@reports.post("/export", summary="异步导出报表（Excel/PDF）")
-def export(kind: str, params: dict, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok({"task_id": service.export_report(db, account, kind, params)})
+class ReportExport(BaseModel):
+    """导出请求：kind 文件格式，scope 报表范围，其余参数按 scope 可选。"""
+    kind: str = Field(description="excel / pdf")
+    scope: str = Field(description="campaign / department / trend / personal")
+    campaign_id: int | None = None
+    dept_id: int | None = None
+    user_id: int | None = None
+    range: str = Field("month", description="时间范围 7d/month/quarter/year")
+
+
+@reports.post("/export", summary="导出报表文件流（Excel/PDF，同步生成）")
+def export(payload: ReportExport, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    content, filename, media_type = service.export_report(
+        db, account, payload.kind, payload.model_dump())
+    return StreamingResponse(
+        BytesIO(content),
+        media_type=media_type,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )

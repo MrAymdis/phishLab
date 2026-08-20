@@ -1,5 +1,5 @@
 /** API 模块索引：与后端 router 一一对应（后端路由为契约源）。 */
-import { get, post, put, del } from './http'
+import { download, get, post, put, del } from './http'
 
 // ---- 认证 ----
 export const authApi = {
@@ -17,8 +17,19 @@ export const analyticsApi = {
     get('/api/v1/overview/metrics', { range }),
   campaignReport: (id: number) => get(`/api/v1/reports/campaign/${id}`),
   department: (range: string) => get('/api/v1/reports/department', { range }),
+  deptPersons: (deptId: number, range: string) =>
+    get(`/api/v1/reports/department/${deptId}/persons`, { range }),
   trend: (range: string) => get('/api/v1/reports/trend', { range }),
   personal: (uid: number) => get(`/api/v1/reports/personal/${uid}`),
+  /** 导出报表文件（Excel/PDF，blob 下载） */
+  exportReport: (payload: {
+    kind: 'excel' | 'pdf'
+    scope: 'campaign' | 'department' | 'trend' | 'personal'
+    campaign_id?: number
+    dept_id?: number
+    user_id?: number
+    range?: string
+  }) => download('/api/v1/reports/export', payload),
 }
 
 // ---- 演练管理 ----
