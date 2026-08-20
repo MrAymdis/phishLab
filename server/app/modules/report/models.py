@@ -42,3 +42,29 @@ class ReportRewardLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), nullable=False
     )
+
+
+class ReportRewardItem(Base):
+    """举报积分兑换商品（奖品目录）。"""
+    __tablename__ = "report_reward_item"
+
+    id: Mapped[int] = pk()
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    icon: Mapped[str | None] = mapped_column(String(16))
+    cost: Mapped[int] = mapped_column(Integer, nullable=False)
+    stock: Mapped[int] = mapped_column(Integer, default=0)
+    enabled: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class ReportRedemption(Base):
+    """兑换记录：员工扣积分换奖品。"""
+    __tablename__ = "report_redemption"
+
+    id: Mapped[int] = pk()
+    user_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    item_id: Mapped[int] = mapped_column(BigInteger)
+    points: Mapped[int] = mapped_column(Integer, nullable=False)
+    remark: Mapped[str | None] = mapped_column(String(128))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, server_default=func.now(), nullable=False
+    )

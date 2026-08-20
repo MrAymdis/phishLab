@@ -185,6 +185,26 @@ export const reportApi = {
   list: (q: Record<string, unknown>) => get('/api/v1/mail-reports', q),
   classify: (id: number, classification: string, remark?: string) =>
     post(`/api/v1/mail-reports/${id}/classify`, { classification, remark }),
+  /** 举报中心统计卡 + 分类计数 */
+  stats: () => get<{ total: number; monthCount: number; realCount: number; falseCount: number; drillCount: number; pendingCount: number; misreportRate: number }>('/api/v1/mail-reports/stats'),
+  /** 积分排行榜（本月 + 累计 TOP20） */
+  ranking: () => get<{ list: Record<string, unknown>[]; total: number }>('/api/v1/mail-reports/ranking'),
+  /** 平台积分概览 + 最近兑换记录 */
+  pointsOverview: () => get<{ totalIssued: number; monthIssued: number; participants: number; redemptions: Record<string, unknown>[] }>('/api/v1/mail-reports/points/overview'),
+  /** 积分规则 */
+  rewardRules: () => get<{ rules: { type: string; name: string; points: number; desc: string }[] }>('/api/v1/mail-reports/reward-rules'),
+  updateRewardRules: (rules: Record<string, unknown>[]) =>
+    put('/api/v1/mail-reports/reward-rules', { rules }),
+  /** 兑换商品目录 / 员工兑换 */
+  rewardCatalog: () => get<{ items: { id: number; name: string; icon: string; cost: number; stock: number }[] }>('/api/v1/mail-reports/reward-catalog'),
+  redeem: (user_id: number, item_id: number) => post('/api/v1/mail-reports/redeem', { user_id, item_id }),
+  /** 插件 API 配置 */
+  pluginConfig: () => get<{ apiKeyMasked: string; allowedDomains: string[]; webhookUrl: string; autoclass: boolean; notifyChannels: Record<string, boolean> }>('/api/v1/mail-reports/plugin-config'),
+  updatePluginConfig: (payload: Record<string, unknown>) =>
+    put('/api/v1/mail-reports/plugin-config', payload),
+  regenPluginKey: () => post<{ apiKeyMasked: string }>('/api/v1/mail-reports/plugin-config/regen-key'),
+  testPluginWebhook: (webhookUrl: string) =>
+    post<{ ok: boolean; status: number; message: string }>('/api/v1/mail-reports/plugin-config/test-webhook', { webhookUrl }),
 }
 
 // ---- AI ----
@@ -211,7 +231,14 @@ export const openapiApi = {
 // ---- 系统设置 / 授权 ----
 export const systemApi = {
   settings: () => get('/api/v1/settings'),
+  /** 公开品牌信息（无鉴权：登录页名称/Logo/版权/备案） */
+  publicSettings: () => get<{ name: string; logo: string; copyright: string; icp: string }>('/api/v1/settings/public'),
   updateSettings: (payload: Record<string, unknown>) => put('/api/v1/settings', payload),
+  uploadLogo: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return post<{ logo: string }>('/api/v1/settings/logo', fd)
+  },
   license: () => get('/api/v1/license'),
   activateLicense: (code: string) => post('/api/v1/license/activate', { license_key: code }),
   importLicense: (file: File) => {

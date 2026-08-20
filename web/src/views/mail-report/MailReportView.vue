@@ -2,14 +2,15 @@
   <div class="page-container">
     <PageHeader title="邮件举报">
       <template #actions>
-        <el-button size="small" :icon="Download">下载 Outlook 插件</el-button>
-        <el-button size="small" :icon="Picture">下载 Web 邮箱按钮</el-button>
-        <el-button size="small" :icon="Setting">API 配置说明</el-button>
-        <el-button size="small" :icon="Refresh">刷新</el-button>
+        <el-button size="small" :icon="Download" @click="pluginComingSoon">下载 Outlook 插件</el-button>
+        <el-button size="small" :icon="Picture" @click="pluginComingSoon">下载 Web 邮箱按钮</el-button>
+        <el-button size="small" :icon="Setting" @click="activeTab = 'plugin'">API 配置说明</el-button>
+        <el-button size="small" :icon="Refresh" @click="refreshAll">刷新</el-button>
       </template>
     </PageHeader>
 
     <el-tabs v-model="activeTab" style="margin: 8px 16px 0">
+      <!-- ==================== 举报插件管理 ==================== -->
       <el-tab-pane label="举报插件管理" name="plugin">
         <el-row :gutter="12" style="margin: 16px 0 0">
           <el-col :span="12">
@@ -20,7 +21,7 @@
                   <div class="plugin-title">Outlook 桌面客户端插件</div>
                   <div class="plugin-sub">支持一键举报可疑邮件到安全运营中心</div>
                 </div>
-                <el-button type="primary" :icon="Download">下载</el-button>
+                <el-button type="primary" :icon="Download" @click="pluginComingSoon">下载</el-button>
               </div>
               <el-descriptions :column="2" size="small" border style="margin-top: 12px">
                 <el-descriptions-item label="版本号">v2.4.1</el-descriptions-item>
@@ -56,7 +57,7 @@
                   <div class="plugin-title">Web 邮箱举报按钮</div>
                   <div class="plugin-sub">通过浏览器书签/扩展在网页版邮箱举报</div>
                 </div>
-                <el-button type="primary" :icon="Picture">下载</el-button>
+                <el-button type="primary" :icon="Picture" @click="pluginComingSoon">下载</el-button>
               </div>
               <el-descriptions :column="2" size="small" border style="margin-top: 12px">
                 <el-descriptions-item label="版本号">v1.8.0</el-descriptions-item>
@@ -92,57 +93,63 @@
           <el-col :span="24">
             <div class="card card-purple">
               <div class="card-title">举报 API 配置</div>
-              <el-form label-width="140px" style="margin-top: 8px; max-width: 720px">
+              <el-form label-width="140px" style="margin-top: 8px; max-width: 760px">
                 <el-form-item label="API Endpoint">
-                  <el-input v-model="apiConfig.endpoint" readonly>
+                  <el-input :model-value="apiEndpoint" readonly>
                     <template #append>
-                      <el-button :icon="CopyDocument">复制</el-button>
+                      <el-button :icon="CopyDocument" @click="copyText(apiEndpoint)">复制</el-button>
                     </template>
                   </el-input>
                 </el-form-item>
-                <el-form-item label="Webhook URL">
-                  <el-input v-model="apiConfig.webhook" readonly>
+                <el-form-item label="API Key">
+                  <el-input :model-value="pluginConfig.apiKeyMasked || '未生成'" readonly style="width: 320px">
                     <template #append>
-                      <el-button :icon="CopyDocument">复制</el-button>
+                      <el-button :icon="RefreshRight" @click="doRegenKey">重生成</el-button>
                     </template>
                   </el-input>
+                  <span style="margin-left: 10px; font-size: 11px; color: var(--color-text-tertiary)">插件鉴权密钥，加密存储仅回显掩码</span>
                 </el-form-item>
-                <el-form-item label="认证 Token">
-                  <el-input v-model="apiConfig.token" type="password" show-password readonly>
-                    <template #append>
-                      <el-button :icon="RefreshRight" @click="regenerateToken">重生成</el-button>
-                      <el-button :icon="CopyDocument">复制</el-button>
-                    </template>
-                  </el-input>
+                <el-form-item label="允许的域名列表">
+                  <div class="domain-editor">
+                    <el-tag v-for="d in pluginConfig.allowedDomains" :key="d" closable size="small" style="margin-right: 6px" @close="removeDomain(d)">
+                      @{{ d }}
+                    </el-tag>
+                    <el-input v-model="domainInput" size="small" placeholder="输入域名后回车添加，如 company.com" style="width: 240px"
+                      @keyup.enter="addDomain" />
+                  </div>
+                  <div style="font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px">仅允许这些域名下的邮箱使用插件举报</div>
+                </el-form-item>
+                <el-form-item label="Webhook 回调 URL">
+                  <el-input v-model="pluginConfig.webhookUrl" placeholder="https://soc.company.com/webhook/phish-report" />
+                </el-form-item>
+                <el-form-item label="自动分类">
+                  <el-switch v-model="pluginConfig.autoclass" />
+                  <span style="margin-left: 10px; font-size: 12px; color: var(--color-text-secondary)">开启后系统将自动识别举报邮件类型</span>
+                </el-form-item>
+                <el-form-item label="举报通知推送">
+                  <el-checkbox v-model="pluginConfig.notifyChannels.wecom">企业微信</el-checkbox>
+                  <el-checkbox v-model="pluginConfig.notifyChannels.dingtalk">钉钉</el-checkbox>
+                  <el-checkbox v-model="pluginConfig.notifyChannels.feishu">飞书</el-checkbox>
+                  <span style="margin-left: 8px; font-size: 11px; color: var(--color-text-tertiary)">真实钓鱼举报将即时推送到所选平台（二期）</span>
                 </el-form-item>
               </el-form>
+              <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; padding-top: 14px; border-top: 1px solid var(--color-border-tertiary); max-width: 760px">
+                <el-button size="small" @click="doTestWebhook">测试连接</el-button>
+                <el-button size="small" type="primary" @click="doSavePluginConfig">保存配置</el-button>
+              </div>
               <div class="code-section">
                 <div class="section-title">
                   接入代码示例（cURL）
-                  <el-button size="small" link type="primary" :icon="CopyDocument">复制代码</el-button>
+                  <el-button size="small" link type="primary" :icon="CopyDocument" @click="copyText(codeSample)">复制代码</el-button>
                 </div>
-                <pre class="code-block"><code>curl -X POST https://api.phishlab.example.com/v1/reports/mail \
-  -H "Authorization: Bearer {{ apiConfig.token }}" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "reporter_email": "zhangsan@example.com",
-    "subject": "【紧急】工资条更新通知",
-    "sender": "hr-department@phishing.com",
-    "raw_mail_base64": "..."
-  }'
-
-# 响应示例：
-# {
-#   "report_id": "RPT202608160001",
-#   "auto_classification": "phishing_real",
-#   "confidence": 0.94
-# }</code></pre>
+                <pre class="code-block"><code>{{ codeSample }}</code></pre>
               </div>
             </div>
           </el-col>
         </el-row>
       </el-tab-pane>
 
+      <!-- ==================== 举报中心 ==================== -->
       <el-tab-pane label="举报中心" name="center">
         <el-row :gutter="12" style="margin: 16px 0 0">
           <el-col :span="24">
@@ -155,31 +162,34 @@
                   range-separator="至"
                   start-placeholder="开始日期"
                   end-placeholder="结束日期"
+                  value-format="YYYY-MM-DD"
                 />
-                <el-select v-model="reportCategory" size="small" placeholder="全部分类" style="width: 160px">
+                <el-select v-model="reportCategory" size="small" placeholder="全部分类" style="width: 160px" @change="reloadReports">
                   <el-option label="全部" value="" />
                   <el-option label="演练钓鱼" value="drill" />
                   <el-option label="真实钓鱼" value="real" />
                   <el-option label="误报" value="false" />
+                  <el-option label="待研判" value="pending" />
                 </el-select>
-                <el-input v-model="reportKw" size="small" placeholder="搜索主题/发件人/举报人" style="width: 280px" clearable />
+                <el-input v-model="reportKw" size="small" placeholder="搜索主题/发件人/举报人" style="width: 280px" clearable @keyup.enter="reloadReports" @clear="reloadReports" />
+                <el-button size="small" type="primary" @click="reloadReports">查询</el-button>
               </div>
             </div>
           </el-col>
         </el-row>
 
         <el-row :gutter="12" style="margin: 12px 0 0">
-          <el-col :span="6"><StatCard title="累计举报量" value="3,428" suffix=" 封" accent="blue" /></el-col>
-          <el-col :span="6"><StatCard title="本月举报" value="486" suffix=" 封" accent="teal" /></el-col>
-          <el-col :span="6"><StatCard title="真实钓鱼数" value="62" suffix=" 封" accent="red" /></el-col>
-          <el-col :span="6"><StatCard title="误报率" value="18.3" suffix=" %" accent="orange" /></el-col>
+          <el-col :span="6"><StatCard title="累计举报量" :value="reportStats.total" suffix=" 封" accent="blue" /></el-col>
+          <el-col :span="6"><StatCard title="本月举报" :value="reportStats.monthCount" suffix=" 封" accent="teal" /></el-col>
+          <el-col :span="6"><StatCard title="真实钓鱼数" :value="reportStats.realCount" suffix=" 封" accent="red" /></el-col>
+          <el-col :span="6"><StatCard title="误报率" :value="reportStats.misreportRate" suffix=" %" accent="orange" /></el-col>
         </el-row>
 
         <el-row :gutter="12" style="margin: 12px 0 16px">
           <el-col :span="24">
             <div class="card card-teal">
               <div class="card-title">举报记录</div>
-              <el-table :data="reportRows" size="small" style="margin-top: 8px">
+              <el-table :data="reportRows" size="small" style="margin-top: 8px" v-loading="reportLoading">
                 <el-table-column label="时间" prop="time" width="160" />
                 <el-table-column label="邮件主题" prop="subject" min-width="220" show-overflow-tooltip />
                 <el-table-column label="发件人" prop="sender" min-width="180" show-overflow-tooltip />
@@ -195,7 +205,8 @@
                   <template #default="{ row }">
                     <el-tag v-if="row.auto === 'drill'" type="primary" size="small">演练钓鱼</el-tag>
                     <el-tag v-else-if="row.auto === 'real'" type="danger" size="small">真实钓鱼</el-tag>
-                    <el-tag v-else type="info" size="small">误报</el-tag>
+                    <el-tag v-else-if="row.auto === 'false'" type="info" size="small">误报</el-tag>
+                    <el-tag v-else type="warning" size="small">待研判</el-tag>
                   </template>
                 </el-table-column>
                 <el-table-column label="人工复核结果" width="110" align="center">
@@ -206,26 +217,33 @@
                     <span v-else style="color: var(--color-text-tertiary); font-size: 12px">待复核</span>
                   </template>
                 </el-table-column>
+                <el-table-column label="积分" prop="rewardPoints" width="70" align="center" />
                 <el-table-column label="操作" width="280" fixed="right">
                   <template #default="{ row }">
                     <el-button link size="small" type="primary" @click="openDetailDialog(row)">详情</el-button>
                     <el-button link size="small" type="danger" @click="openRealDialog(row)" v-if="!row.manual">研判为真实钓鱼</el-button>
                     <el-button link size="small" v-if="!row.manual" @click="classifyReport(row, 'false_positive')">标记误报</el-button>
-                    <el-button link size="small" type="success">推送SOC</el-button>
+                    <el-button link size="small" type="success" @click="openPushSoc(row)">推送SOC</el-button>
                   </template>
                 </el-table-column>
+                <template #empty><el-empty description="暂无举报记录" :image-size="70" /></template>
               </el-table>
               <el-pagination
                 style="margin-top: 12px; justify-content: flex-end"
                 layout="total, sizes, prev, pager, next"
-                :total="486"
+                :total="reportTotal"
+                v-model:current-page="reportPage"
+                v-model:page-size="reportPageSize"
                 :page-sizes="[10, 20, 50, 100]"
+                @current-change="loadReports"
+                @size-change="reloadReports"
               />
             </div>
           </el-col>
         </el-row>
       </el-tab-pane>
 
+      <!-- ==================== 举报奖励 ==================== -->
       <el-tab-pane label="举报奖励" name="reward">
         <el-row :gutter="12" style="margin: 16px 0 16px">
           <el-col :span="14">
@@ -240,14 +258,15 @@
                     <span v-else style="color: var(--color-text-secondary)">{{ row.rank }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="姓名" prop="name" width="100" />
-                <el-table-column label="部门" prop="dept" width="120" />
-                <el-table-column label="本月积分" width="110" align="center">
+                <el-table-column label="姓名" prop="name" width="110" />
+                <el-table-column label="部门" prop="dept" width="130" />
+                <el-table-column label="本月举报" prop="reportCount" width="90" align="center" />
+                <el-table-column label="本月积分" width="100" align="center">
                   <template #default="{ row }">
                     <span style="font-weight: 600">{{ row.monthPoints }}</span>
                   </template>
                 </el-table-column>
-                <el-table-column label="累计积分" width="110" align="center">
+                <el-table-column label="累计积分" width="100" align="center">
                   <template #default="{ row }">{{ row.totalPoints }}</template>
                 </el-table-column>
                 <el-table-column label="徽章" align="center">
@@ -255,70 +274,77 @@
                     <el-tag v-for="b in row.badges" :key="b" size="small" effect="dark" style="margin-right: 4px; background: linear-gradient(135deg, #F59E0B, #D97706); border: none">{{ b }}</el-tag>
                   </template>
                 </el-table-column>
+                <template #empty><el-empty description="暂无积分记录" :image-size="70" /></template>
               </el-table>
+            </div>
+
+            <div class="card card-green" style="margin-top: 12px">
+              <div class="card-title">
+                积分规则说明
+                <el-button size="small" link type="primary" @click="openRulesDialog">编辑规则</el-button>
+              </div>
+              <ul class="rule-list">
+                <li v-for="r in rewardRules" :key="r.type">
+                  <el-tag size="small" :type="ruleTagType(r.type)">+{{ r.points }}</el-tag>
+                  <b style="font-size: 13px">{{ r.name }}</b>
+                  <span style="font-size: 12px; color: var(--color-text-secondary)">{{ r.desc }}</span>
+                </li>
+              </ul>
             </div>
           </el-col>
           <el-col :span="10">
-            <div class="card card-green">
-              <div class="card-title">积分规则说明</div>
-              <ul class="rule-list">
-                <li><el-tag type="success" size="small">+10</el-tag> 举报成功（任一渠道）</li>
-                <li><el-tag type="danger" size="small">+50</el-tag> 举报经核实为真实钓鱼邮件</li>
-                <li><el-tag type="warning" size="small">+100</el-tag> 月度积分排行榜 Top 10 额外奖励</li>
-                <li><el-tag type="info" size="small">+20</el-tag> 连续 30 天无缺勤举报（每月至少1次）</li>
-              </ul>
-            </div>
-
-            <div class="card card-blue" style="margin-top: 12px">
-              <div class="card-title">我的积分卡片</div>
+            <div class="card card-blue">
+              <div class="card-title">平台积分概览</div>
               <div class="my-points">
                 <div class="points-row">
                   <div class="points-item">
-                    <div class="points-label">当前总积分</div>
-                    <div class="points-value total">2,380</div>
+                    <div class="points-label">累计发放积分</div>
+                    <div class="points-value total">{{ pointsOverview.totalIssued }}</div>
                   </div>
                   <div class="points-item">
-                    <div class="points-label">本月积分</div>
-                    <div class="points-value month">+320</div>
+                    <div class="points-label">本月发放</div>
+                    <div class="points-value month">{{ pointsOverview.monthIssued }}</div>
+                  </div>
+                  <div class="points-item">
+                    <div class="points-label">参与举报人数</div>
+                    <div class="points-value month">{{ pointsOverview.participants }}</div>
                   </div>
                 </div>
                 <div class="history-section">
-                  <div class="section-title">历史奖励领取记录</div>
-                  <div class="history-row"><span>2026-07-20</span><span>京东购物券 100元</span><span style="color: #10B981">-1000分</span></div>
-                  <div class="history-row"><span>2026-06-18</span><span>学习卡 200元</span><span style="color: #10B981">-1800分</span></div>
-                  <div class="history-row"><span>2026-05-30</span><span>月度荣誉证书（Top 8）</span><span style="color: #10B981">0分</span></div>
+                  <div class="section-title">最近兑换记录</div>
+                  <div v-for="h in pointsOverview.redemptions" :key="h.id" class="history-row">
+                    <span>{{ h.time }}</span><span>{{ h.user }} · {{ h.item }}</span><span style="color: #10B981">-{{ h.points }}分</span>
+                  </div>
+                  <el-empty v-if="!pointsOverview.redemptions.length" description="暂无兑换记录" :image-size="40" />
                 </div>
               </div>
             </div>
 
             <div class="card card-red" style="margin-top: 12px">
               <div class="card-title">奖励兑换中心</div>
-              <div class="reward-item">
-                <div class="reward-icon">🛍️</div>
+              <el-select
+                v-model="redeemUserId"
+                filterable
+                remote
+                clearable
+                size="small"
+                :remote-method="searchRedeemUsers"
+                :loading="redeemUserLoading"
+                placeholder="搜索并选择兑换员工"
+                style="width: 100%; margin-bottom: 8px"
+              >
+                <el-option v-for="u in redeemUserCandidates" :key="u.id" :label="u.label" :value="u.id" />
+              </el-select>
+              <div v-for="item in catalogItems" :key="item.id" class="reward-item">
+                <div class="reward-icon">{{ item.icon || '🎁' }}</div>
                 <div class="reward-info">
-                  <div class="reward-name">京东购物券 · 100元</div>
-                  <div class="reward-cost">需要 <b>1,000</b> 积分（库存 28）</div>
+                  <div class="reward-name">{{ item.name }}</div>
+                  <div class="reward-cost" v-if="item.cost > 0">需要 <b>{{ item.cost }}</b> 积分（库存 {{ item.stock }}）</div>
+                  <div class="reward-cost" v-else>进入季度 Top 20 自动发放（免费）</div>
                 </div>
-                <el-button size="small" type="danger" :disabled="2380 < 1000">兑换</el-button>
+                <el-button size="small" type="danger" :disabled="item.cost <= 0 || item.stock <= 0" @click="doRedeem(item)">兑换</el-button>
               </div>
-              <el-divider style="margin: 8px 0" />
-              <div class="reward-item">
-                <div class="reward-icon">📚</div>
-                <div class="reward-info">
-                  <div class="reward-name">学习卡 · 极客时间 200元</div>
-                  <div class="reward-cost">需要 <b>1,800</b> 积分（库存 12）</div>
-                </div>
-                <el-button size="small" type="danger" :disabled="2380 < 1800">兑换</el-button>
-              </div>
-              <el-divider style="margin: 8px 0" />
-              <div class="reward-item">
-                <div class="reward-icon">🏅</div>
-                <div class="reward-info">
-                  <div class="reward-name">季度安全卫士荣誉证书</div>
-                  <div class="reward-cost">进入季度 Top 20 自动发放（免费）</div>
-                </div>
-                <el-button size="small" type="primary" disabled>需达标</el-button>
-              </div>
+              <el-empty v-if="!catalogItems.length" description="暂无兑换商品" :image-size="50" />
             </div>
           </el-col>
         </el-row>
@@ -360,37 +386,25 @@
           <el-descriptions-item label="举报人">{{ currentReport.reporter }}</el-descriptions-item>
           <el-descriptions-item label="部门">{{ currentReport.reporterDept }}</el-descriptions-item>
           <el-descriptions-item label="举报时间">{{ currentReport.time }}</el-descriptions-item>
-          <el-descriptions-item label="响应时间">3 分 12 秒</el-descriptions-item>
+          <el-descriptions-item label="举报渠道">{{ channelLabel(currentReport.channel) }}</el-descriptions-item>
         </el-descriptions>
 
         <!-- 邮件预览 -->
         <div class="card" style="margin-top: 14px; border-top-color: var(--accent-red)">
           <div class="card-title">邮件预览</div>
           <div class="mail-meta">
-            <div class="mail-meta-row"><span class="mail-meta-label">发件人</span><span class="mail-meta-value danger">{{ currentReport.sender }}</span></div>
-            <div class="mail-meta-row"><span class="mail-meta-label">收件人</span><span class="mail-meta-value">{{ currentReport.reporter }} &lt;{{ currentReport.reporter }}@company.com&gt;</span></div>
+            <div class="mail-meta-row"><span class="mail-meta-label">发件人</span><span class="mail-meta-value danger">{{ currentReport.sender || '（未上报）' }}</span></div>
             <div class="mail-meta-row"><span class="mail-meta-label">主题</span><span class="mail-meta-value"><b>{{ currentReport.subject }}</b></span></div>
+            <div class="mail-meta-row"><span class="mail-meta-label">Message-ID</span><span class="mail-meta-value">{{ currentReport.messageId || '（未上报）' }}</span></div>
           </div>
           <el-divider style="margin: 10px 0" />
-          <div class="mail-body">
-            尊敬的员工：<br /><br />
-            系统检测到您的账户存在异常登录行为，为保障账户安全，请于 <b style="color: #f56c6c">24 小时内</b>
-            点击下方链接完成身份验证，否则账户将被冻结。<br /><br />
-            <a class="fake-link">立即验证账户安全 →</a><br /><br />
-            此致<br />信息安全部
-          </div>
+          <el-empty description="邮件正文未归档（插件 EML 全文上传二期支持）" :image-size="50" />
         </div>
 
         <!-- 附件列表 -->
         <div class="card" style="margin-top: 12px">
           <div class="card-title">附件列表</div>
-          <div v-for="att in detailAttachments" :key="att.name" class="attach-row">
-            <el-icon><Document /></el-icon>
-            <span style="flex: 1; font-size: 13px">{{ att.name }}</span>
-            <span style="font-size: 12px; color: var(--color-text-tertiary)">{{ att.size }}</span>
-            <el-tag :type="att.risk ? 'danger' : 'info'" size="small" effect="plain">{{ att.risk ? '高危' : '安全' }}</el-tag>
-          </div>
-          <el-empty v-if="!detailAttachments.length" description="无附件" :image-size="40" />
+          <el-empty description="EML 附件未上传（二期支持全文归档）" :image-size="40" />
         </div>
 
         <!-- 邮件头详情 -->
@@ -401,6 +415,7 @@
                 <span class="header-key">{{ h.key }}</span>
                 <span class="header-val">{{ h.value }}</span>
               </div>
+              <el-empty v-if="!detailHeaders.length" description="邮件头未上报" :image-size="40" />
             </el-collapse-item>
           </el-collapse>
         </div>
@@ -421,21 +436,175 @@
         <el-button type="primary" @click="submitDetailAction">提交处理结果</el-button>
       </template>
     </el-dialog>
+
+    <!-- ============ 编辑积分规则弹窗 ============ -->
+    <el-dialog v-model="rulesDialogVisible" title="编辑积分规则" width="620px">
+      <el-table :data="rulesDraft" size="small">
+        <el-table-column label="举报类型" prop="name" width="140" />
+        <el-table-column label="奖励积分" width="150">
+          <template #default="{ row }">
+            <el-input-number v-model="row.points" :min="0" :max="10000" size="small" />
+          </template>
+        </el-table-column>
+        <el-table-column label="说明" prop="desc" min-width="220" show-overflow-tooltip />
+      </el-table>
+      <div style="font-size: 11px; color: var(--color-text-tertiary); margin-top: 8px">💡 修改后即时生效；连续举报=每第 3 次正确举报额外奖励</div>
+      <template #footer>
+        <el-button @click="rulesDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="doSaveRules">保存规则</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Download, Picture, Setting, Refresh, CopyDocument, RefreshRight, Document } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Download, Picture, Setting, Refresh, CopyDocument, RefreshRight } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
-import { reportApi } from '@/api'
+import { reportApi, orgApi } from '@/api'
 
 const activeTab = ref('plugin')
-const reportDateRange = ref<[Date, Date] | null>(null)
+const pluginComingSoon = () => ElMessage.info('安装包托管二期提供，可联系管理员获取')
+
+// ============ 举报插件管理 ============
+const apiEndpoint = computed(() => `${location.origin}/report/v1/mail`)
+const pluginConfig = reactive({
+  apiKeyMasked: '',
+  allowedDomains: [] as string[],
+  webhookUrl: '',
+  autoclass: true,
+  notifyChannels: { wecom: true, dingtalk: false, feishu: true },
+})
+const domainInput = ref('')
+
+const codeSample = computed(() => `curl -X POST ${apiEndpoint.value} \\
+  -H "X-Api-Key: <插件API Key>" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "reporter_email": "zhangsan@company.com",
+    "subject": "【紧急】工资条更新通知",
+    "from_addr": "hr-department@phishing.com",
+    "message_id": "<...>",
+    "headers": "Return-Path: <...>\\n..."
+  }'`)
+
+async function copyText(text: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success('已复制到剪贴板')
+  } catch {
+    ElMessage.warning('复制失败，请手动复制')
+  }
+}
+
+function addDomain() {
+  const d = domainInput.value.trim().toLowerCase().replace(/^@/, '')
+  if (!d) return
+  if (d.includes('@') || d.includes('/')) { ElMessage.warning('请输入纯域名，如 company.com'); return }
+  if (!pluginConfig.allowedDomains.includes(d)) pluginConfig.allowedDomains.push(d)
+  domainInput.value = ''
+}
+function removeDomain(d: string) {
+  pluginConfig.allowedDomains = pluginConfig.allowedDomains.filter(x => x !== d)
+}
+
+async function loadPluginConfig() {
+  try {
+    const res = (await reportApi.pluginConfig()) as Record<string, any>
+    Object.assign(pluginConfig, {
+      apiKeyMasked: res.apiKeyMasked || '',
+      allowedDomains: Array.isArray(res.allowedDomains) ? res.allowedDomains : [],
+      webhookUrl: res.webhookUrl || '',
+      autoclass: res.autoclass !== false,
+      notifyChannels: { wecom: true, dingtalk: false, feishu: true, ...(res.notifyChannels || {}) },
+    })
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function doSavePluginConfig() {
+  try {
+    await reportApi.updatePluginConfig({
+      allowedDomains: pluginConfig.allowedDomains,
+      webhookUrl: pluginConfig.webhookUrl,
+      autoclass: pluginConfig.autoclass,
+      notifyChannels: pluginConfig.notifyChannels,
+    })
+    ElMessage.success('插件配置已保存')
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function doRegenKey() {
+  try {
+    await ElMessageBox.confirm('重生成后旧 Key 立即失效，插件需同步更新，确认继续？', '重生成 API Key', { type: 'warning' })
+  } catch { return }
+  try {
+    const res = (await reportApi.regenPluginKey()) as { apiKeyMasked: string }
+    pluginConfig.apiKeyMasked = res.apiKeyMasked
+    ElMessage.success('API Key 已重生成')
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function doTestWebhook() {
+  try {
+    const res = (await reportApi.testPluginWebhook(pluginConfig.webhookUrl)) as { ok: boolean; status: number; message: string }
+    if (res.ok) ElMessage.success(`连接成功：${res.message}`)
+    else ElMessage.warning(`连接失败：${res.message}`)
+  } catch { /* 拦截器已提示 */ }
+}
+
+// ============ 举报中心 ============
+const reportDateRange = ref<[string, string] | null>(null)
 const reportCategory = ref('')
 const reportKw = ref('')
+const reportRows = ref<any[]>([])
+const reportTotal = ref(0)
+const reportPage = ref(1)
+const reportPageSize = ref(20)
+const reportLoading = ref(false)
+const reportStats = reactive({ total: 0, monthCount: 0, realCount: 0, falseCount: 0, misreportRate: 0 })
+
+const classificationMap: Record<string, string> = { drill: 'drill', real: 'real_phishing', false: 'false_positive', pending: 'pending' }
+
+async function loadReports() {
+  reportLoading.value = true
+  try {
+    const q: Record<string, unknown> = { page: reportPage.value, pageSize: reportPageSize.value }
+    if (reportCategory.value) q.classification = classificationMap[reportCategory.value] ?? reportCategory.value
+    if (reportKw.value.trim()) q.kw = reportKw.value.trim()
+    if (reportDateRange.value) {
+      q.start_date = reportDateRange.value[0]
+      q.end_date = reportDateRange.value[1]
+    }
+    const res = (await reportApi.list(q)) as { list: any[]; total: number }
+    reportRows.value = res.list ?? []
+    reportTotal.value = res.total ?? 0
+  } catch { /* 拦截器已提示 */ } finally {
+    reportLoading.value = false
+  }
+}
+const reloadReports = () => { reportPage.value = 1; loadReports() }
+
+async function loadReportStats() {
+  try {
+    const res = (await reportApi.stats()) as Record<string, any>
+    Object.assign(reportStats, res)
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function classifyReport(row: any, classification: string, remark?: string): Promise<boolean> {
+  try {
+    const res = (await reportApi.classify(row.id, classification, remark)) as { points?: number }
+    ElMessage.success(res.points ? `研判已提交，发放 ${res.points} 积分` : '研判结果已提交')
+    loadReports()
+    loadReportStats()
+    return true
+  } catch {
+    return false
+  }
+}
+
 const realDialogVisible = ref(false)
 const currentReport = ref<any>(null)
 const disposalOptions = ref<string[]>([])
@@ -448,9 +617,17 @@ const openRealDialog = (row: any) => {
   realDialogVisible.value = true
 }
 
+const openPushSoc = (row: any) => {
+  currentReport.value = row
+  disposalOptions.value = ['push_soc']
+  disposalRemark.value = ''
+  realDialogVisible.value = true
+}
+
 const submitRealDisposal = async () => {
   if (!currentReport.value) return
-  const ok = await classifyReport(currentReport.value, 'real_phishing', disposalRemark.value)
+  const remark = [disposalOptions.value.length ? `处置：${disposalOptions.value.join('/')}` : '', disposalRemark.value].filter(Boolean).join('；')
+  const ok = await classifyReport(currentReport.value, 'real_phishing', remark)
   if (ok) realDialogVisible.value = false
 }
 
@@ -460,20 +637,19 @@ const headerCollapse = ref<string[]>(['headers'])
 const detailAction = ref('drill')
 const detailRemark = ref('')
 
-const detailAttachments = [
-  { name: '账户验证说明.pdf', size: '412 KB', risk: true },
-  { name: '公司logo.png', size: '18 KB', risk: false },
-]
+const channelLabel = (c: string) =>
+  ({ outlook_plugin: 'Outlook 插件', webmail: 'Web 邮箱', manual: '手工登记', api: 'API 接入' } as Record<string, string>)[c] || c || '（未知）'
 
-const detailHeaders = [
-  { key: 'Return-Path', value: '<bounce@phishing-shop.com>' },
-  { key: 'Received', value: 'from mx.phishing-shop.com (203.0.113.66) by mail.company.com; Fri, 16 Aug 2026 11:40:21 +0800' },
-  { key: 'DKIM', value: 'FAIL — 签名域 phishing-shop.com 与发件域不一致' },
-  { key: 'SPF', value: 'SOFTFAIL — 203.0.113.66 不在授权发送列表中' },
-  { key: 'DMARC', value: 'NONE — 发件域未配置 DMARC 策略' },
-  { key: 'Message-ID', value: '<0a1b2c3d4e5f@phishing-shop.com>' },
-  { key: 'Content-Type', value: 'multipart/mixed; boundary="----=_NextPart_000"' },
-]
+function parseHeaders(raw: string) {
+  if (!raw) return []
+  return raw.split(/\r?\n/).filter(l => l.trim()).map(line => {
+    const i = line.indexOf(':')
+    return i > 0
+      ? { key: line.slice(0, i).trim(), value: line.slice(i + 1).trim() }
+      : { key: line.trim(), value: '' }
+  })
+}
+const detailHeaders = computed(() => parseHeaders(currentReport.value?.headers || ''))
 
 const openDetailDialog = (row: any) => {
   currentReport.value = row
@@ -490,72 +666,116 @@ const submitDetailAction = async () => {
   if (ok) detailDialogVisible.value = false
 }
 
-const apiConfig = reactive({
-  endpoint: 'https://api.phishlab.example.com/v1/reports/mail',
-  webhook: 'https://api.phishlab.example.com/v1/webhooks/mail-report',
-  token: 'PL_sk_live_8f3a2c9d7e1b5f4a6b8c0d2e4f6a8b0c1d2e4f6a',
-})
+// ============ 举报奖励 ============
+const rankRows = ref<any[]>([])
+const rewardRules = ref<{ type: string; name: string; points: number; desc: string }[]>([])
+const pointsOverview = reactive({ totalIssued: 0, monthIssued: 0, participants: 0, redemptions: [] as any[] })
+const catalogItems = ref<{ id: number; name: string; icon: string; cost: number; stock: number }[]>([])
+const redeemUserId = ref<number | null>(null)
+const redeemUserCandidates = ref<{ id: number; label: string }[]>([])
+const redeemUserLoading = ref(false)
 
-const regenerateToken = () => {
-  apiConfig.token = 'PL_sk_live_' + Math.random().toString(36).slice(2, 42)
+const ruleTagType = (t: string) =>
+  ({ drill: 'primary', real: 'danger', first: 'success', streak: 'warning' } as Record<string, string>)[t] || 'info'
+
+async function loadRanking() {
+  try {
+    const res = (await reportApi.ranking()) as { list: any[] }
+    rankRows.value = res.list ?? []
+  } catch { /* 拦截器已提示 */ }
 }
 
-const reportMocks = [
-  { id: 101, time: '2026-08-16 11:42:08', subject: '【紧急】8月工资条更新，请核对银行账户', sender: 'hr-notice@phishing-shop.com', reporter: '王建国', reporterDept: '行政部', auto: 'real', manual: '', remark: '' },
-  { id: 102, time: '2026-08-16 10:28:31', subject: 'Q3全员防钓鱼演练 - 财务报销提醒', sender: 'no-reply@drill.phishlab.cn', reporter: '张小明', reporterDept: '财务部', auto: 'drill', manual: 'drill', remark: '与演练批次匹配，发件域为演练专用域' },
-  { id: 103, time: '2026-08-16 09:15:02', subject: 'Re: 项目例会纪要（8月15日）', sender: 'project-team@example.com', reporter: '陈志强', reporterDept: '研发部', auto: 'false', manual: 'false', remark: '内部正常往来邮件' },
-  { id: 104, time: '2026-08-15 17:50:44', subject: 'Fedex 快递签收通知 - 运单号77889922', sender: 'fedex-express@service-alert.cc', reporter: '赵丽娟', reporterDept: '财务部', auto: 'real', manual: 'real', remark: '发件域近期注册，已推送 SOC' },
-  { id: 105, time: '2026-08-15 16:33:21', subject: '【VPN续费】账号即将冻结，请点击完成验证', sender: 'it-support@company-verification.top', reporter: '周文博', reporterDept: '技术部', auto: 'real', manual: 'real', remark: '仿冒 IT 通知，落地页已关停' },
-  { id: 106, time: '2026-08-15 14:19:07', subject: '报销审批通过 - 单据 #BZ20260814-0028', sender: 'workflow@example.com', reporter: '孙美玲', reporterDept: '人力资源部', auto: 'false', manual: 'false', remark: '确认非钓鱼' },
-  { id: 107, time: '2026-08-15 11:05:55', subject: 'Q3演练-会议日程变更，请更新日历', sender: 'meeting@drill.phishlab.cn', reporter: '吴慧敏', reporterDept: '法务部', auto: 'drill', manual: 'drill', remark: '与演练批次匹配' },
-  { id: 108, time: '2026-08-14 18:42:17', subject: '【重要】Google Drive 文件共享 - 员工手册 v3', sender: 'drive-shared@doc-share.xyz', reporter: '李晓华', reporterDept: '市场部', auto: 'real', manual: '', remark: '' },
-]
-const reportRows = ref([...reportMocks])
-
-// ============ 接口加载（失败时保留演示数据） ============
-const reportPage = ref(1)
-const reportPageSize = ref(20)
-// 筛选值（视图短值）→ 后端 classification 全称
-const classificationMap: Record<string, string> = { drill: 'drill', real: 'real_phishing', false: 'false_positive' }
-
-async function loadReports() {
+async function loadRewardRules() {
   try {
-    const q: Record<string, unknown> = { page: reportPage.value, pageSize: reportPageSize.value }
-    if (reportCategory.value) q.classification = classificationMap[reportCategory.value] ?? reportCategory.value
-    const res = (await reportApi.list(q)) as { list: any[] }
-    if (Array.isArray(res.list) && res.list.length) reportRows.value = res.list
+    const res = (await reportApi.rewardRules()) as { rules: typeof rewardRules.value }
+    rewardRules.value = res.rules ?? []
+  } catch { /* 拦截器已提示 */ }
+}
+
+const rulesDialogVisible = ref(false)
+const rulesDraft = ref<{ type: string; name: string; points: number; desc: string }[]>([])
+const openRulesDialog = () => {
+  rulesDraft.value = rewardRules.value.map(r => ({ ...r }))
+  rulesDialogVisible.value = true
+}
+async function doSaveRules() {
+  try {
+    await reportApi.updateRewardRules(rulesDraft.value as Record<string, unknown>[])
+    ElMessage.success('积分规则已保存')
+    rulesDialogVisible.value = false
+    loadRewardRules()
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function loadPointsOverview() {
+  try {
+    const res = (await reportApi.pointsOverview()) as Record<string, any>
+    pointsOverview.totalIssued = res.totalIssued ?? 0
+    pointsOverview.monthIssued = res.monthIssued ?? 0
+    pointsOverview.participants = res.participants ?? 0
+    pointsOverview.redemptions = res.redemptions ?? []
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function loadCatalog() {
+  try {
+    const res = (await reportApi.rewardCatalog()) as { items: typeof catalogItems.value }
+    catalogItems.value = res.items ?? []
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function searchRedeemUsers(kw: string) {
+  if (!kw) { redeemUserCandidates.value = []; return }
+  redeemUserLoading.value = true
+  try {
+    const res = (await orgApi.users({ kw, page: 1, pageSize: 20 })) as { list: any[] }
+    redeemUserCandidates.value = (res?.list ?? []).map(u => ({
+      id: u.id,
+      label: `${u.name}（${u.no || u.email} · ${u.deptShort || ''}）`,
+    }))
   } catch {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    redeemUserCandidates.value = []
+  } finally {
+    redeemUserLoading.value = false
   }
 }
 
-async function classifyReport(row: any, classification: string, remark?: string): Promise<boolean> {
+async function doRedeem(item: { id: number; name: string; cost: number; stock: number }) {
+  if (!redeemUserId.value) { ElMessage.warning('请先搜索并选择兑换员工'); return }
   try {
-    await reportApi.classify(row.id, classification, remark)
-    ElMessage.success('研判结果已提交')
-    loadReports()
-    return true
-  } catch {
-    return false
-  }
+    await ElMessageBox.confirm(
+      `确认为所选员工兑换「${item.name}」？将扣除 ${item.cost} 积分（库存 ${item.stock}）`,
+      '兑换确认', { type: 'warning', confirmButtonText: '确认兑换' },
+    )
+  } catch { return }
+  try {
+    await reportApi.redeem(redeemUserId.value, item.id)
+    ElMessage.success('兑换成功，已扣除积分')
+    loadPointsOverview()
+    loadCatalog()
+    loadRanking()
+  } catch { /* 拦截器已提示 */ }
 }
 
-watch(reportCategory, () => loadReports())
-onMounted(() => loadReports())
+// ============ tab 懒加载 ============
+const loadedTabs = reactive<Record<string, boolean>>({})
+function ensureTabLoaded(tab: string) {
+  if (loadedTabs[tab]) return
+  loadedTabs[tab] = true
+  if (tab === 'plugin') loadPluginConfig()
+  else if (tab === 'center') { loadReportStats(); loadReports() }
+  else if (tab === 'reward') { loadRanking(); loadRewardRules(); loadPointsOverview(); loadCatalog() }
+}
 
-// TODO：举报奖励排行榜暂无后端接口（reportApi 无 ranking endpoint），保持演示数据
-const rankRows = [
-  { rank: 1, name: '王建国', dept: '行政部', monthPoints: 480, totalPoints: 3620, badges: ['月度冠军', '真实猎手'] },
-  { rank: 2, name: '吴慧敏', dept: '法务部', monthPoints: 420, totalPoints: 2980, badges: ['举报达人'] },
-  { rank: 3, name: '周文博', dept: '技术部', monthPoints: 380, totalPoints: 3150, badges: ['火眼金睛'] },
-  { rank: 4, name: '陈志强', dept: '研发部', monthPoints: 340, totalPoints: 2560, badges: ['积极分子'] },
-  { rank: 5, name: '孙美玲', dept: '人力资源部', monthPoints: 330, totalPoints: 2240, badges: [] },
-  { rank: 6, name: '郑一帆', dept: '财务部', monthPoints: 310, totalPoints: 2480, badges: [] },
-  { rank: 7, name: '钱海涛', dept: '市场部', monthPoints: 290, totalPoints: 1980, badges: [] },
-  { rank: 8, name: '张小明', dept: '财务部', monthPoints: 320, totalPoints: 2380, badges: [] },
-  { rank: 9, name: '赵丽娟', dept: '财务部', monthPoints: 260, totalPoints: 1820, badges: [] },
-  { rank: 10, name: '李晓华', dept: '市场部', monthPoints: 250, totalPoints: 1760, badges: [] },
-]
+function refreshAll() {
+  const tab = activeTab.value
+  if (tab === 'plugin') loadPluginConfig()
+  else if (tab === 'center') { loadReportStats(); loadReports() }
+  else if (tab === 'reward') { loadRanking(); loadRewardRules(); loadPointsOverview(); loadCatalog() }
+}
+
+watch(activeTab, (tab) => ensureTabLoaded(tab))
+onMounted(() => ensureTabLoaded(activeTab.value))
 </script>
 
 <style scoped lang="scss">
@@ -643,6 +863,17 @@ const rankRows = [
   line-height: 1.65;
   overflow-x: auto;
 }
+.domain-editor {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-height: 34px;
+  min-width: 400px;
+}
 .medal {
   font-size: 18px;
 }
@@ -691,6 +922,7 @@ const rankRows = [
 .history-row {
   display: flex;
   justify-content: space-between;
+  gap: 8px;
   font-size: 12px;
   padding: 6px 0;
   color: var(--color-text-secondary);
@@ -701,7 +933,7 @@ const rankRows = [
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 4px 0;
+  padding: 6px 0;
 }
 .reward-icon {
   width: 44px;
@@ -737,7 +969,7 @@ const rankRows = [
   font-size: 12px;
 }
 .mail-meta-label {
-  width: 52px;
+  width: 80px;
   color: var(--color-text-tertiary);
   flex-shrink: 0;
 }
@@ -745,27 +977,6 @@ const rankRows = [
   color: var(--color-text-primary);
   word-break: break-all;
   &.danger { color: #f56c6c; font-weight: 600; }
-}
-.mail-body {
-  font-size: 13px;
-  line-height: 1.8;
-  color: var(--color-text-secondary);
-  background: var(--color-background-secondary);
-  border-radius: 8px;
-  padding: 12px 14px;
-}
-.fake-link {
-  color: #378add;
-  text-decoration: underline;
-  cursor: pointer;
-}
-.attach-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px dashed var(--color-border-tertiary);
-  &:last-child { border-bottom: none; }
 }
 .header-row {
   display: flex;

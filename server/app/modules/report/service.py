@@ -1,32 +1,184 @@
-"""邮件举报服务：插件上报 → 自动分类（发件人/伪造域名匹配）→ 人工研判闭环。
+"""邮件举报服务：插件上报 → 自动分类 → 人工研判闭环 + 积分奖励体系。
 
-演练命中（drill）即时发举报积分；真实钓鱼研判后 TODO(二期) 联动 SIEM。
+积分规则（platform_setting.report_reward_rules JSON，可编辑）：
+- drill 演练邮件 +5 / real 真实钓鱼 +20 / first 首次举报 +10 / streak 连续正确举报每第3次 +3
+演练命中（drill）自动分类即时发基础分；真实钓鱼研判后 TODO(二期) 联动 SIEM。
+插件 API Key AES-GCM 加密入库（敏感配置红线），接口只回显掩码。
 """
-from datetime import datetime
+import json
+import secrets
+from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.audit import record_audit
 from app.core.errors import BizError, ErrorCode
+from app.core.security import decrypt_secret, encrypt_secret
 from app.modules.channel.models import SenderProfile
 from app.modules.org.models import EmpDept, EmpRiskProfile, EmpUser
+from app.modules.settings.models import PlatformSetting
 from app.modules.settings.service import get_setting
 
-from .models import MailReport, ReportRewardLog
+from .models import MailReport, ReportRedemption, ReportRewardItem, ReportRewardLog
 
 VALID_CLASSIFICATION = ("drill", "real_phishing", "false_positive", "spam")
 # 列表「自动识别/人工研判」两列的展示映射
 _CLASS_MAP = {"drill": "drill", "real_phishing": "real", "false_positive": "false", "spam": "false", "pending": ""}
 DEFAULT_DRILL_DOMAIN = "drill.phishlab.cn"
 
+# 插件 API 配置键
+_SETTING_API_KEY = "report_plugin_api_key"      # AES-GCM 密文
+_SETTING_DOMAINS = "report_plugin_domains"      # JSON list
+_SETTING_WEBHOOK = "report_webhook_url"
+_SETTING_AUTOCLASS = "report_autoclass"         # "1"/"0"
+_SETTING_NOTIFY = "report_notify_channels"      # JSON {"wecom":1,"dingtalk":0,"feishu":1}
 
-def list_reports(db, account, *, classification=None, page=1, page_size=20):
-    """举报列表：分类筛选 + 分页；补充举报人/部门信息（批量查询避免 N+1）。"""
+# 默认积分规则（与前端原型一致）
+_DEFAULT_RULES = [
+    {"type": "drill", "name": "演练邮件", "points": 5, "desc": "成功识别并举报演练钓鱼邮件"},
+    {"type": "real", "name": "真实钓鱼", "points": 20, "desc": "举报真实钓鱼邮件，消除安全隐患"},
+    {"type": "first", "name": "首次举报", "points": 10, "desc": "员工首次参与举报的额外奖励"},
+    {"type": "streak", "name": "连续举报", "points": 3, "desc": "连续3次正确举报，每次额外奖励"},
+]
+
+
+# ---------- 积分规则 ----------
+
+def _set_setting(db, key: str, value: str) -> None:
+    row = db.get(PlatformSetting, key)
+    if row is None:
+        row = PlatformSetting(setting_key=key)
+        db.add(row)
+    row.setting_value = value
+
+
+def get_reward_rules(db) -> list[dict]:
+    """积分规则列表（平台设置 JSON，未配置回落默认值）。"""
+    raw = get_setting(db, "report_reward_rules", None)
+    if raw:
+        try:
+            items = json.loads(raw)
+            if isinstance(items, list) and items:
+                return items
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return _DEFAULT_RULES
+
+
+def _rule_map(db) -> dict[str, int]:
+    return {i["type"]: int(i["points"]) for i in get_reward_rules(db)}
+
+
+def update_reward_rules(db, account, rules: list[dict]) -> list[dict]:
+    """保存积分规则（结构校验：type/name/points/desc）。"""
+    clean = []
+    seen: set[str] = set()
+    for r in rules:
+        t = str(r.get("type") or "").strip()
+        if not t or t in seen or t not in ("drill", "real", "first", "streak"):
+            raise BizError(ErrorCode.PARAM_INVALID, f"规则类型不合法：{t or '空'}")
+        seen.add(t)
+        try:
+            points = int(r.get("points") or 0)
+        except (TypeError, ValueError):
+            raise BizError(ErrorCode.PARAM_INVALID, "奖励积分必须为整数")
+        if points < 0 or points > 10000:
+            raise BizError(ErrorCode.PARAM_INVALID, "奖励积分超出范围（0-10000）")
+        clean.append({"type": t, "name": str(r.get("name") or "").strip() or t,
+                      "points": points, "desc": str(r.get("desc") or "")})
+    _set_setting(db, "report_reward_rules", json.dumps(clean, ensure_ascii=False))
+    db.commit()
+    record_audit(db, account=account, module="report", action="update_reward_rules",
+                 target_type="report_reward_rules", detail={"rules": clean})
+    return clean
+
+
+def _grant(db, user_id, report_id, points: int, reason: str) -> None:
+    if not user_id or points <= 0:
+        return
+    db.add(ReportRewardLog(user_id=user_id, report_id=report_id, points=points, reason=reason))
+
+
+def _apply_reward(db, user_id, report_id, classification: str) -> int:
+    """按规则发放积分：基础分 + 首次举报 + 连续正确举报每第3次；同一举报只发一次。"""
+    if user_id is None or classification not in ("drill", "real_phishing"):
+        return 0
+    if db.scalar(select(func.count()).select_from(ReportRewardLog)
+                 .where(ReportRewardLog.report_id == report_id)):
+        return 0  # 已发过（自动分类已发基础分的场景），不重复发放
+    rules = _rule_map(db)
+    base = rules.get("drill" if classification == "drill" else "real", 0)
+
+    # 首次举报：该用户此前没有任何举报记录
+    prior = int(db.scalar(select(func.count()).select_from(MailReport)
+                          .where(MailReport.reporter_user_id == user_id,
+                                 MailReport.id != report_id)) or 0)
+    if prior == 0:
+        base += rules.get("first", 0)
+
+    # 连续正确举报：正确举报总数每满 3 的倍数额外 +streak
+    correct_cnt = int(db.scalar(select(func.count()).select_from(MailReport).where(
+        MailReport.reporter_user_id == user_id,
+        MailReport.classification.in_(("drill", "real_phishing")),
+        MailReport.id != report_id,
+    )) or 0)
+    streak = rules.get("streak", 0)
+    if streak and (correct_cnt + 1) % 3 == 0:
+        base += streak
+
+    _grant(db, user_id, report_id, base,
+           {"drill": "演练邮件举报", "real_phishing": "真实钓鱼举报"}[classification])
+    return base
+
+
+# ---------- 举报中心 ----------
+
+def report_stats(db) -> dict:
+    """举报中心统计卡 + 分类计数（供筛选标签）。"""
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    total = int(db.scalar(select(func.count()).select_from(MailReport)) or 0)
+    month_cnt = int(db.scalar(select(func.count()).select_from(MailReport)
+                              .where(MailReport.created_at >= month_start)) or 0)
+    real_cnt = int(db.scalar(select(func.count()).select_from(MailReport)
+                             .where(MailReport.classification == "real_phishing")) or 0)
+    false_cnt = int(db.scalar(select(func.count()).select_from(MailReport)
+                              .where(MailReport.classification.in_(("false_positive", "spam")))) or 0)
+    drill_cnt = int(db.scalar(select(func.count()).select_from(MailReport)
+                              .where(MailReport.classification == "drill")) or 0)
+    pending_cnt = int(db.scalar(select(func.count()).select_from(MailReport)
+                                 .where(MailReport.classification == "pending")) or 0)
+    return {
+        "total": total,
+        "monthCount": month_cnt,
+        "realCount": real_cnt,
+        "falseCount": false_cnt,
+        "drillCount": drill_cnt,
+        "pendingCount": pending_cnt,
+        "misreportRate": round(false_cnt / total * 100, 1) if total else 0.0,
+    }
+
+
+def list_reports(db, account, *, classification=None, page=1, page_size=20,
+                 kw: str | None = None, start_date: str | None = None,
+                 end_date: str | None = None) -> dict:
+    """举报列表：分类/关键词/时间范围筛选 + 分页；补充举报人/部门信息（批量避免 N+1）。"""
+    conds = []
+    if classification:
+        conds.append(MailReport.classification == classification)
+    if kw:
+        like = f"%{kw.strip()}%"
+        conds.append(or_(MailReport.subject.like(like), MailReport.from_addr.like(like),
+                         MailReport.reporter_email.like(like)))
+    if start_date:
+        conds.append(MailReport.created_at >= datetime.strptime(start_date, "%Y-%m-%d"))
+    if end_date:
+        conds.append(MailReport.created_at < datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1))
+
     count_stmt = select(func.count()).select_from(MailReport)
     stmt = select(MailReport).order_by(MailReport.id.desc())
-    if classification:
-        count_stmt = count_stmt.where(MailReport.classification == classification)
-        stmt = stmt.where(MailReport.classification == classification)
+    if conds:
+        count_stmt = count_stmt.where(*conds)
+        stmt = stmt.where(*conds)
     total = int(db.scalar(count_stmt) or 0)
     reports = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
 
@@ -49,13 +201,18 @@ def list_reports(db, account, *, classification=None, page=1, page_size=20):
             "reporterDept": depts[user.dept_id].name if user and user.dept_id in depts else "",
             "auto": mapped,
             "manual": mapped if r.classifier == "manual" else "",
+            "classification": r.classification,
             "remark": r.handle_remark or "",
+            "rewardPoints": int(r.reward_points or 0),
+            "channel": r.channel or "",
+            "headers": r.headers or "",
+            "messageId": r.message_id or "",
         })
     return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
 
 def classify(db, account, report_id: int, classification: str, remark: str | None = None):
-    """人工研判：drill/real_phishing/false_positive/spam；演练命中发积分，真实钓鱼 TODO SIEM。"""
+    """人工研判：drill/real_phishing/false_positive/spam；正确研判发积分，真实钓鱼 TODO SIEM。"""
     if classification not in VALID_CLASSIFICATION:
         raise BizError(ErrorCode.PARAM_INVALID)
     report = db.get(MailReport, report_id)
@@ -68,35 +225,251 @@ def classify(db, account, report_id: int, classification: str, remark: str | Non
     report.handled_at = datetime.now()
     report.handle_remark = remark
 
-    if classification == "drill":
-        # 演练举报：积分入账 + 风险画像举报意识加分
-        report.reward_points = 10
-        if report.reporter_user_id:
-            db.add(ReportRewardLog(user_id=report.reporter_user_id, report_id=report.id,
-                                   points=10, reason="演练邮件举报"))
-            profile = db.get(EmpRiskProfile, report.reporter_user_id)
-            if profile is None:  # 无画像则初始化
-                profile = EmpRiskProfile(user_id=report.reporter_user_id, total_score=50)
-                db.add(profile)
-            profile.report_count = int(profile.report_count or 0) + 1
+    points = _apply_reward(db, report.reporter_user_id, report.id, classification)
+    if points:
+        report.reward_points = int(report.reward_points or 0) + points
+        # 风险画像举报意识加分
+        profile = db.get(EmpRiskProfile, report.reporter_user_id)
+        if profile is None:
+            profile = EmpRiskProfile(user_id=report.reporter_user_id, total_score=50)
+            db.add(profile)
+        profile.report_count = int(profile.report_count or 0) + 1
     elif classification == "real_phishing":
         pass  # TODO(二期)：SIEM 推送
 
     db.commit()
     record_audit(db, account=account, module="report", action="classify",
-                 target_id=str(report_id), detail={"classification": classification})
-    return {"id": report_id, "classification": classification}
+                 target_id=str(report_id), detail={"classification": classification, "points": points})
+    return {"id": report_id, "classification": classification, "points": points}
 
+
+# ---------- 举报奖励 ----------
+
+def ranking(db, top: int = 20) -> dict:
+    """积分排行榜（本月 + 累计），按本月积分降序；徽章按成绩推导。"""
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    month_stmt = (
+        select(ReportRewardLog.user_id, func.sum(ReportRewardLog.points).label("m"))
+        .where(ReportRewardLog.created_at >= month_start)
+        .group_by(ReportRewardLog.user_id)
+    )
+    total_stmt = (
+        select(ReportRewardLog.user_id, func.sum(ReportRewardLog.points).label("t"))
+        .group_by(ReportRewardLog.user_id)
+    )
+    month_map = {uid: int(m or 0) for uid, m in db.execute(month_stmt).all()}
+    total_map = {uid: int(t or 0) for uid, t in db.execute(total_stmt).all()}
+
+    # 本月举报次数 + 真实钓鱼举报标记
+    rpt_stmt = (
+        select(MailReport.reporter_user_id, func.count(MailReport.id))
+        .where(MailReport.reporter_user_id.is_not(None), MailReport.created_at >= month_start)
+        .group_by(MailReport.reporter_user_id)
+    )
+    real_stmt = (
+        select(MailReport.reporter_user_id)
+        .where(MailReport.reporter_user_id.is_not(None),
+               MailReport.classification == "real_phishing")
+        .distinct()
+    )
+    rpt_map = {uid: int(n or 0) for uid, n in db.execute(rpt_stmt).all()}
+    real_users = {uid for (uid,) in db.execute(real_stmt).all()}
+
+    user_ids = set(month_map) | set(total_map)
+    users = {u.id: u for u in db.scalars(select(EmpUser).where(EmpUser.id.in_(user_ids))).all()} if user_ids else {}
+    dept_ids = {u.dept_id for u in users.values() if u.dept_id}
+    depts = {d.id: d for d in db.scalars(select(EmpDept).where(EmpDept.id.in_(dept_ids))).all()} if dept_ids else {}
+
+    rows = []
+    for uid in sorted(user_ids, key=lambda u: -month_map.get(u, 0)):
+        u = users.get(uid)
+        rows.append({
+            "userId": uid,
+            "name": u.name if u else f"用户#{uid}",
+            "dept": depts[u.dept_id].name if u and u.dept_id in depts else "",
+            "reportCount": rpt_map.get(uid, 0),
+            "monthPoints": month_map.get(uid, 0),
+            "totalPoints": total_map.get(uid, 0),
+        })
+    rows = rows[:top]
+    for i, row in enumerate(rows):
+        badges = []
+        if i == 0 and row["monthPoints"] > 0:
+            badges.append("月度冠军")
+        if row["userId"] in real_users:
+            badges.append("真实猎手")
+        if row["totalPoints"] >= 500:
+            badges.append("举报达人")
+        if row["monthPoints"] >= 300:
+            badges.append("火眼金睛")
+        row["rank"] = i + 1
+        row["badges"] = badges[:2]
+    return {"list": rows, "total": len(rows)}
+
+
+def points_overview(db) -> dict:
+    """平台积分概览：累计/本月发放、参与人数 + 最近兑换记录。"""
+    month_start = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    total_issued = int(db.scalar(select(func.coalesce(func.sum(ReportRewardLog.points), 0))) or 0)
+    month_issued = int(db.scalar(select(func.coalesce(func.sum(ReportRewardLog.points), 0))
+                                 .where(ReportRewardLog.created_at >= month_start)) or 0)
+    participants = int(db.scalar(select(func.count(func.distinct(ReportRewardLog.user_id)))) or 0)
+
+    items = []
+    red_rows = db.execute(
+        select(ReportRedemption, ReportRewardItem.name, EmpUser.name)
+        .join(ReportRewardItem, ReportRewardItem.id == ReportRedemption.item_id, isouter=True)
+        .join(EmpUser, EmpUser.id == ReportRedemption.user_id, isouter=True)
+        .order_by(ReportRedemption.id.desc())
+        .limit(20)
+    ).all()
+    for r, item_name, user_name in red_rows:
+        items.append({
+            "id": r.id,
+            "user": user_name or f"用户#{r.user_id}",
+            "item": item_name or f"奖品#{r.item_id}",
+            "points": int(r.points or 0),
+            "time": r.created_at.strftime("%Y-%m-%d") if r.created_at else "",
+        })
+    return {"totalIssued": total_issued, "monthIssued": month_issued,
+            "participants": participants, "redemptions": items}
+
+
+def reward_catalog(db) -> list[dict]:
+    """兑换商品目录（含库存）。"""
+    items = db.scalars(select(ReportRewardItem).where(ReportRewardItem.enabled == 1)
+                       .order_by(ReportRewardItem.id)).all()
+    return [{"id": i.id, "name": i.name, "icon": i.icon or "", "cost": int(i.cost or 0),
+             "stock": int(i.stock or 0)} for i in items]
+
+
+def redeem(db, account, user_id: int, item_id: int) -> dict:
+    """员工积分兑换：校验积分余额 → 扣库存 → 写兑换记录（全程审计）。"""
+    user = db.get(EmpUser, user_id)
+    if user is None:
+        raise BizError(ErrorCode.NOT_FOUND, "员工不存在")
+    item = db.get(ReportRewardItem, item_id)
+    if item is None or not item.enabled:
+        raise BizError(ErrorCode.NOT_FOUND, "奖品不存在或已下架")
+    if item.cost <= 0:
+        raise BizError(ErrorCode.BIZ_CONFLICT, "该奖品自动发放，无需兑换")
+    if int(item.stock or 0) <= 0:
+        raise BizError(ErrorCode.BIZ_CONFLICT, "奖品库存不足")
+
+    earned = int(db.scalar(select(func.coalesce(func.sum(ReportRewardLog.points), 0))
+                           .where(ReportRewardLog.user_id == user_id)) or 0)
+    spent = int(db.scalar(select(func.coalesce(func.sum(ReportRedemption.points), 0))
+                          .where(ReportRedemption.user_id == user_id)) or 0)
+    if earned - spent < item.cost:
+        raise BizError(ErrorCode.BIZ_CONFLICT,
+                       f"积分不足：当前可用 {earned - spent} 分，需要 {item.cost} 分")
+
+    item.stock -= 1
+    db.add(ReportRedemption(user_id=user_id, item_id=item_id, points=item.cost))
+    db.commit()
+    record_audit(db, account=account, module="report", action="redeem",
+                 target_type="report_reward_item", target_id=str(item_id),
+                 detail={"user_id": user_id, "item": item.name, "points": item.cost})
+    return {"ok": True, "points": item.cost, "item": item.name, "remaining": earned - spent - item.cost}
+
+
+# ---------- 插件配置与鉴权 ----------
+
+def _mask_key(key: str) -> str:
+    return f"{key[:4]}****{key[-4:]}" if len(key) > 8 else "****"
+
+
+def get_plugin_config(db) -> dict:
+    """插件 API 配置回显：Key 只回显掩码，其余为平台设置。"""
+    enc = get_setting(db, _SETTING_API_KEY, None)
+    key = decrypt_secret(enc.encode("latin1")) if enc else ""
+    try:
+        domains = json.loads(get_setting(db, _SETTING_DOMAINS, "[]") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        domains = []
+    try:
+        notify = json.loads(get_setting(db, _SETTING_NOTIFY, '{"wecom":1,"dingtalk":0,"feishu":1}') or "{}")
+    except (json.JSONDecodeError, TypeError):
+        notify = {}
+    return {
+        "apiKeyMasked": _mask_key(key) if key else "",
+        "allowedDomains": domains,
+        "webhookUrl": get_setting(db, _SETTING_WEBHOOK, "") or "",
+        "autoclass": (get_setting(db, _SETTING_AUTOCLASS, "1") or "1") == "1",
+        "notifyChannels": {"wecom": bool(notify.get("wecom", 1)),
+                           "dingtalk": bool(notify.get("dingtalk", 0)),
+                           "feishu": bool(notify.get("feishu", 1))},
+    }
+
+
+def update_plugin_config(db, account, payload: dict) -> dict:
+    """保存插件配置（域名白名单/Webhook/自动分类/通知渠道；Key 走重生成接口）。"""
+    domains = [str(d).strip().lstrip("@").lower() for d in (payload.get("allowedDomains") or []) if str(d).strip()]
+    webhook = str(payload.get("webhookUrl") or "").strip()
+    _set_setting(db, _SETTING_DOMAINS, json.dumps(domains, ensure_ascii=False))
+    _set_setting(db, _SETTING_WEBHOOK, webhook)
+    _set_setting(db, _SETTING_AUTOCLASS, "1" if payload.get("autoclass") else "0")
+    notify = payload.get("notifyChannels") or {}
+    _set_setting(db, _SETTING_NOTIFY, json.dumps({
+        "wecom": 1 if notify.get("wecom") else 0,
+        "dingtalk": 1 if notify.get("dingtalk") else 0,
+        "feishu": 1 if notify.get("feishu") else 0,
+    }))
+    db.commit()
+    record_audit(db, account=account, module="report", action="update_plugin_config",
+                 target_type="report_plugin", detail={"domains": domains, "webhook": webhook})
+    return get_plugin_config(db)
+
+
+def regenerate_plugin_key(db, account) -> dict:
+    """重生成插件 API Key：AES-GCM 加密入库（红线），回显掩码。"""
+    key = "plr_" + secrets.token_urlsafe(32)
+    _set_setting(db, _SETTING_API_KEY, encrypt_secret(key).decode("latin1"))
+    db.commit()
+    record_audit(db, account=account, module="report", action="regen_plugin_key",
+                 target_type="report_plugin")
+    return {"apiKeyMasked": _mask_key(key)}
+
+
+def verify_plugin_key(db, provided: str | None) -> bool:
+    """插件上报鉴权：X-Api-Key 与平台存储密钥比对（未配置即拒绝）。"""
+    if not provided:
+        return False
+    enc = get_setting(db, _SETTING_API_KEY, None)
+    if not enc:
+        return False
+    try:
+        return secrets.compare_digest(decrypt_secret(enc.encode("latin1")), provided.strip())
+    except Exception:
+        return False
+
+
+def test_plugin_webhook(db, webhook: str | None = None) -> dict:
+    """Webhook 测试连接：向目标地址 POST 测试载荷，5 秒超时。"""
+    import httpx
+    url = (webhook or get_setting(db, _SETTING_WEBHOOK, "") or "").strip()
+    if not url:
+        raise BizError(ErrorCode.PARAM_INVALID, "请先配置 Webhook 回调 URL")
+    try:
+        r = httpx.post(url, json={"event": "phishlab_test", "ts": datetime.now().isoformat()},
+                       timeout=5.0)
+        return {"ok": r.status_code < 400, "status": r.status_code, "message": f"HTTP {r.status_code}"}
+    except Exception as err:
+        return {"ok": False, "status": 0, "message": f"连接失败：{err}"}
+
+
+# ---------- 插件上报 ----------
 
 def ingest_from_plugin(db, payload: dict) -> int:
-    """插件上报入口（独立鉴权）：落库 → 自动分类 → 演练命中即时发积分。"""
+    """插件上报入口（API Key 鉴权在路由层）：落库 → 自动分类 → 演练命中即时发基础分。"""
     from_addr = payload.get("from_addr")
     reporter_email = payload.get("reporter_email")
 
     # 自动分类：演练域名后缀或已配置伪装发件人 → drill；其余默认真实钓鱼待研判
     classification = "real_phishing"
-    if from_addr:
-        # 演练发件域读平台设置（drill_domain），未配置回落默认值
+    autoclass = (get_setting(db, _SETTING_AUTOCLASS, "1") or "1") == "1"
+    if autoclass and from_addr:
         drill_domain = (get_setting(db, "drill_domain", DEFAULT_DRILL_DOMAIN) or DEFAULT_DRILL_DOMAIN).strip().lower()
         if from_addr.lower().endswith(drill_domain):
             classification = "drill"
@@ -123,13 +496,13 @@ def ingest_from_plugin(db, payload: dict) -> int:
         classifier="auto",
         matched_campaign_id=None,  # TODO(二期)：按 Message-ID/token 精确匹配演练
     )
-    if classification == "drill" and reporter_user_id:
-        report.reward_points = 10
     db.add(report)
     db.flush()
+    points = 0
     if classification == "drill" and reporter_user_id:
-        db.add(ReportRewardLog(user_id=reporter_user_id, report_id=report.id,
-                               points=10, reason="演练邮件举报"))
+        points = _rule_map(db).get("drill", 0)
+        report.reward_points = points
+        _grant(db, reporter_user_id, report.id, points, "演练邮件举报")
     db.commit()
     db.refresh(report)
     return report.id
