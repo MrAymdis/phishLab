@@ -680,15 +680,89 @@ def reveal_submit_password(db, account, campaign_id: int, event_id: int,
                 "fields": [f["name"] for f in fields]},
     )
     return {"fields": fields, "event_id": event_id, "user": user.name if user else None}
-    """发送测试：仅白名单收件人。真实 SMTP 投递由 Worker 实现（TODO 一期）。"""
-    _get_or_404(db, campaign_id)
-    # TODO(一期)：经通道适配器真实发送并校验 SMTP 连通性，当前仅回执占位
+
+
+def test_send(db, account, campaign_id: int, to: list[str]) -> dict:
+    """发送测试：按演练绑定的 SMTP 通道真实投递到白名单收件人。
+
+    内容复用 render_campaign_email（与 Worker 批量投递一致：模板变量、落地页链接、
+    追踪像素、二维码），保证测试邮件与真实演练邮件完全一致。
+    """
+    from app.core.security import decrypt_secret
+    from app.modules.campaign.render import render_campaign_email
+    from app.modules.channel.models import SendChannel, SenderProfile
+    from app.modules.channel.service import _smtp_send
+
+    addrs = [(a or "").strip() for a in to]
+    addrs = [a for a in addrs if a]
+    if not addrs:
+        raise BizError(ErrorCode.PARAM_INVALID, "请至少提供一个收件人邮箱地址")
+
+    c = _get_or_404(db, campaign_id)
+
+    # 通道解析：演练绑定通道 → 默认 SMTP 通道
+    ch = db.get(SendChannel, c.channel_id) if c.channel_id else None
+    if ch is None or ch.type != "smtp" or ch.status == "disabled":
+        ch = db.scalar(
+            select(SendChannel)
+            .where(
+                SendChannel.type == "smtp",
+                SendChannel.status != "disabled",
+                SendChannel.is_default == 1,
+            )
+            .order_by(SendChannel.id)
+        )
+    if ch is None or not ch.smtp_host:
+        raise BizError(ErrorCode.PARAM_INVALID, "未配置可用 SMTP 通道，请先在发件配置中添加并完成连通测试")
+
+    password = ""
+    if ch.smtp_password_enc:
+        try:
+            password = decrypt_secret(ch.smtp_password_enc)
+        except Exception:
+            password = ""
+    cfg = {
+        "smtp_host": ch.smtp_host,
+        "smtp_port": ch.smtp_port,
+        "smtp_encrypt": ch.smtp_encrypt,
+        "smtp_username": ch.smtp_username,
+        "smtp_password": password,
+    }
+
+    # 伪装发件人 From 地址（仅影响收件端展示，信封仍用通道账号）；显示名由渲染逻辑处理
+    from_addr = None
+    if c.sender_profile_id:
+        sp = db.get(SenderProfile, c.sender_profile_id)
+        if sp:
+            from_addr = sp.from_addr
+
+    results = []
+    for addr in addrs:
+        try:
+            rendered = render_campaign_email(db, c, None, secrets.token_hex(16), to=addr)
+            r = _smtp_send(
+                ch.name, cfg, addr,
+                subject=rendered["subject"], html_body=rendered["html"],
+                sender_name=rendered["sender_name"], from_addr=from_addr,
+                attachments=rendered["attachments"],
+            )
+            ok = bool(r.get("ok"))
+        except Exception as err:  # 通道适配器内部异常兜底，逐收件人记录
+            ok = False
+            r = {"ok": False, "message": f"发送异常：{err}"}
+        results.append({"to": addr, "ok": ok, "message": r.get("message", "")})
+
+    ok_cnt = sum(1 for r in results if r["ok"])
     record_audit(
         db, account=account, module="campaign", action="test_send",
         target_type="campaign", target_id=str(campaign_id),
-        detail={"recipients": len(to)},
+        detail={"recipients": len(addrs), "ok": ok_cnt, "results": results},
     )
-    return {"ok": True, "message": f"测试邮件已发送至 {len(to)} 个白名单收件人"}
+    return {
+        "ok": ok_cnt == len(results),
+        "message": f"成功 {ok_cnt}/{len(results)}，详见逐收件人结果",
+        "results": results,
+    }
 
 
 def delete_campaign(db, account, campaign_id: int) -> None:

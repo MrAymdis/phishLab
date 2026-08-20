@@ -9,7 +9,7 @@
       </template>
     </PageHeader>
 
-    <!-- 实时指标（dashboard 接口已接入；SSE /stream 实时刷新留待后续） -->
+    <!-- 实时指标（SSE /stream 推送；断线自动降级轮询） -->
     <el-row :gutter="12" style="margin: 16px 16px 0">
       <el-col :span="4" v-for="m in metrics" :key="m.label">
         <StatCard :title="m.label" :value="m.value" :sub="m.sub" :accent="m.accent" />
@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
@@ -63,8 +63,10 @@ import FunnelChart from '@/components/business/FunnelChart.vue'
 import BehaviorTimeline from '@/components/business/BehaviorTimeline.vue'
 import type { TimelineEvent } from '@/components/business/BehaviorTimeline.vue'
 import { campaignApi } from '@/api'
+import { postSSE } from '@/composables/useSSE'
+import { usePolling } from '@/composables/usePolling'
 
-// dashboard/timeline 已接入接口；SSE 实时推送留待后续（TODO: SSE /stream）
+// dashboard/timeline/SSE 均已接入接口；SSE 断线时降级为轮询刷新
 const route = useRoute()
 const campaignName = ref('Q3全员防钓鱼演练')
 const campaignStatus = ref('running')
@@ -127,6 +129,37 @@ interface TimelineDataItem {
   detail?: Record<string, unknown> | null
 }
 
+function applyDash(d: CampaignDashData | null) {
+  metrics.value = (d?.metrics ?? []).map((m) => ({
+    label: m.label,
+    value: m.value,
+    sub: m.suffix ?? '',
+    accent: m.accent as Accent,
+  }))
+  funnel.value = (d?.funnel ?? []).map((f) => ({
+    name: f.name,
+    value: f.value,
+    rate: f.rate == null ? undefined : String(f.rate),
+  }))
+  alerts.value = (d?.alerts ?? []).map((a) => ({ msg: a.msg, time: a.time, advice: a.advice }))
+}
+
+function applyTimeline(list: TimelineDataItem[]) {
+  timeline.value = list.map((t) => ({
+    id: t.id,
+    time: t.time,
+    user: t.user,
+    action: t.action,
+    icon: t.icon,
+    ip: t.ip,
+    browser: t.browser,
+    fingerprint: t.fingerprint || undefined,
+    danger: t.danger,
+    good: t.good,
+    detail: t.detail || undefined,
+  }))
+}
+
 async function load() {
   const id = Number(route.params.id)
   try {
@@ -140,38 +173,52 @@ async function load() {
     campaignName.value = dt?.name || `演练 #${id}`
     campaignStatus.value = dt?.status || 'draft'
 
-    const d = dash as CampaignDashData | null
-    metrics.value = (d?.metrics ?? []).map((m) => ({
-      label: m.label,
-      value: m.value,
-      sub: m.suffix ?? '',
-      accent: m.accent as Accent,
-    }))
-    funnel.value = (d?.funnel ?? []).map((f) => ({
-      name: f.name,
-      value: f.value,
-      rate: f.rate == null ? undefined : String(f.rate),
-    }))
-    alerts.value = (d?.alerts ?? []).map((a) => ({ msg: a.msg, time: a.time, advice: a.advice }))
-
-    const list = (tl as { list?: TimelineDataItem[] } | null)?.list ?? []
-    timeline.value = list.map((t) => ({
-      id: t.id,
-      time: t.time,
-      user: t.user,
-      action: t.action,
-      icon: t.icon,
-      ip: t.ip,
-      browser: t.browser,
-      fingerprint: t.fingerprint || undefined,
-      danger: t.danger,
-      good: t.good,
-      detail: t.detail || undefined,
-    }))
+    applyDash(dash as CampaignDashData | null)
+    applyTimeline(((tl as { list?: TimelineDataItem[] } | null)?.list ?? []) as TimelineDataItem[])
   } catch {
     // 仅在接口失败时保留演示数据
     ElMessage.warning('接口数据加载失败，已展示演示数据')
   }
+}
+
+// ============ SSE 实时推送（快照直出 + 事件触发刷新；断线降级轮询） ============
+type SseFrameData = { type: string; data?: Record<string, unknown> }
+const sseConnected = ref(false)
+let stopStream: (() => void) | null = null
+const polling = usePolling(() => load(), 5000)
+
+function startStream() {
+  const id = Number(route.params.id)
+  stopStream?.()
+  polling.stop()
+  sseConnected.value = false
+  stopStream = postSSE({
+    url: `/api/v1/campaigns/${id}/stream`,
+    body: {},
+    onFrame: (f) => {
+      const frame = f as unknown as SseFrameData
+      if (frame.type === 'snapshot') {
+        // 连接成功：直接用快照渲染，避免与首屏请求重复
+        sseConnected.value = true
+        const snap = (frame.data ?? {}) as {
+          dashboard?: CampaignDashData | null
+          timeline?: TimelineDataItem[]
+        }
+        applyDash(snap.dashboard ?? null)
+        applyTimeline(snap.timeline ?? [])
+      } else if (frame.type === 'event' || frame.type === 'stats' || frame.type === 'alert') {
+        void load() // 有增量：拉取最新指标/漏斗/预警/时间轴
+      }
+    },
+    onError: () => {
+      sseConnected.value = false
+      polling.start()
+    },
+    onClose: () => {
+      sseConnected.value = false
+      polling.start()
+    },
+  })
 }
 
 const actionLoading = ref(false)
@@ -218,7 +265,14 @@ async function doTerminate() {
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  void load()
+  startStream()
+})
+onUnmounted(() => {
+  stopStream?.()
+  polling.stop()
+})
 </script>
 
 <style scoped lang="scss">

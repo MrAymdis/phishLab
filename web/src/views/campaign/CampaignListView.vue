@@ -98,6 +98,7 @@
               <template #default="{ row }">
                 <el-button v-if="row.status === 'draft' || row.status === 'scheduled'" link type="primary" size="small" @click="doEdit(row)">编辑</el-button>
                 <el-button v-if="row.status === 'draft' || row.status === 'scheduled'" link type="primary" size="small" @click="doStart(row)">启动</el-button>
+                <el-button v-if="row.status === 'draft' || row.status === 'scheduled'" link size="small" @click="doTestSend(row)">测试发送</el-button>
                 <el-button v-if="row.status === 'running'" link type="warning" size="small" @click="doPause(row)">暂停</el-button>
                 <el-button v-if="row.status === 'paused'" link type="primary" size="small" @click="doResume(row)">恢复</el-button>
                 <el-button v-if="['running', 'paused', 'scheduled'].includes(row.status)"
@@ -265,6 +266,34 @@ async function doStart(row: CampaignRow) {
     await campaignApi.start(row.id)
     ElMessage.success('演练已启动')
     await load()
+  } catch {
+    /* 拦截器已提示错误 */
+  }
+}
+async function doTestSend(row: CampaignRow) {
+  let email = ''
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '输入白名单收件人邮箱（可多个，用逗号分隔），将按演练绑定的 SMTP 通道真实投递测试邮件',
+      `测试发送「${row.name}」`,
+      { confirmButtonText: '发送', cancelButtonText: '取消', inputPattern: /\S+/, inputErrorMessage: '请输入收件人邮箱' },
+    )
+    email = (value || '').trim()
+  } catch {
+    return // 用户取消
+  }
+  try {
+    const res = (await campaignApi.testSend(row.id, email.split(/[,，\s]+/).filter(Boolean))) as {
+      ok?: boolean; message?: string; results?: { to: string; ok: boolean; message: string }[]
+    }
+    const failed = (res.results || []).filter((r) => !r.ok)
+    if (res.ok) {
+      ElMessage.success(res.message || '测试邮件已发送')
+    } else if (failed.length) {
+      ElMessage.warning(
+        failed.map((r) => `${r.to}：${r.message}`).join('；') || res.message || '部分收件人发送失败',
+      )
+    }
   } catch {
     /* 拦截器已提示错误 */
   }

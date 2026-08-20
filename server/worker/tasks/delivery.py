@@ -13,92 +13,14 @@ logger = logging.getLogger("phishlab.delivery")
 
 
 def _render_email(db, target, campaign) -> dict | None:
-    """渲染单封演练邮件：返回 {to, subject, html, sender_name, attachments}；通道不可用返回 None。
-
-    {{.QRCode}} 变量：落地页链接渲染为二维码 PNG，作为附件发送并以 Content-ID
-    内嵌正文（<img src="cid:qr_code">）；链接替换为提示文案。
-    """
-    from app.core.config import settings
-    from app.core.qr import render_qr_png
-    from app.modules.channel.models import PhishDomain, SendChannel, SenderProfile
-    from app.modules.org.models import EmpDept, EmpUser
-    from app.modules.template.models import EmailTemplate, LandingPage
+    """渲染单封演练邮件（共享渲染逻辑 render_campaign_email）；用户不存在返回 None。"""
+    from app.modules.campaign.render import render_campaign_email
+    from app.modules.org.models import EmpUser
 
     user = db.get(EmpUser, target.user_id)
     if user is None:
         return None
-    tpl = db.get(EmailTemplate, campaign.template_id) if campaign.template_id else None
-    lp = db.get(LandingPage, campaign.landing_page_id) if campaign.landing_page_id else None
-    ch = db.get(SendChannel, campaign.channel_id) if campaign.channel_id else None
-    if ch is None or ch.type != "smtp":
-        ch = db.scalar(select(SendChannel).where(SendChannel.type == "smtp").order_by(SendChannel.id))
-    if ch is None:
-        return None
-
-    domain = db.get(PhishDomain, campaign.domain_id) if campaign.domain_id else None
-    domain_name = domain.domain if domain else "drill-domain.com"
-    slug = lp.slug if lp else "demo"
-    # 链接追踪开关（track_link=0 时链接不携带 token，点击不计入追踪）
-    track_link = tpl.track_link if tpl else 1
-    landing_url = f"http://{domain_name}:{settings.landing_port}/p/{slug}"
-    if track_link:
-        landing_url += f"?token={target.token}"
-
-    dept = db.get(EmpDept, user.dept_id)
-    var_map = {
-        "{{.FirstName}}": user.name,
-        "{{.LastName}}": "",
-        "{{.Department}}": dept.name if dept else "",
-        "{{.Email}}": user.email,
-        "{{.Date}}": datetime.now().strftime("%Y-%m-%d"),
-        "{{.ResetURL}}": landing_url,
-    }
-    subject = tpl.subject if tpl else f"【通知】{campaign.name}"
-    html = tpl.html_body if tpl else f"<p>{campaign.name}</p><p><a href='{landing_url}'>点击处理 →</a></p>"
-    for k, v in var_map.items():
-        subject = subject.replace(k, v)
-        html = html.replace(k, v)
-
-    # 二维码变量：{{.QRCode}} → 落地页链接二维码（附件 + 正文内嵌）
-    attachments: list[dict] = []
-    if "{{.QRCode}}" in html:
-        qr_png = render_qr_png(landing_url)
-        attachments.append({
-            "filename": "操作指引二维码.png",
-            "content": qr_png,
-            "content_id": "qr_code",
-        })
-        html = html.replace(
-            "{{.QRCode}}",
-            '<div style="margin:16px 0;text-align:center">'
-            '<img src="cid:qr_code" width="160" height="160" alt="二维码" '
-            'style="border:1px solid #e8e8e8;border-radius:8px" />'
-            '<div style="font-size:12px;color:#888;margin-top:6px">'
-            '请使用手机扫描上方二维码（或下载附件）完成操作</div></div>',
-        )
-
-    # 打开追踪像素（track_pixel=1 时注入）：邮件被查看（客户端加载图片）时记录 open 事件。
-    # 不用 display:none（部分邮箱反追踪会剔除），用 1px 透明图 + 0 透明度，视觉同样不可见。
-    track_pixel = tpl.track_pixel if tpl else 1
-    if track_pixel:
-        pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{target.token}.gif"
-        html += (
-            f'<img src="{pixel_url}" width="1" height="1" '
-            f'style="border:0;width:1px;height:1px;opacity:0" alt="" />'
-        )
-
-    sender_name = tpl.sender if tpl and tpl.sender else ch.name
-    if campaign.sender_profile_id:
-        sp = db.get(SenderProfile, campaign.sender_profile_id)
-        if sp:
-            sender_name = sp.display_name or sp.name
-    return {
-        "to": user.email,
-        "subject": subject,
-        "html": html,
-        "sender_name": sender_name,
-        "attachments": attachments,
-    }
+    return render_campaign_email(db, campaign, user, target.token)
 
 
 def _send_via_channel(db, ch, to: str, subject: str, html: str, sender_name: str,

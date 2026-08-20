@@ -24,6 +24,14 @@ _EVENT_CN = {
     "attach_run": "运行了附件",
     "bounce": "邮件被退回",
 }
+_EVENT_ICON = {
+    "open": "📧",
+    "click": "🔗",
+    "submit": "⚠️",
+    "report": "🛡️",
+    "attach_run": "📎",
+    "bounce": "↩️",
+}
 
 
 @celery_app.task(name="worker.tasks.track_stream.consume")
@@ -42,6 +50,7 @@ def consume():
 
     db = SessionLocal()
     acked: list[str] = []
+    batch_events: dict[int, list[dict]] = {}  # campaign_id → 待推送事件（SSE）
     try:
         for event_id, fields in events:
             acked.append(event_id)
@@ -180,7 +189,34 @@ def consume():
             )
             profile.risk_level = _risk_level_of(profile.total_score)
 
+            # 收集实时推送事件（SSE 详情页订阅 campaign_evt:{cid}）
+            if user:
+                user_label = f"{user.name} · {dept.name}" if dept else user.name
+            else:
+                user_label = "未知用户"
+            batch_events.setdefault(campaign.id, []).append({
+                "event_type": event_type,
+                "time": ts.strftime("%Y-%m-%d %H:%M:%S"),
+                "user": user_label,
+                "action": _EVENT_CN.get(event_type, event_type),
+                "icon": _EVENT_ICON.get(event_type, "•"),
+                "ip": fields.get("ip") or "",
+                "danger": event_type == "submit",
+                "good": event_type == "report",
+            })
+
         db.commit()
+        # 提交成功后再广播（失败不推送，前端仍可通过轮询兜底）
+        if batch_events:
+            pub = redis.from_url(settings.redis_url, decode_responses=True)
+            pipe = pub.pipeline()
+            for cid, evs in batch_events.items():
+                for ev in evs:
+                    pipe.publish(
+                        f"campaign_evt:{cid}",
+                        json.dumps({"type": "event", "data": ev}, ensure_ascii=False),
+                    )
+            pipe.execute()
         ack(r, acked)
         logger.info("track consume: %d events processed", len(events))
         return len(events)

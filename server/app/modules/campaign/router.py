@@ -1,12 +1,9 @@
-import json
-
 from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from app.core import response as resp
 from app.core.deps import get_current_account
-from app.core.errors import BizError, ErrorCode
 from app.core.pagination import page_params
 from app.db.session import get_db
 
@@ -111,16 +108,12 @@ def reveal_password(
     return resp.ok(service.reveal_submit_password(db, account, cid, event_id, op))
 
 
-@campaigns.get("/{cid}/stream", summary="实时推送（SSE）")
-async def stream(cid: int):
-    async def gen():
-        # TODO(一期)：订阅 Redis 事件 → 推送指标增量与时间轴新事件
-        yield {"event": "message", "data": json.dumps(
-            {"type": "error", "code": ErrorCode.NOT_IMPLEMENTED, "message": "实时推送尚未实现"},
-            ensure_ascii=False,
-        )}
+@campaigns.api_route("/{cid}/stream", methods=["GET", "POST"], summary="实时推送（SSE）")
+async def stream(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    """演练详情实时推送：快照 + Redis 事件订阅（追踪事件由 Worker 落库后 publish）。"""
+    from app.modules.campaign.sse import campaign_event_stream
 
-    return EventSourceResponse(gen())
+    return EventSourceResponse(campaign_event_stream(db, account, cid))
 
 
 @campaigns.post("/{cid}/test-send", summary="发送测试")
