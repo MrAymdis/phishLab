@@ -255,7 +255,7 @@
         </el-tab-pane>
 
         <el-tab-pane label="系统集成" name="integration">
-          <el-row :gutter="12">
+          <el-row :gutter="12" align="stretch">
             <el-col :span="24">
               <div class="card card-blue" style="margin: 0 0 12px 0">
                 <div class="card-title">SSO 单点登录配置</div>
@@ -287,7 +287,7 @@
               </div>
             </el-col>
             <el-col :span="12">
-              <div class="card card-teal" style="margin: 0 0 12px 0">
+              <div class="card card-teal" style="margin: 0; height: 100%">
                 <div class="card-title">SIEM Syslog 推送</div>
                 <el-form label-width="100px" style="margin-top: 10px" size="small">
                   <el-form-item label="服务器">
@@ -313,11 +313,11 @@
               </div>
             </el-col>
             <el-col :span="12">
-              <div class="card card-purple" style="margin: 0 0 12px 0">
+              <div class="card card-purple" style="margin: 0; height: 100%">
                 <div class="card-title">Webhook 告警推送</div>
                 <el-form label-width="100px" style="margin-top: 10px" size="small">
                   <el-form-item label="推送类型">
-                    <el-radio-group v-model="whType">
+                    <el-radio-group v-model="wh.type">
                       <el-radio label="wecom">企业微信</el-radio>
                       <el-radio label="dingtalk">钉钉</el-radio>
                       <el-radio label="feishu">飞书</el-radio>
@@ -325,6 +325,13 @@
                   </el-form-item>
                   <el-form-item label="Webhook URL">
                     <el-input v-model="wh.url" type="textarea" :rows="2" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=..." />
+                  </el-form-item>
+                  <el-form-item label="签名密钥">
+                    <el-input v-model="wh.secret" type="password" show-password
+                      placeholder="选填，AES-GCM 加密存储" />
+                    <div style="font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px">
+                      留空保存表示不修改已配置的密钥
+                    </div>
                   </el-form-item>
                   <el-form-item label="推送事件">
                     <el-checkbox-group v-model="wh.events">
@@ -334,9 +341,12 @@
                       <el-checkbox label="report">员工举报</el-checkbox>
                     </el-checkbox-group>
                   </el-form-item>
+                  <el-form-item label="启用推送">
+                    <el-switch v-model="wh.enabled" />
+                  </el-form-item>
                   <el-form-item>
-                    <el-button type="primary" size="small">保存</el-button>
-                    <el-button size="small">发送测试</el-button>
+                    <el-button type="primary" size="small" :loading="whSaving" @click="saveWebhook">保存</el-button>
+                    <el-button size="small" :loading="whTesting" @click="testWebhook">发送测试</el-button>
                   </el-form-item>
                 </el-form>
               </div>
@@ -345,9 +355,9 @@
         </el-tab-pane>
 
         <el-tab-pane label="基础参数" name="basic">
-          <el-row :gutter="12">
-            <el-col :span="8">
-              <div class="card card-green" style="margin: 0">
+          <el-row :gutter="12" align="stretch">
+            <el-col :span="12">
+              <div class="card card-green" style="margin: 0; height: 100%">
                 <div class="card-title">平台信息</div>
                 <el-form label-width="100px" style="margin-top: 12px" size="default">
                   <el-form-item label="平台 Logo">
@@ -380,8 +390,8 @@
                 </el-form>
               </div>
             </el-col>
-            <el-col :span="8">
-              <div class="card card-red" style="margin: 0">
+            <el-col :span="12">
+              <div class="card card-red" style="margin: 0; height: 100%">
                 <div class="card-title">隐私与合规</div>
                 <el-form label-width="120px" style="margin-top: 12px" size="default">
                   <el-form-item label="数据留存策略">
@@ -638,6 +648,8 @@ function toggleAccountStatus(row: { id: number; username: string; real_name: str
 const activeRole = ref(1)
 const ssoEnabled = ref(true)
 const ssoType = ref('oidc')
+const whSaving = ref(false)
+const whTesting = ref(false)
 const dataScope = ref('dept')
 const sensitiveFields = ref(['phone', 'risk_detail'])
 const customDepts = ref<string[]>([])
@@ -668,10 +680,12 @@ const privacy = reactive({
 /** 取证操作密码是否已配置（GET 只回显 "1"，绝不回显哈希） */
 const revealPwdConfigured = ref(false)
 const siem = reactive({ server: 'siem.corp.local', port: 514, proto: 'udp', tls: false })
-const whType = ref('wecom')
 const wh = reactive({
-  url: 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxx-xxxx-xxxx',
+  type: 'wecom',
+  url: '',
+  secret: '',
   events: ['high_risk', 'campaign_end', 'report'],
+  enabled: false,
 })
 
 const mockRoles = [
@@ -788,7 +802,52 @@ const savePrivacy = async () => {
   }
 }
 
+// ---- Webhook 告警推送 ----
+async function loadWebhook() {
+  try {
+    const data = (await systemApi.webhooks()) as { im_type: string; url: string; event_types: string[]; enabled: number }[]
+    if (Array.isArray(data) && data.length) {
+      const w = data[0]
+      wh.type = w.im_type || 'wecom'
+      wh.url = w.url
+      wh.events = w.event_types ?? []
+      wh.enabled = !!w.enabled
+    }
+  } catch { /* 未配置时保持空表单 */ }
+}
+async function saveWebhook() {
+  if (!wh.url.trim()) { ElMessage.warning('请填写 Webhook URL'); return }
+  if (!wh.events.length) { ElMessage.warning('请至少选择一类推送事件'); return }
+  whSaving.value = true
+  try {
+    await systemApi.saveWebhook({
+      name: '安全告警推送', im_type: wh.type, url: wh.url.trim(),
+      secret: wh.secret, event_types: wh.events, enabled: wh.enabled ? 1 : 0,
+    })
+    wh.secret = ''
+    ElMessage.success('Webhook 配置已保存')
+  } catch (err) {
+    ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    whSaving.value = false
+  }
+}
+async function testWebhook() {
+  if (!wh.url.trim()) { ElMessage.warning('请先填写 Webhook URL'); return }
+  whTesting.value = true
+  try {
+    const r = await systemApi.testWebhook({ im_type: wh.type, url: wh.url.trim(), secret: wh.secret })
+    if (r.ok) ElMessage.success(`测试推送成功（HTTP ${r.status}）`)
+    else ElMessage.error(`测试失败：${r.message}`)
+  } catch (err) {
+    ElMessage.error(`测试失败：${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    whTesting.value = false
+  }
+}
+
 onMounted(async () => {
+  loadWebhook()
   // 角色列表
   try {
     const data = (await systemApi.roles()) as { id: number; code: string; name: string; data_scope?: string; remark?: string; user_count?: number }[]

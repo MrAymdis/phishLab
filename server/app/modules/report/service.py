@@ -505,4 +505,16 @@ def ingest_from_plugin(db, payload: dict) -> int:
         _grant(db, reporter_user_id, report.id, points, "演练邮件举报")
     db.commit()
     db.refresh(report)
+    # Webhook 告警推送：员工举报（推送失败不阻断入库）
+    try:
+        from app.modules.integration.service import notify_webhooks
+
+        notify_webhooks(db, "report", {
+            "发件人": from_addr or "-",
+            "主题": payload.get("subject") or "-",
+            "举报人": reporter_email or "-",
+            "自动分类": "演练邮件" if classification == "drill" else "疑似真实钓鱼",
+        })
+    except Exception:
+        pass
     return report.id

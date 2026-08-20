@@ -265,5 +265,8 @@ export const systemApi = {
   auditLogs: (q: Record<string, unknown>) => get('/api/v1/audit-logs', q),
   loginLogs: (q: Record<string, unknown>) => get('/api/v1/login-logs', q),
   webhooks: () => get('/api/v1/webhooks'),
+  saveWebhook: (payload: Record<string, unknown>) => put('/api/v1/webhooks', payload),
+  testWebhook: (payload: Record<string, unknown>) =>
+    post<{ ok: boolean; status: number; message: string }>('/api/v1/webhooks/test', payload),
   siem: () => get('/api/v1/siem'),
 }

@@ -160,6 +160,17 @@ def consume():
                     target_user_id=user.id,
                 ))
                 logger.info("high-risk submit campaign=%s user=%s", campaign.id, user.name)
+                # Webhook 告警推送：高危中招（推送失败不影响落库，由外层统一回滚保护）
+                try:
+                    from app.modules.integration.service import notify_webhooks
+
+                    notify_webhooks(db, "high_risk", {
+                        "演练": campaign.name,
+                        "员工": f"{user.name}（{dept.name if dept else '-'}）",
+                        "行为": "在落地页提交了账号密码",
+                    })
+                except Exception:
+                    pass
 
             # 员工风险画像实时更新（每日全量重算由 risk_recalc 兜底）
             from app.modules.org.models import EmpRiskProfile

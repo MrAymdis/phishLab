@@ -430,6 +430,16 @@ def start(db, account, campaign_id: int):
         target_type="campaign", target_id=str(campaign_id),
     )
 
+    # Webhook 告警推送：演练开始
+    try:
+        from app.modules.integration.service import notify_webhooks
+
+        notify_webhooks(db, "campaign_start", {
+            "演练名称": c.name, "目标人数": c.target_count, "演练类型": c.type,
+        })
+    except Exception:
+        pass  # 推送失败不阻断启动
+
     # 投递派发：Worker 在线时立即开始投递；离线时由 beat 每 30s 兜底扫描
     try:
         from worker.tasks.delivery import dispatch_due_batches
@@ -483,6 +493,14 @@ def terminate(db, account, campaign_id: int):
         db, account=account, module="campaign", action="terminate",
         target_type="campaign", target_id=str(campaign_id),
     )
+
+    # Webhook 告警推送：演练结束
+    try:
+        from app.modules.integration.service import notify_webhooks
+
+        notify_webhooks(db, "campaign_end", {"演练名称": c.name, "结束方式": "手动终止"})
+    except Exception:
+        pass  # 推送失败不阻断终止
     return None
 
 
