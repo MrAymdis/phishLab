@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.db.session import get_db
 
 from . import service
@@ -21,12 +21,12 @@ def status(db: Session = Depends(get_db)):
     return resp.ok(service.get_status(db))
 
 
-@lic.post("/activate", summary="在线激活")
+@lic.post("/activate", summary="在线激活", dependencies=[Depends(require_perm("license:manage"))])
 def activate(req: ActivateRequest, db: Session = Depends(get_db)):
     return resp.ok(service.activate_online(db, req.license_key))
 
 
-@lic.post("/offline-import", summary="离线激活文件导入（.lic）")
+@lic.post("/offline-import", summary="离线激活文件导入（.lic）", dependencies=[Depends(require_perm("license:manage"))])
 async def offline_import(file: UploadFile, db: Session = Depends(get_db)):
     content = await file.read()
     return resp.ok(service.activate_offline(db, content))

@@ -3,7 +3,7 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.core.pagination import page_params
 from app.db.session import get_db
 
@@ -38,12 +38,12 @@ def tree(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.dept_tree(db, account))
 
 
-@depts.post("", summary="添加部门")
+@depts.post("", summary="添加部门", dependencies=[Depends(require_perm("org:manage"))])
 def create(payload: DeptCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_dept(db, account, payload.model_dump())})
 
 
-@depts.post("/sync", summary="触发组织架构同步（LDAP/企微/钉钉/飞书）")
+@depts.post("/sync", summary="触发组织架构同步（LDAP/企微/钉钉/飞书）", dependencies=[Depends(require_perm("org:manage"))])
 def sync(source: str = Query(..., description="ldap/wecom/dingtalk/feishu"),
          account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.sync_org(db, account, source))
@@ -68,13 +68,14 @@ def list_users(
     return resp.ok(service.list_users(db, account, dept_id=dept_id, tag=tag, risk_level=risk_level, kw=kw, page=page, page_size=page_size))
 
 
-@emp_users.post("/import", summary="CSV 批量导入员工（工号,姓名,邮箱[,部门,岗位,手机号,初始风险]）")
+@emp_users.post("/import", summary="CSV 批量导入员工（工号,姓名,邮箱[,部门,岗位,手机号,初始风险]）",
+                dependencies=[Depends(require_perm("org:manage"))])
 async def import_csv(file: UploadFile = File(...), account=Depends(get_current_account), db: Session = Depends(get_db)):
     content = await file.read()
     return resp.ok(service.import_users_csv(db, account, content))
 
 
-@emp_users.post("", summary="添加员工")
+@emp_users.post("", summary="添加员工", dependencies=[Depends(require_perm("org:manage"))])
 def create_user(payload: EmpUserCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_user(db, account, payload.model_dump())})
 
@@ -84,12 +85,12 @@ def user_detail(uid: int, account=Depends(get_current_account), db: Session = De
     return resp.ok(service.get_user(db, account, uid))
 
 
-@emp_users.put("/{uid}", summary="编辑员工")
+@emp_users.put("/{uid}", summary="编辑员工", dependencies=[Depends(require_perm("org:manage"))])
 def update_user(uid: int, payload: EmpUserCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.update_user(db, account, uid, payload.model_dump()))
 
 
-@emp_users.delete("/{uid}", summary="删除员工（离职软删）")
+@emp_users.delete("/{uid}", summary="删除员工（离职软删）", dependencies=[Depends(require_perm("org:manage"))])
 def delete_user(uid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.delete_user(db, account, uid))
 
@@ -114,6 +115,6 @@ def list_tags(account=Depends(get_current_account), db: Session = Depends(get_db
     return resp.ok(service.list_tags(db, account))
 
 
-@tags.post("", summary="创建标签（名称唯一）")
+@tags.post("", summary="创建标签（名称唯一）", dependencies=[Depends(require_perm("org:manage"))])
 def create_tag(payload: TagCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_tag(db, account, payload.model_dump())})

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core import response as resp
 from app.core.audit import record_audit
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.db.session import get_db
 
 from .models import PlatformSetting
@@ -59,7 +59,7 @@ def get_settings(db: Session = Depends(get_db)):
     return resp.ok(data)
 
 
-@settings.put("", summary="批量更新平台参数（写审计）")
+@settings.put("", summary="批量更新平台参数（写审计）", dependencies=[Depends(require_perm("settings:manage"))])
 def update_settings(
     payload: dict,
     request: Request,

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.db.session import get_db
 
 from . import service
@@ -18,7 +18,7 @@ def list_courses(account=Depends(get_current_account), db: Session = Depends(get
     return resp.ok(service.list_courses(db, account))
 
 
-@courses.post("", summary="新建课程")
+@courses.post("", summary="新建课程", dependencies=[Depends(require_perm("training:manage"))])
 def create_course(payload: dict, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_course(db, account, payload)})
 
@@ -28,7 +28,7 @@ def list_tasks(account=Depends(get_current_account), db: Session = Depends(get_d
     return resp.ok(service.list_tasks(db, account))
 
 
-@tasks.post("", summary="创建培训任务（人群快照 + 期限）")
+@tasks.post("", summary="创建培训任务（人群快照 + 期限）", dependencies=[Depends(require_perm("training:manage"))])
 def create_task(payload: dict, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_task(db, account, payload)})
 

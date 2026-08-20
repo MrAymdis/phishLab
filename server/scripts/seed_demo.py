@@ -101,8 +101,40 @@ def seed_rbac(db):
     ]
     db.add_all(perms)
 
+    # 接口/按钮级操作权限（require_perm 校验；写操作默认拒绝，红线相关）
+    op_perms = [
+        ("campaign:create", "演练管理", "创建/复制演练"),
+        ("campaign:control", "演练管理", "启动/暂停/恢复/终止/暂存/测试发送"),
+        ("campaign:delete", "演练管理", "删除演练"),
+        ("campaign:reveal", "演练管理", "提交事件取证解密（红线）"),
+        ("channel:manage", "发送配置", "通道/域名/伪装发件人增删改与测试发信"),
+        ("template:manage", "素材模板", "邮件模板/落地页增删改与克隆（红线）"),
+        ("settings:manage", "系统设置", "平台参数修改（留存期等红线配置）"),
+        ("license:manage", "系统设置", "License 激活/离线导入"),
+        ("report:classify", "邮件举报", "举报人工研判"),
+        ("org:manage", "用户和组", "部门/员工/标签增删改"),
+        ("training:manage", "安全培训", "课程/培训任务增删改"),
+        ("ai:review", "智能助手", "AI 草稿审核（入库/丢弃）"),
+        ("openapi:manage", "API开放平台", "开放平台应用创建/管理"),
+    ]
+    op_rows = [
+        SysPermission(parent_id=0, name=n, perm_code=code, type=3, route="", sort=1000 + i)
+        for i, (code, n, _remark) in enumerate(op_perms)
+    ]
+    db.add_all(op_rows)
+    db.flush()
+
     db.add(SysAccountRole(account_id=1, role_id=1))
     db.add_all(SysRolePermission(role_id=1, permission_id=p.id) for p in perms)
+    # super_admin 在 require_perm 代码层放行；operator 绑定运营类操作权限
+    operator_codes = {
+        c for c, _n, _r in op_perms
+        if c.startswith(("campaign:", "channel:", "template:", "org:", "training:", "report:", "ai:"))
+    }
+    db.add_all(
+        SysRolePermission(role_id=2, permission_id=p.id)
+        for p in op_rows if p.perm_code in operator_codes
+    )
     db.flush()
 
 

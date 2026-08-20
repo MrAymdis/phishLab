@@ -25,14 +25,36 @@ def get_current_account(
 
 
 def require_perm(perm_code: str):
-    """按钮/接口级权限校验工厂。
+    """接口/按钮级权限校验工厂（RBAC）。
 
-    TODO(一期实现)：加载账号角色 → sys_role_permission → 校验 perm_code；
-    超管 super_admin 直接放行。
+    - super_admin 角色直接放行
+    - 其余角色经 sys_role_permission → sys_permission.perm_code 校验
+    - 权限未定义/未授权时默认拒绝（安全兜底：写操作校验失败即拦截，红线相关）
     """
 
-    def _checker(account=Depends(get_current_account)):
-        # 脚手架阶段：仅校验已登录
+    def _checker(account=Depends(get_current_account), db: Session = Depends(get_db)):
+        from app.modules.rbac.models import SysAccountRole, SysPermission, SysRole, SysRolePermission
+
+        role_ids = db.scalars(
+            select(SysAccountRole.role_id).where(SysAccountRole.account_id == account.id)
+        ).all()
+        if not role_ids:
+            raise BizError(ErrorCode.PERM_DENIED, "账号未分配角色，无操作权限")
+        if db.scalar(
+            select(SysRole.id).where(SysRole.id.in_(role_ids), SysRole.code == "super_admin")
+        ):
+            return account
+        granted = db.scalar(
+            select(SysPermission.id)
+            .join(SysRolePermission, SysRolePermission.permission_id == SysPermission.id)
+            .where(
+                SysRolePermission.role_id.in_(role_ids),
+                SysPermission.perm_code == perm_code,
+            )
+            .limit(1)
+        )
+        if granted is None:
+            raise BizError(ErrorCode.PERM_DENIED, f"无操作权限（{perm_code}）")
         return account
 
     return _checker

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from app.core import response as resp
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.core.pagination import page_params
 from app.db.session import get_db
 
@@ -35,7 +35,7 @@ def list_campaigns(
     ))
 
 
-@campaigns.post("", summary="创建演练（7步向导）")
+@campaigns.post("", summary="创建演练（7步向导）", dependencies=[Depends(require_perm("campaign:create"))])
 def create(payload: schemas.CampaignCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_campaign(db, account, payload)})
 
@@ -45,37 +45,37 @@ def detail(cid: int, account=Depends(get_current_account), db: Session = Depends
     return resp.ok(service.get_campaign(db, account, cid))
 
 
-@campaigns.post("/{cid}/duplicate", summary="复制演练（生成新草稿）")
+@campaigns.post("/{cid}/duplicate", summary="复制演练（生成新草稿）", dependencies=[Depends(require_perm("campaign:create"))])
 def duplicate(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.duplicate_campaign(db, account, cid)})
 
 
-@campaigns.delete("/{cid}", summary="删除演练（仅草稿/已终止）")
+@campaigns.delete("/{cid}", summary="删除演练（仅草稿/已终止）", dependencies=[Depends(require_perm("campaign:delete"))])
 def delete(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.delete_campaign(db, account, cid))
 
 
-@campaigns.put("/{cid}/draft", summary="向导草稿暂存")
+@campaigns.put("/{cid}/draft", summary="向导草稿暂存", dependencies=[Depends(require_perm("campaign:control"))])
 def save_draft(cid: int, payload: schemas.CampaignCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.update_draft(db, account, cid, payload))
 
 
-@campaigns.post("/{cid}/start", summary="启动")
+@campaigns.post("/{cid}/start", summary="启动", dependencies=[Depends(require_perm("campaign:control"))])
 def start(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.start(db, account, cid))
 
 
-@campaigns.post("/{cid}/pause", summary="暂停")
+@campaigns.post("/{cid}/pause", summary="暂停", dependencies=[Depends(require_perm("campaign:control"))])
 def pause(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.pause(db, account, cid))
 
 
-@campaigns.post("/{cid}/resume", summary="恢复")
+@campaigns.post("/{cid}/resume", summary="恢复", dependencies=[Depends(require_perm("campaign:control"))])
 def resume(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.resume(db, account, cid))
 
 
-@campaigns.post("/{cid}/terminate", summary="终止")
+@campaigns.post("/{cid}/terminate", summary="终止", dependencies=[Depends(require_perm("campaign:control"))])
 def terminate(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.terminate(db, account, cid))
 
@@ -96,7 +96,8 @@ def timeline(
     return resp.ok(service.timeline(db, account, cid, page, page_size))
 
 
-@campaigns.post("/{cid}/events/{event_id}/reveal", summary="取证：操作密码验证后解密全部明文（全程审计）")
+@campaigns.post("/{cid}/events/{event_id}/reveal", summary="取证：操作密码验证后解密全部明文（全程审计）",
+                dependencies=[Depends(require_perm("campaign:reveal"))])
 def reveal_password(
     cid: int,
     event_id: int,
@@ -116,12 +117,6 @@ async def stream(cid: int, account=Depends(get_current_account), db: Session = D
     return EventSourceResponse(campaign_event_stream(db, account, cid))
 
 
-@campaigns.post("/{cid}/test-send", summary="发送测试")
+@campaigns.post("/{cid}/test-send", summary="发送测试", dependencies=[Depends(require_perm("campaign:control"))])
 def test_send(cid: int, to: list[str], account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.test_send(db, account, cid, to))
-
-
-@campaigns.delete("/{cid}", summary="删除演练（仅草稿）")
-def delete_campaign(cid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    service.delete_campaign(db, account, cid)
-    return resp.ok({"id": cid})

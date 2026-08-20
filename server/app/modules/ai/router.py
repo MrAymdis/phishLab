@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
 from app.core import response as resp
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.db.session import get_db
 
 from . import service
@@ -60,11 +60,11 @@ def drafts(status: str | None = None, account=Depends(get_current_account), db: 
     return resp.ok(service.list_drafts(db, account, status))
 
 
-@ai.post("/drafts/{did}/approve", summary="确认入库（记录审核人/时间）")
+@ai.post("/drafts/{did}/approve", summary="确认入库（记录审核人/时间）", dependencies=[Depends(require_perm("ai:review"))])
 def approve(did: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.approve_draft(db, account, did))
 
 
-@ai.post("/drafts/{did}/discard", summary="丢弃草稿")
+@ai.post("/drafts/{did}/discard", summary="丢弃草稿", dependencies=[Depends(require_perm("ai:review"))])
 def discard(did: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.discard_draft(db, account, did))

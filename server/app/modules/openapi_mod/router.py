@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.db.session import get_db
 
 from . import service
@@ -33,7 +33,7 @@ def list_apps(account=Depends(get_current_account), db: Session = Depends(get_db
     return resp.ok(service.list_apps(db, account))
 
 
-@open_apps.post("", summary="创建应用（AppID/AppSecret）")
+@open_apps.post("", summary="创建应用（AppID/AppSecret）", dependencies=[Depends(require_perm("openapi:manage"))])
 def create_app(payload: AppCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.create_app(db, account, payload.model_dump()))
 

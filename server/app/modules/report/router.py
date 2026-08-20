@@ -3,7 +3,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.core.pagination import page_params
 from app.db.session import get_db
 
@@ -40,7 +40,7 @@ def list_reports(
     return resp.ok(service.list_reports(db, account, classification=classification, page=page, page_size=page_size))
 
 
-@mail_reports.post("/{rid}/classify", summary="人工研判")
+@mail_reports.post("/{rid}/classify", summary="人工研判", dependencies=[Depends(require_perm("report:classify"))])
 def classify(rid: int, req: ClassifyRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.classify(db, account, rid, req.classification, req.remark))
 
