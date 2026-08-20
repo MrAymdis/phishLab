@@ -17,6 +17,11 @@ export const useUserStore = defineStore('user', () => {
     localStorage.setItem('phishlab_name', data.real_name)
   }
 
+  function setRealName(name: string) {
+    realName.value = name
+    localStorage.setItem('phishlab_name', name)
+  }
+
   function logout() {
     token.value = ''
     realName.value = ''
@@ -24,5 +29,5 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem('phishlab_name')
   }
 
-  return { token, realName, isLoggedIn, login, logout }
+  return { token, realName, isLoggedIn, login, setRealName, logout }
 })

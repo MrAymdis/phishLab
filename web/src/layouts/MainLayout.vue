@@ -48,12 +48,47 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item command="profile">个人中心</el-dropdown-item>
+                <el-dropdown-item command="logout" divided>退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
         </div>
       </el-header>
+
+      <!-- 个人中心：资料 + 修改密码 -->
+      <el-dialog v-model="profileDialog" title="个人中心" width="440px">
+        <el-tabs v-model="profileTab">
+          <el-tab-pane label="基本资料" name="info">
+            <el-form label-width="80px">
+              <el-form-item label="登录名">
+                <el-input :model-value="user.username" disabled />
+              </el-form-item>
+              <el-form-item label="姓名">
+                <el-input v-model="profileForm.real_name" placeholder="真实姓名" />
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
+          <el-tab-pane label="修改密码" name="pwd">
+            <el-form label-width="80px">
+              <el-form-item label="原密码" required>
+                <el-input v-model="pwdForm.old_password" type="password" show-password placeholder="当前登录密码" />
+              </el-form-item>
+              <el-form-item label="新密码" required>
+                <el-input v-model="pwdForm.new_password" type="password" show-password placeholder="至少 8 位" />
+              </el-form-item>
+              <el-form-item label="确认密码" required>
+                <el-input v-model="pwdForm.confirm" type="password" show-password placeholder="再次输入新密码" />
+              </el-form-item>
+            </el-form>
+          </el-tab-pane>
+        </el-tabs>
+        <template #footer>
+          <el-button size="small" @click="profileDialog = false">关闭</el-button>
+          <el-button size="small" type="primary" :loading="profileSaving"
+            @click="saveProfile">{{ profileTab === 'info' ? '保存资料' : '确认修改' }}</el-button>
+        </template>
+      </el-dialog>
 
       <el-main class="main">
         <router-view />
@@ -72,7 +107,10 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { reactive } from 'vue'
 import { Bell, ChatDotRound } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { authApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import { useCopilotStore } from '@/stores/copilot'
@@ -107,10 +145,53 @@ const notifications = ref([
   { id: 3, tag: '系统', type: 'info' as const, title: 'SMTP 通道「备用服务器」连通性异常', time: '2 小时前' },
 ])
 
+// ---- 个人中心 ----
+const profileDialog = ref(false)
+const profileTab = ref('info')
+const profileSaving = ref(false)
+const profileForm = reactive({ real_name: '' })
+const pwdForm = reactive({ old_password: '', new_password: '', confirm: '' })
+
 function onCommand(cmd: string) {
-  if (cmd === 'logout') {
+  if (cmd === 'profile') {
+    profileForm.real_name = user.realName
+    pwdForm.old_password = ''
+    pwdForm.new_password = ''
+    pwdForm.confirm = ''
+    profileTab.value = 'info'
+    profileDialog.value = true
+  } else if (cmd === 'logout') {
     user.logout()
     router.push('/login')
+  }
+}
+
+async function saveProfile() {
+  if (profileTab.value === 'pwd') {
+    if (pwdForm.new_password.length < 8) {
+      ElMessage.warning('新密码至少 8 位')
+      return
+    }
+    if (pwdForm.new_password !== pwdForm.confirm) {
+      ElMessage.warning('两次输入的新密码不一致')
+      return
+    }
+  }
+  profileSaving.value = true
+  try {
+    if (profileTab.value === 'info') {
+      await authApi.updateProfile(profileForm.real_name.trim())
+      user.setRealName(profileForm.real_name.trim())
+      ElMessage.success('资料已保存')
+    } else {
+      await authApi.changePassword(pwdForm.old_password, pwdForm.new_password)
+      ElMessage.success('密码已修改，下次登录生效')
+      profileDialog.value = false
+    }
+  } catch (err) {
+    ElMessage.error(err instanceof Error ? err.message : String(err))
+  } finally {
+    profileSaving.value = false
   }
 }
 </script>

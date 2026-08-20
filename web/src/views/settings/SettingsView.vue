@@ -4,6 +4,84 @@
 
     <div class="card" style="margin: 16px">
       <el-tabs v-model="activeTab">
+        <el-tab-pane label="平台账号" name="accounts">
+          <div class="card card-blue" style="margin: 0">
+            <div class="card-title">
+              登录用户管理
+              <div style="display: flex; gap: 8px; align-items: center">
+                <el-input v-model="accountKw" placeholder="用户名 / 姓名" clearable size="small"
+                  style="width: 200px" @keyup.enter="loadAccounts(1)" @clear="loadAccounts(1)" />
+                <el-button size="small" type="primary" @click="loadAccounts(1)">查询</el-button>
+                <el-button size="small" type="success" :icon="Plus" @click="openAccountDialog()">新建账号</el-button>
+              </div>
+            </div>
+            <el-table :data="accounts" v-loading="accountsLoading" size="default">
+              <el-table-column prop="username" label="登录名" min-width="120" />
+              <el-table-column prop="real_name" label="姓名" min-width="100" />
+              <el-table-column label="角色" min-width="180">
+                <template #default="{ row }">
+                  <el-tag v-for="r in row.roles" :key="r.id" size="small" effect="plain"
+                    style="margin-right: 4px">{{ r.name }}</el-tag>
+                  <span v-if="!row.roles?.length" style="color: var(--color-text-tertiary); font-size: 12px">未分配</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="80">
+                <template #default="{ row }">
+                  <el-tag :type="row.status === 1 ? 'success' : 'danger'" size="small">
+                    {{ row.status === 1 ? '启用' : '禁用' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="最后登录" width="160">
+                <template #default="{ row }">{{ row.last_login_at || '-' }}</template>
+              </el-table-column>
+              <el-table-column label="创建时间" width="160">
+                <template #default="{ row }">{{ row.created_at }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="200" fixed="right">
+                <template #default="{ row }">
+                  <el-button size="small" link type="primary" @click="openAccountDialog(row)">编辑</el-button>
+                  <el-button size="small" link type="warning" @click="openResetPwd(row)">重置密码</el-button>
+                  <el-button size="small" link :type="row.status === 1 ? 'danger' : 'success'"
+                    @click="toggleAccountStatus(row)">
+                    {{ row.status === 1 ? '禁用' : '启用' }}
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-pagination style="margin-top: 12px; justify-content: flex-end"
+              v-model:current-page="accountPage" :page-size="accountPageSize"
+              :total="accountTotal" layout="total, prev, pager, next" @current-change="loadAccounts" />
+          </div>
+
+          <!-- 新建/编辑账号弹窗 -->
+          <el-dialog v-model="accountDialog.show" :title="accountDialog.isEdit ? '编辑账号' : '新建平台账号'"
+            width="460px">
+            <el-form label-width="90px">
+              <el-form-item label="登录名" required>
+                <el-input v-model="accountForm.username" :disabled="accountDialog.isEdit"
+                  placeholder="2-64 字符，唯一" />
+              </el-form-item>
+              <el-form-item label="姓名" required>
+                <el-input v-model="accountForm.real_name" placeholder="真实姓名" />
+              </el-form-item>
+              <el-form-item v-if="!accountDialog.isEdit" label="初始密码" required>
+                <el-input v-model="accountForm.password" type="password" show-password
+                  placeholder="至少 8 位，PBKDF2 哈希存储" />
+              </el-form-item>
+              <el-form-item label="角色">
+                <el-select v-model="accountForm.role_ids" multiple placeholder="分配角色（可多选）" style="width: 100%">
+                  <el-option v-for="r in roleOptions" :key="r.id" :label="r.name" :value="r.id" />
+                </el-select>
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button size="small" @click="accountDialog.show = false">取消</el-button>
+              <el-button size="small" type="primary" :loading="accountSaving" @click="saveAccount">保存</el-button>
+            </template>
+          </el-dialog>
+        </el-tab-pane>
+
         <el-tab-pane label="权限管理 (RBAC)" name="rbac">
           <el-row :gutter="12">
             <el-col :span="6">
@@ -453,14 +531,110 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import {
   Plus, Picture, Link, Check, UploadFilled, FolderOpened, Phone,
 } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { systemApi } from '@/api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { accountApi, systemApi } from '@/api'
 import { useBrand } from '@/composables/useBrand'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 
 const activeTab = ref('rbac')
 const { updateBrand } = useBrand()
+
+// ---- 平台账号管理 ----
+const accounts = ref<{
+  id: number; username: string; real_name: string; status: number;
+  last_login_at: string | null; created_at: string; roles: { id: number; name: string }[];
+}[]>([])
+const accountTotal = ref(0)
+const accountPage = ref(1)
+const accountPageSize = 10
+const accountKw = ref('')
+const accountsLoading = ref(false)
+const accountDialog = reactive({ show: false, isEdit: false })
+const accountForm = reactive({ id: 0, username: '', real_name: '', password: '', role_ids: [] as number[] })
+const accountSaving = ref(false)
+const roleOptions = computed(() => roles.value.map(r => ({ id: r.id, name: r.name })))
+
+async function loadAccounts(page = accountPage.value) {
+  accountPage.value = page
+  accountsLoading.value = true
+  try {
+    const data = await accountApi.list({ page, pageSize: accountPageSize, kw: accountKw.value })
+    accounts.value = data?.list ?? []
+    accountTotal.value = data?.total ?? 0
+  } catch {
+    ElMessage.error('账号列表加载失败')
+  } finally {
+    accountsLoading.value = false
+  }
+}
+function openAccountDialog(row?: { id: number; username: string; real_name: string; roles: { id: number }[] }) {
+  accountDialog.isEdit = !!row
+  accountDialog.show = true
+  accountForm.id = row?.id ?? 0
+  accountForm.username = row?.username ?? ''
+  accountForm.real_name = row?.real_name ?? ''
+  accountForm.password = ''
+  accountForm.role_ids = row?.roles?.map(r => r.id) ?? []
+}
+async function saveAccount() {
+  if (!accountForm.username.trim() || !accountForm.real_name.trim()) {
+    ElMessage.warning('登录名与姓名必填')
+    return
+  }
+  if (!accountDialog.isEdit && accountForm.password.length < 8) {
+    ElMessage.warning('初始密码至少 8 位')
+    return
+  }
+  accountSaving.value = true
+  try {
+    if (accountDialog.isEdit) {
+      await accountApi.update(accountForm.id, {
+        real_name: accountForm.real_name, role_ids: accountForm.role_ids, status: 1,
+      })
+    } else {
+      await accountApi.create({
+        username: accountForm.username.trim(), real_name: accountForm.real_name.trim(),
+        password: accountForm.password, role_ids: accountForm.role_ids,
+      })
+    }
+    ElMessage.success(accountDialog.isEdit ? '账号已更新' : '账号已创建')
+    accountDialog.show = false
+    loadAccounts()
+  } catch (err) {
+    ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    accountSaving.value = false
+  }
+}
+function openResetPwd(row: { id: number; username: string }) {
+  ElMessageBox.prompt(`重置「${row.username}」的密码`, '重置密码', {
+    inputType: 'password', inputPlaceholder: '新密码（至少 8 位）',
+    inputValidator: (v: string) => (v.length >= 8 ? true : '密码至少 8 位'),
+  }).then(async ({ value }) => {
+    try {
+      await accountApi.resetPassword(row.id, value)
+      ElMessage.success('密码已重置')
+    } catch (err) {
+      ElMessage.error(`重置失败：${err instanceof Error ? err.message : String(err)}`)
+    }
+  }).catch(() => {})
+}
+function toggleAccountStatus(row: { id: number; username: string; real_name: string; status: number; roles: { id: number }[] }) {
+  const next = row.status === 1 ? 0 : 1
+  ElMessageBox.confirm(`确定${next === 0 ? '禁用' : '启用'}账号「${row.username}」吗？`,
+    next === 0 ? '禁用账号' : '启用账号', { type: 'warning' })
+    .then(async () => {
+      try {
+        // update 为覆盖式：切换状态需同时回传姓名与角色，避免清空
+        await accountApi.update(row.id, { real_name: row.real_name, role_ids: row.roles?.map(r => r.id) ?? [], status: next })
+        ElMessage.success(next === 0 ? '已禁用' : '已启用')
+        loadAccounts()
+      } catch (err) {
+        ElMessage.error(`操作失败：${err instanceof Error ? err.message : String(err)}`)
+      }
+    }).catch(() => {})
+}
 const activeRole = ref(1)
 const ssoEnabled = ref(true)
 const ssoType = ref('oidc')

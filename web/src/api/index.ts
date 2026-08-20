@@ -1,7 +1,7 @@
 /** API 模块索引：与后端 router 一一对应（后端路由为契约源）。 */
 import { download, get, post, put, del } from './http'
 
-// ---- 认证 ----
+// ---- 认证 / 个人中心 ----
 export const authApi = {
   login: (username: string, password: string) =>
     post<{ token: string; account_id: number; username: string; real_name: string }>(
@@ -9,6 +9,21 @@ export const authApi = {
     ),
   me: () => get<{ id: number; username: string; real_name: string }>('/api/v1/auth/me'),
   menus: () => get<{ path: string; title: string; icon: string }[]>('/api/v1/auth/menus'),
+  updateProfile: (real_name: string) => put('/api/v1/auth/profile', { real_name }),
+  changePassword: (old_password: string, new_password: string) =>
+    put('/api/v1/auth/password', { old_password, new_password }),
+}
+
+// ---- 平台账号管理（RBAC 账号维度） ----
+export const accountApi = {
+  list: (q: { page?: number; pageSize?: number; kw?: string }) =>
+    get<{ total: number; list: { id: number; username: string; real_name: string; status: number; last_login_at: string | null; created_at: string; roles: { id: number; name: string }[] }[] }>(
+      '/api/v1/accounts', q as never,
+    ),
+  create: (payload: Record<string, unknown>) => post<{ id: number }>('/api/v1/accounts', payload),
+  update: (id: number, payload: Record<string, unknown>) => put(`/api/v1/accounts/${id}`, payload),
+  resetPassword: (id: number, new_password: string) =>
+    put(`/api/v1/accounts/${id}/password`, { new_password }),
 }
 
 // ---- 数据概览 / 报表 ----
