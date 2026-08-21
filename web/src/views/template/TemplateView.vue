@@ -1253,7 +1253,7 @@ const pagedPayloads = computed(() => {
 watch(payloadType, () => { payloadPage.value = 1 })
 watch(payloadKw, () => { payloadPage.value = 1 })
 
-// ============ 接口加载（失败时保留演示数据） ============
+// ============ 接口加载（失败保持空状态） ============
 // 后端枚举值 → 前端筛选键归一化
 const SCENE_TO_CAT: Record<string, string> = { system: 'upgrade', prize: 'lottery', security: 'alert' }
 const PAGE_TYPE_TO_VIEW: Record<string, string> = {

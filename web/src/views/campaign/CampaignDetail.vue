@@ -68,42 +68,16 @@ import { usePolling } from '@/composables/usePolling'
 
 // dashboard/timeline/SSE 均已接入接口；SSE 断线时降级为轮询刷新
 const route = useRoute()
-const campaignName = ref('Q3全员防钓鱼演练')
-const campaignStatus = ref('running')
+const campaignName = ref('')
+const campaignStatus = ref('draft')
 
 type Accent = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal'
-const metrics = ref<{ label: string; value: string | number; sub?: string; accent: Accent }[]>([
-  { label: '发送总数', value: '1,200', sub: '成功率 100%', accent: 'blue' },
-  { label: '发送成功', value: '1,200', sub: '占比 100%', accent: 'purple' },
-  { label: '已阅读', value: '856', sub: '阅读率 71.3%', accent: 'teal' },
-  { label: '已点击', value: '324', sub: '点击率 27.0%', accent: 'orange' },
-  { label: '中招人数', value: '187', sub: '中招率 15.6%', accent: 'red' },
-  { label: '已举报', value: '268', sub: '举报率 22.3%', accent: 'green' },
-])
+const metrics = ref<{ label: string; value: string | number; sub?: string; accent: Accent }[]>([])
+const funnel = ref<{ name: string; value: number; rate?: string }[]>([])
+const alerts = ref<{ msg: string; time: string; advice: string }[]>([])
+const timeline = ref<TimelineEvent[]>([])
 
-const funnel = ref<{ name: string; value: number; rate?: string }[]>([
-  { name: '发送总数', value: 1200, rate: '100%' },
-  { name: '发送成功', value: 1200, rate: '100%' },
-  { name: '已阅读', value: 856, rate: '71.3%' },
-  { name: '已点击', value: 324, rate: '→37.8%' },
-  { name: '输入数据', value: 187, rate: '→57.7%' },
-  { name: '主动举报', value: 268, rate: '31.3%' },
-])
-
-const alerts = ref([
-  { msg: '张某某（研发部）连续3次输入密码', time: '2 分钟前', advice: '建议下发专项培训' },
-  { msg: '财务部整体中招率达到 32%', time: '15 分钟前', advice: '超阈值5个百分点' },
-  { msg: '李某某（高管办）点击后10秒内提交', time: '38 分钟前', advice: '已自动推送培训' },
-])
-
-const timeline = ref<TimelineEvent[]>([
-  { time: '2026-08-15 14:33:05', user: '王某某 · 市场部', action: '在登录页输入了密码', icon: '⚠️', ip: '10.12.34.56', browser: 'Chrome 125 · Win10', fingerprint: 'a3f8b2c1...', danger: true },
-  { time: '2026-08-15 14:32:42', user: '王某某 · 市场部', action: '点击了邮件中的链接「立即报销」', icon: '🔗', ip: '10.12.34.56', browser: 'Chrome 125 · Win10' },
-  { time: '2026-08-15 14:32:18', user: '王某某 · 市场部', action: '打开了邮件「财务报销通知」', icon: '📧', ip: '10.12.34.56', browser: 'Chrome 125 · Win10' },
-  { time: '2026-08-15 14:31:55', user: '陈某某 · 法务部', action: '举报了可疑邮件', icon: '🛡️', ip: '10.12.78.90', browser: 'Edge 125 · macOS', good: true },
-])
-
-// ============ 接口数据加载（失败时保留演示数据） ============
+// ============ 接口数据加载（失败保持空状态） ============
 interface CampaignDetailData {
   id: number
   name: string
@@ -168,7 +142,7 @@ async function load() {
       campaignApi.dashboard(id),
       campaignApi.timeline(id, 1),
     ])
-    // 接口成功即覆盖（新演练为空数据 → 展示空状态而非演示数据）
+    // 接口成功即覆盖（新演练为空数据 → 展示空状态）
     const dt = detail as CampaignDetailData | null
     campaignName.value = dt?.name || `演练 #${id}`
     campaignStatus.value = dt?.status || 'draft'
@@ -176,8 +150,7 @@ async function load() {
     applyDash(dash as CampaignDashData | null)
     applyTimeline(((tl as { list?: TimelineDataItem[] } | null)?.list ?? []) as TimelineDataItem[])
   } catch {
-    // 仅在接口失败时保留演示数据
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    // 接口失败保持空状态，由 http 拦截器统一提示
   }
 }
 

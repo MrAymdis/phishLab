@@ -717,13 +717,11 @@ const wh = reactive({
   enabled: false,
 })
 
-const mockRoles = [
-  { id: 1, name: '超级管理员', code: 'super_admin', desc: '拥有所有权限', user_count: 3 },
-  { id: 2, name: '演练操作员', code: 'drill_operator', desc: '可发起/管理演练与素材', user_count: 8 },
-  { id: 3, name: '只读审计员', code: 'readonly_auditor', desc: '仅可查看报表与日志', user_count: 5 },
-  { id: 4, name: '部门安全接口人', code: 'dept_security', desc: '仅查看本部门数据', user_count: 12 },
-]
-const roles = ref<{ id: number; name: string; code: string; desc: string; user_count: number; data_scope?: string }[]>(mockRoles)
+interface RoleItem {
+  id: number; name: string; code: string; desc: string
+  user_count: number; data_scope?: string
+}
+const roles = ref<RoleItem[]>([])
 const currentRole = computed(() => roles.value.find(r => r.id === activeRole.value))
 const currentRoleName = computed(() => currentRole.value?.name)
 
@@ -836,7 +834,7 @@ async function loadRoles() {
         desc: r.remark || '角色', user_count: r.user_count ?? 0,
       }))
     }
-  } catch { /* 列表加载失败保持演示数据 */ }
+  } catch { /* 列表加载失败保持空状态 */ }
 }
 
 const opLogs = ref([

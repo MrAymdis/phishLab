@@ -596,13 +596,13 @@ function onDeptClick(data: DeptNode) {
   }
 }
 
-// ============ 接口加载（失败时保留演示数据） ============
+// ============ 接口加载（失败保持空状态，拦截器统一提示） ============
 async function loadDepts() {
   try {
     const tree = (await orgApi.deptTree()) as DeptNode[]
     if (Array.isArray(tree) && tree.length) deptTree.value = tree
   } catch {
-    ElMessage.warning('接口数据加载失败，已展示演示数据')
+    /* 失败保持空状态，http 拦截器统一提示 */
   }
 }
 
@@ -656,7 +656,7 @@ const allowedDeptLabels = computed<Set<string> | null>(() => {
   return new Set(collectDeptLabels(selectedDept.value).filter(l => l !== '总公司'))
 })
 
-// ============ 员工数据（对齐 demo 14 条 mock，接口加载成功后覆盖） ============
+// ============ 员工数据（全部来自 /api/v1/org 接口） ============
 const employeeRows = ref<Employee[]>([])
 
 const tagOptions = ref<string[]>(['高管', '研发', '运维', '财务', '新员工'])

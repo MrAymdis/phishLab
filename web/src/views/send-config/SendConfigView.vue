@@ -638,20 +638,7 @@ function dnsTagType(v: string) {
   return 'danger'
 }
 
-const channels = ref<ChannelItem[]>([
-  { id: 1, name: '主SMTP通道', type: 'smtp', type_label: 'SMTP', accent: 'blue', status: 'ok',
-    server: 'smtp.company.com', port: 465, ssl: true, score: 96, last_test: '2026-08-15 10:22' },
-  { id: 2, name: '备用SMTP通道', type: 'smtp', type_label: 'SMTP', accent: 'teal', status: 'ok',
-    server: 'smtp2.company.com', port: 587, ssl: false, score: 92, last_test: '2026-08-14 18:05' },
-  { id: 3, name: 'Exchange EWS (Office365)', type: 'ews', type_label: 'Exchange EWS', accent: 'purple', status: 'ok',
-    url: 'https://outlook.office365.com/EWS/Exchange.asmx', auth_mode: 'OAuth2 · Azure AD', score: 98, last_test: '2026-08-15 09:40' },
-  { id: 4, name: '阿里云短信', type: 'sms', type_label: '短信机', accent: 'orange', status: 'ok',
-    provider: '阿里云 Dysmsapi', signature: '【安全演练】', score: 88, last_test: '2026-08-13 15:30' },
-  { id: 5, name: '腾讯云短信', type: 'sms', type_label: '短信机', accent: 'green', status: 'error',
-    provider: '腾讯云 SMS', signature: '【公司通知】', score: 0, last_test: '2026-08-10 失败' },
-  { id: 6, name: '自定义 HTTP 短信网关', type: 'sms', type_label: '短信机', accent: 'red', status: 'ok',
-    provider: '自定义 HTTP Webhook', signature: '【系统公告】', score: 82, last_test: '2026-08-12 11:15' },
-])
+const channels = ref<ChannelItem[]>([])
 
 // ========== 统计卡片 ==========
 // 本月发送总量：由后端从 campaign_target.sent_at 真实聚合（overview 接口）
@@ -1087,7 +1074,7 @@ const domainRows = ref<DomainRow[]>([
   { id: 4, domain: 'it-alert.top', spf: 'FAIL', dkim: 'FAIL', dmarc: 'FAIL', score: 62, last_check: '2026-08-14 03:00' },
 ])
 
-// ============ 接口加载（失败时保留演示数据） ============
+// ============ 接口加载（失败保持空状态，拦截器统一提示） ============
 async function loadChannels() {
   try {
     const [list, ov] = await Promise.all([channelApi.list(), channelApi.overview()])
