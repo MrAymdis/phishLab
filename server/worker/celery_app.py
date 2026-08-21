@@ -18,6 +18,7 @@ celery_app = Celery(
         "worker.tasks.stat_aggregate",
         "worker.tasks.retention_clean",
         "worker.tasks.risk_recalc",
+        "worker.tasks.campaign_auto",
     ],
 )
 
@@ -45,6 +46,11 @@ celery_app.conf.beat_schedule = {
     "dns-patrol": {
         "task": "worker.tasks.dns_patrol.patrol",
         "schedule": crontab(minute=0, hour="*/6"),
+    },
+    # 每 5 分钟扫描 running 演练：投递完毕/到期自动置 completed
+    "campaign-auto-complete": {
+        "task": "worker.tasks.campaign_auto.auto_complete",
+        "schedule": crontab(minute="*/5"),
     },
     # 每 10 分钟回写实时计数与汇总
     "stat-aggregate": {
