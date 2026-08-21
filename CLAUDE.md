@@ -37,7 +37,7 @@ phishlab/
 
 ```bash
 # 前端
-cd web && pnpm install && pnpm dev        # 本地开发(代理/api→8080)
+cd web && pnpm install && pnpm dev        # 本地开发(0.0.0.0:5173，代理/api /static→8080)
 pnpm build                                 # 产物 dist/
 
 # 后端

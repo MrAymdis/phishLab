@@ -10,6 +10,7 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0', // 局域网/容器可访问
     port: 5173,
     proxy: {
       // 管理端 API 与 SSE（dev 代理到后端 8080）
