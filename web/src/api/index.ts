@@ -227,7 +227,8 @@ export const trainingApi = {
     post<{ id: number }>('/api/v1/exam/papers', payload),
   updatePaper: (id: number, payload: Record<string, unknown>) =>
     put(`/api/v1/exam/papers/${id}`, payload),
-  publishPaper: (id: number) => post(`/api/v1/exam/papers/${id}/publish`),
+  publishPaper: (id: number, payload?: Record<string, unknown>) =>
+    post<{ count: number; audience: Record<string, unknown> }>(`/api/v1/exam/papers/${id}/publish`, payload),
   deletePaper: (id: number) => del(`/api/v1/exam/papers/${id}`),
   // 考试记录
   examRecords: (q: Record<string, unknown>) => get('/api/v1/exam/records', q),

@@ -143,9 +143,11 @@ def update_paper(pid: int, payload: dict, account=Depends(get_current_account), 
     return resp.ok(service.update_paper(db, account, pid, payload))
 
 
-@exam.post("/papers/{pid}/publish", summary="发布试卷", dependencies=[Depends(require_perm("training:manage"))])
-def publish_paper(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok(service.publish_paper(db, account, pid))
+@exam.post("/papers/{pid}/publish", summary="发布试卷（指定对象：全员/部门/人员）",
+           dependencies=[Depends(require_perm("training:manage"))])
+def publish_paper(pid: int, payload: dict | None = None,
+                  account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.publish_paper(db, account, pid, payload))
 
 
 @exam.delete("/papers/{pid}", summary="删除试卷", dependencies=[Depends(require_perm("training:manage"))])

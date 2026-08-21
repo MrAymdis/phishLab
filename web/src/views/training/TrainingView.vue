@@ -222,6 +222,15 @@
                 <el-table-column label="通关分数线" width="100" align="center">
                   <template #default="{ row }">{{ row.pass }} 分（{{ row.passPct }}%）</template>
                 </el-table-column>
+                <el-table-column label="发布对象" min-width="150">
+                  <template #default="{ row }">
+                    <span v-if="row.status === 'published'">
+                      {{ row.audience || '—' }}
+                      <span v-if="row.audienceCount" style="color: var(--color-text-tertiary)">（{{ row.audienceCount }} 人）</span>
+                    </span>
+                    <span v-else style="color: var(--color-text-tertiary)">—</span>
+                  </template>
+                </el-table-column>
                 <el-table-column label="状态" width="90" align="center">
                   <template #default="{ row }">
                     <el-tag v-if="row.status === 'published'" type="success" size="small">已发布</el-tag>
@@ -232,7 +241,7 @@
                 <el-table-column label="操作" width="230" fixed="right">
                   <template #default="{ row }">
                     <el-button link size="small" @click="previewPaper(row)">预览</el-button>
-                    <el-button link size="small" type="success" v-if="row.status !== 'published'" @click="publishPaper(row)">发布</el-button>
+                    <el-button link size="small" type="success" v-if="row.status !== 'published'" @click="openPublishDialog(row)">发布</el-button>
                     <el-button link size="small" type="primary" @click="openPaperDialog(row)">编辑</el-button>
                     <el-button link size="small" type="danger" @click="removePaper(row)">删除</el-button>
                   </template>
@@ -522,6 +531,7 @@
           <span>共 {{ paperPreview.questions.length }} 题 · 总分 {{ paperPreview.total }} 分</span>
           <span>分数线 {{ paperPreview.pass }} 分</span>
           <span>限时 {{ paperPreview.duration }} 分钟</span>
+          <span v-if="paperPreview.audience_label">发布对象：{{ paperPreview.audience_label }}</span>
           <el-tag v-if="paperPreview.status === 'published'" type="success" size="small">已发布</el-tag>
           <el-tag v-else size="small" effect="plain">草稿</el-tag>
         </div>
@@ -539,6 +549,47 @@
             <span v-if="q.analysis" class="paper-q-analysis">解析：{{ q.analysis }}</span>
           </div>
         </div>
+      </template>
+    </el-dialog>
+
+    <!-- ============ 发布试卷弹窗（指定对象） ============ -->
+    <el-dialog v-model="publishDialogVisible" title="发布试卷（指定考试对象）" width="600px" destroy-on-close>
+      <template v-if="publishPaperRow">
+        <div class="preview-meta" style="margin-bottom: 12px">
+          <span>{{ publishPaperRow.name }}</span>
+          <span>共 {{ publishPaperRow.single + publishPaperRow.multi + publishPaperRow.judge }} 题 · {{ publishPaperRow.total }} 分</span>
+        </div>
+        <el-form label-width="110px">
+          <el-form-item label="发布对象" required>
+            <el-radio-group v-model="publishForm.scope">
+              <el-radio-button value="all">全员</el-radio-button>
+              <el-radio-button value="dept">按部门</el-radio-button>
+              <el-radio-button value="users">按人员</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="publishForm.scope === 'dept'" label="选择部门">
+            <div class="dept-tree-box">
+              <el-tree
+                ref="publishDeptTreeRef"
+                :data="deptTreeData"
+                show-checkbox
+                node-key="id"
+                :props="{ label: 'label', children: 'children' }"
+                default-expand-all
+              />
+            </div>
+          </el-form-item>
+          <el-form-item v-if="publishForm.scope === 'users'" label="选择人员">
+            <el-select v-model="publishForm.userIds" multiple filterable style="width: 100%" placeholder="搜索并选择员工">
+              <el-option v-for="u in empUsers" :key="u.id" :label="`${u.name}（${u.dept || '未分配'}）`" :value="u.id" />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <el-alert type="info" :closable="false" show-icon :title="publishSummary" />
+      </template>
+      <template #footer>
+        <el-button @click="publishDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="doPublishPaper">确认发布</el-button>
       </template>
     </el-dialog>
 
@@ -1024,6 +1075,7 @@ interface PaperRow {
   id: number
   name: string; single: number; multi: number; judge: number; total: number
   pass: number; passPct: number; publishCount: number; status: string
+  audience?: string; audienceCount?: number
 }
 const paperRows = ref<PaperRow[]>([])
 
@@ -1121,13 +1173,49 @@ async function previewPaper(p: PaperRow) {
   } catch { /* 拦截器已提示 */ }
 }
 
-async function publishPaper(row: PaperRow) {
+// 发布试卷（指定对象：全员/部门/人员，人群快照入库，供二期学员端分发）
+const publishDialogVisible = ref(false)
+const publishPaperRow = ref<PaperRow | null>(null)
+const publishDeptTreeRef = ref<InstanceType<typeof ElTree>>()
+const publishForm = reactive({ scope: 'all', userIds: [] as number[] })
+const publishSummary = computed(() => {
+  if (!publishPaperRow.value) return ''
+  if (publishForm.scope === 'all') return '发布对象：全员'
+  if (publishForm.scope === 'dept') {
+    const checked = publishDeptTreeRef.value?.getCheckedNodes(true) ?? []
+    return checked.length ? `发布对象：${checked.map((n: any) => n.label).join('、')}` : '请选择部门'
+  }
+  const picked = empUsers.value.filter(u => publishForm.userIds.includes(u.id))
+  return picked.length ? `发布对象：${picked.map(u => u.name).join('、')}（${publishForm.userIds.length} 人）` : '请选择人员'
+})
+function openPublishDialog(row: PaperRow) {
+  publishPaperRow.value = row
+  Object.assign(publishForm, { scope: 'all', userIds: [] })
+  loadEmpUsers()
+  publishDialogVisible.value = true
+}
+async function doPublishPaper() {
+  if (!publishPaperRow.value) return
+  let audience: Record<string, unknown> = {}
+  let labels: string[] = []
+  if (publishForm.scope === 'all') {
+    audience = { all: true }
+    labels = ['全员']
+  } else if (publishForm.scope === 'dept') {
+    const checked = publishDeptTreeRef.value?.getCheckedNodes(true) ?? []
+    const ids = checked.map((n: any) => n.id)
+    if (!ids.length) { ElMessage.warning('请选择部门'); return }
+    audience = { dept_ids: ids }
+    labels = checked.map((n: any) => n.label)
+  } else {
+    if (!publishForm.userIds.length) { ElMessage.warning('请选择人员'); return }
+    audience = { user_ids: publishForm.userIds }
+    labels = empUsers.value.filter(u => publishForm.userIds.includes(u.id)).map(u => u.name)
+  }
   try {
-    await ElMessageBox.confirm(`确认发布试卷「${row.name}」？发布后可用于考试（考试分发二期接入）。`, '发布试卷', { type: 'warning' })
-  } catch { return }
-  try {
-    await trainingApi.publishPaper(row.id)
-    ElMessage.success('试卷已发布')
+    const r = await trainingApi.publishPaper(publishPaperRow.value.id, { ...audience, labels })
+    publishDialogVisible.value = false
+    ElMessage.success(`试卷已发布，覆盖 ${r.count} 名员工`)
     loadPapers()
   } catch { /* 拦截器已提示 */ }
 }

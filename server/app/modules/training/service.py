@@ -409,6 +409,8 @@ def list_papers(db, account):
             "passPct": int(p.pass_score or 0),
             "publishCount": publish_count,
             "status": p.status,
+            "audience": _audience_label(p.publish_audience or {}),
+            "audienceCount": _normalize_audience(db, p.publish_audience or {})[1] if p.publish_audience else 0,
         })
     return items
 
@@ -669,6 +671,8 @@ def get_paper(db, account, paper_id: int) -> dict:
         "duration": int(p.duration_min or 0),
         "status": p.status,
         "total": total,
+        "audience": p.publish_audience or {},
+        "audience_label": _audience_label(p.publish_audience or {}),
         "questions": [
             {
                 "id": q.id,
@@ -719,16 +723,60 @@ def update_paper(db, account, paper_id: int, payload: dict) -> None:
     return None
 
 
-def publish_paper(db, account, paper_id: int) -> None:
-    """发布试卷：status → published + 审计（考试分发二期接任务/学员端）。"""
+def _normalize_audience(db, audience) -> tuple[dict, int]:
+    """人群快照归一化 + 展开覆盖人数（与培训任务 audience 同结构）。
+
+    兼容旧格式 {"label": str, "user_ids": [...]}；labels 字符串转列表。
+    返回 (快照, 覆盖员工数)。
+    """
+    from app.modules.org.models import EmpUser  # 延迟导入避免循环
+
+    if not isinstance(audience, dict):
+        audience = {}
+    labels = audience.get("labels") or []
+    if isinstance(labels, str):
+        labels = [labels]
+    if not labels and audience.get("label"):
+        labels = [audience["label"]]
+    dept_ids = [int(d) for d in (audience.get("dept_ids") or [])]
+    user_ids = [int(u) for u in (audience.get("user_ids") or [])]
+    snap = {"labels": labels, "dept_ids": dept_ids, "user_ids": user_ids,
+            "all": bool(audience.get("all"))}
+
+    uids: set[int] = set(user_ids)
+    if snap["all"]:
+        uids.update(db.scalars(select(EmpUser.id)).all())
+    if dept_ids:
+        uids.update(db.scalars(select(EmpUser.id).where(EmpUser.dept_id.in_(dept_ids))).all())
+    return snap, len(uids)
+
+
+def _audience_label(audience: dict) -> str:
+    """快照展示文案：全员 / 部门1,部门2 / 张三,李四。"""
+    if not audience:
+        return ""
+    if audience.get("all"):
+        return "全员"
+    labels = audience.get("labels") or []
+    return ", ".join(labels) if labels else "指定人员"
+
+
+def publish_paper(db, account, paper_id: int, audience: dict | None = None) -> dict:
+    """发布试卷：记录发布对象人群快照（全员/部门/指定人员），status → published。
+
+    audience 结构同培训任务：{labels, dept_ids, user_ids, all}；不传则全员。
+    """
     p = db.get(ExamPaper, paper_id)
     if p is None:
         raise BizError(ErrorCode.NOT_FOUND, "试卷不存在")
+    snap, count = _normalize_audience(db, audience or {})
     p.status = "published"
+    p.publish_audience = snap
     db.commit()
     record_audit(db, account=account, module="training", action="publish_paper",
-                 target_type="exam_paper", target_id=str(paper_id), detail={"title": p.title})
-    return None
+                 target_type="exam_paper", target_id=str(paper_id),
+                 detail={"title": p.title, "audience": snap, "count": count})
+    return {"count": count, "audience": snap}
 
 
 def delete_paper(db, account, paper_id: int) -> None:
