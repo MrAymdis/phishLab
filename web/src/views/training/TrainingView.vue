@@ -44,7 +44,7 @@
             <el-empty description="暂无符合条件的课程" :image-size="80" />
           </el-col>
           <el-col :span="8" v-for="c in filteredCourses" :key="c.id">
-            <div class="card course-card" :class="`card-${c.accent}`">
+            <div class="card course-card" :class="`card-${c.accent}`" @click="previewCourse(c)">
               <div class="course-cover" :style="{ background: c.coverBg }">
                 <img v-if="c.cover_url" :src="c.cover_url" class="cover-img" alt="" />
                 <span v-if="!c.cover_url" class="cover-icon">{{ c.coverIcon }}</span>
@@ -72,11 +72,11 @@
                   </div>
                 </div>
                 <div class="course-actions">
-                  <el-button size="small" link type="primary" @click="previewCourse(c)">预览</el-button>
-                  <el-button size="small" link @click="openCourseDialog(c)">编辑</el-button>
-                  <el-button size="small" link type="danger" @click="removeCourse(c)">删除</el-button>
+                  <el-button size="small" link type="primary" @click.stop="previewCourse(c)">预览</el-button>
+                  <el-button size="small" link @click.stop="openCourseDialog(c)">编辑</el-button>
+                  <el-button size="small" link type="danger" @click.stop="removeCourse(c)">删除</el-button>
                   <el-divider direction="vertical" />
-                  <el-button size="small" link type="success" @click="openTaskDialog(c.id)">新建任务用此课程</el-button>
+                  <el-button size="small" link type="success" @click.stop="openTaskDialog(c.id)">新建任务用此课程</el-button>
                 </div>
               </div>
             </div>
@@ -356,8 +356,8 @@
       </template>
     </el-dialog>
 
-    <!-- ============ 课程预览弹窗 ============ -->
-    <el-dialog v-model="coursePreviewVisible" title="课程详情" width="560px">
+    <!-- ============ 课程预览弹窗（视频/PDF 内嵌播放） ============ -->
+    <el-dialog v-model="coursePreviewVisible" title="课程详情" :width="isPreviewVideo ? '760px' : '560px'">
       <div v-if="coursePreview" class="preview-body">
         <div class="preview-title">{{ coursePreview.title }}</div>
         <div class="preview-meta">
@@ -366,8 +366,33 @@
           <span>时长 {{ coursePreview.duration }} 分钟</span>
           <span>课件：{{ coursePreview.material || '未指定' }}</span>
         </div>
+        <template v-if="coursePreview.content_url">
+          <div v-if="isPreviewVideo" class="preview-media">
+            <video
+              :src="coursePreview.content_url"
+              :poster="coursePreview.cover_url || ''"
+              controls
+              autoplay
+              style="width: 100%; max-height: 420px; background: #000"
+            >您的浏览器不支持视频播放，请
+              <a :href="coursePreview.content_url" target="_blank">下载课件</a>。
+            </video>
+          </div>
+          <div v-else-if="isPreviewPdf" class="preview-media">
+            <iframe :src="coursePreview.content_url" style="width: 100%; height: 480px; border: none; border-radius: 8px" />
+          </div>
+          <div v-else class="preview-doc">
+            <el-alert type="info" :closable="false" show-icon
+              title="该课件为文档/音频，浏览器不内嵌预览" description="点击下方按钮在浏览器中打开" />
+            <el-button tag="a" type="primary" :href="coursePreview.content_url" target="_blank" style="margin-top: 12px">
+              打开课件
+            </el-button>
+          </div>
+        </template>
+        <el-alert v-else-if="coursePreview.type === 'video'" type="warning" :closable="false" show-icon
+          title="该视频课程尚未上传课件文件" description="请在编辑弹窗上传视频后即可在线观看" style="margin-bottom: 12px" />
         <div v-if="coursePreview.description" class="preview-desc">{{ coursePreview.description }}</div>
-        <el-empty v-else description="暂无课程描述" :image-size="48" />
+        <el-empty v-else-if="!coursePreview.content_url" description="暂无课程描述" :image-size="48" />
       </div>
     </el-dialog>
 
@@ -727,6 +752,8 @@ async function saveCourse() {
 // 课程预览
 const coursePreviewVisible = ref(false)
 const coursePreview = ref<CourseRow | null>(null)
+const isPreviewVideo = computed(() => /\.(mp4|webm|mov|ogg)$/i.test(coursePreview.value?.content_url || ''))
+const isPreviewPdf = computed(() => /\.pdf$/i.test(coursePreview.value?.content_url || ''))
 async function previewCourse(c: CourseRow) {
   try {
     const detail = (await trainingApi.courseDetail(c.id)) as any
@@ -1171,6 +1198,12 @@ watch(examPage, () => loadExamRecords())
 .course-card {
   padding: 0;
   overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+  }
 }
 .course-cover {
   height: 120px;
@@ -1289,6 +1322,9 @@ watch(examPage, () => loadExamRecords())
     font-size: 13px; color: var(--color-text-primary);
     background: var(--color-background-secondary); border-radius: 8px; padding: 12px;
     line-height: 1.7;
+  }
+  .preview-media {
+    margin-bottom: 12px;
   }
 }
 .paper-q {
