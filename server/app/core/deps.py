@@ -1,6 +1,6 @@
 """鉴权与数据权限依赖。"""
 from fastapi import Depends, Header
-from sqlalchemy import or_, select
+from sqlalchemy import false, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -60,7 +60,8 @@ def require_perm(perm_code: str):
     return _checker
 
 
-def apply_data_scope(db, stmt, account, *, dept_col=None, self_owner_col=None, self_id=None):
+def apply_data_scope(db, stmt, account, *, dept_col=None, self_owner_col=None, self_id=None,
+                     allow_null_owner: bool = False):
     """SQL 级数据权限过滤（全部/本部门及子级/本部门/仅本人/自定义部门）。
 
     - 无角色 / super_admin / data_scope==1 → 原样返回
@@ -70,6 +71,8 @@ def apply_data_scope(db, stmt, account, *, dept_col=None, self_owner_col=None, s
     - scope 5: sys_role_dept 自定义部门
     所有列表/报表查询必须经过本函数，禁止裸查询。
     dept_col 传 None 时不做部门过滤（如 Campaign 无部门列，仅按创建人过滤）。
+    allow_null_owner=True 时「仅本人」也放行归属为空的行（平台内置素材 created_by IS NULL）。
+    仅本人但无任何归属字段可过滤时默认拒绝（共享基础设施的安全兜底）。
     """
     from app.modules.org.models import EmpDept, EmpUser  # 延迟导入避免循环
     from app.modules.rbac.models import SysAccountRole, SysRole, SysRoleDept
@@ -118,9 +121,15 @@ def apply_data_scope(db, stmt, account, *, dept_col=None, self_owner_col=None, s
         # self_owner_col: 列 == account.id（如 Campaign.creator_id）
         # self_id: 列 == account.emp_user_id（如 EmpUser.id）
         if self_owner_col is not None:
-            conds.append(self_owner_col == account.id)
+            cond = self_owner_col == account.id
+            if allow_null_owner:
+                cond = or_(cond, self_owner_col.is_(None))
+            conds.append(cond)
         elif self_id is not None:
             conds.append(self_id == account.emp_user_id)
+        else:
+            # 无归属字段的共享资源（通道/域名等）：仅本人角色默认不可见
+            conds.append(false())
     if conds:
         stmt = stmt.where(or_(*conds))
     return stmt

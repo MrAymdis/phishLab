@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, or_, select
 
 from app.core.audit import record_audit
+from app.core.deps import apply_data_scope
 from app.core.errors import BizError, ErrorCode
 from app.core.security import decrypt_secret, encrypt_secret
 from app.modules.channel.models import SenderProfile
@@ -174,11 +175,17 @@ def list_reports(db, account, *, classification=None, page=1, page_size=20,
     if end_date:
         conds.append(MailReport.created_at < datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1))
 
-    count_stmt = select(func.count()).select_from(MailReport)
-    stmt = select(MailReport).order_by(MailReport.id.desc())
+    count_stmt = select(func.count()).select_from(MailReport).outerjoin(
+        EmpUser, EmpUser.id == MailReport.reporter_user_id)
+    stmt = select(MailReport).outerjoin(EmpUser, EmpUser.id == MailReport.reporter_user_id).order_by(MailReport.id.desc())
     if conds:
         count_stmt = count_stmt.where(*conds)
         stmt = stmt.where(*conds)
+    # 数据权限：按举报人部门/本人过滤（reporter_user_id 为 emp_user id）
+    count_stmt = apply_data_scope(db, count_stmt, account, dept_col=EmpUser.dept_id,
+                                  self_id=MailReport.reporter_user_id)
+    stmt = apply_data_scope(db, stmt, account, dept_col=EmpUser.dept_id,
+                            self_id=MailReport.reporter_user_id)
     total = int(db.scalar(count_stmt) or 0)
     reports = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
 

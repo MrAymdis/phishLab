@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 
 from app.core.audit import record_audit
+from app.core.deps import apply_data_scope
 
 from .models import (
     Course, ExamPaper, ExamPaperQuestion, ExamQuestion, ExamRecord,
@@ -20,7 +21,10 @@ _DIFF_MAP = {1: "easy", 2: "mid", 3: "hard"}
 
 def list_courses(db, account):
     """课程列表：聚合学习人数与平均进度（一次查询，避免 N+1）。"""
-    courses = db.scalars(select(Course).order_by(Course.id.desc())).all()
+    stmt = select(Course).order_by(Course.id.desc())
+    stmt = apply_data_scope(db, stmt, account, self_owner_col=Course.created_by,
+                            allow_null_owner=True)  # 内置课程 created_by IS NULL 全员可见
+    courses = db.scalars(stmt).all()
     stats: dict[int, tuple] = {}
     if courses:
         rows = db.execute(
@@ -84,7 +88,10 @@ def _parse_deadline(value) -> datetime:
 
 def list_tasks(db, account):
     """培训任务列表：完成度按学习任务聚合，状态按期限/完成情况计算。"""
-    tasks = db.scalars(select(TrainingTask).order_by(TrainingTask.id.desc())).all()
+    stmt = select(TrainingTask).order_by(TrainingTask.id.desc())
+    stmt = apply_data_scope(db, stmt, account, self_owner_col=TrainingTask.created_by,
+                            allow_null_owner=True)
+    tasks = db.scalars(stmt).all()
     items = []
     now = datetime.now()
     for t in tasks:
@@ -155,7 +162,10 @@ def create_task(db, account, payload: dict) -> int:
 
 def list_questions(db, account):
     """题库列表：不下发 answer，难度映射为展示值。"""
-    questions = db.scalars(select(ExamQuestion).order_by(ExamQuestion.id.desc())).all()
+    stmt = select(ExamQuestion).order_by(ExamQuestion.id.desc())
+    stmt = apply_data_scope(db, stmt, account, self_owner_col=ExamQuestion.created_by,
+                            allow_null_owner=True)
+    questions = db.scalars(stmt).all()
     items = []
     for q in questions:
         course_title = ""
@@ -175,7 +185,10 @@ def list_questions(db, account):
 
 def list_papers(db, account):
     """试卷列表：按题型统计题量与总分，附带发布（考试）次数。"""
-    papers = db.scalars(select(ExamPaper).order_by(ExamPaper.id.desc())).all()
+    stmt = select(ExamPaper).order_by(ExamPaper.id.desc())
+    stmt = apply_data_scope(db, stmt, account, self_owner_col=ExamPaper.created_by,
+                            allow_null_owner=True)
+    papers = db.scalars(stmt).all()
     items = []
     for p in papers:
         rows = db.execute(

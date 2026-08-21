@@ -9,6 +9,7 @@ import httpx
 from sqlalchemy import func, select
 
 from app.core.audit import record_audit
+from app.core.deps import apply_data_scope
 from app.core.errors import BizError, ErrorCode
 from app.modules.campaign.models import Campaign, CampaignTarget
 
@@ -60,6 +61,8 @@ def list_email_templates(db, account, scene=None) -> list[dict]:
     - click = 点击人次（campaign_target.click_count>0 去重）/ 目标人次 × 100
     """
     stmt = select(EmailTemplate)
+    stmt = apply_data_scope(db, stmt, account, self_owner_col=EmailTemplate.created_by,
+                            allow_null_owner=True)  # 平台内置模板 created_by IS NULL 全员可见
     if scene:
         stmt = stmt.where(EmailTemplate.scene == scene)
     rows = db.scalars(stmt).all()
@@ -277,7 +280,10 @@ def list_landing_pages(db, account) -> list[dict]:
 
     used 为实时聚合：引用该落地页的演练场次（campaign.landing_page_id 计数）。
     """
-    pages = db.scalars(select(LandingPage).order_by(LandingPage.id.desc())).all()
+    stmt = select(LandingPage).order_by(LandingPage.id.desc())
+    stmt = apply_data_scope(db, stmt, account, self_owner_col=LandingPage.created_by,
+                            allow_null_owner=True)
+    pages = db.scalars(stmt).all()
     if not pages:
         return []
     ids = [p.id for p in pages]
@@ -1177,7 +1183,10 @@ def clone_url(db, account, url: str) -> int:
 
 def list_attachments(db, account) -> list[dict]:
     """附件载荷列表（无分页）。"""
-    rows = db.scalars(select(AttachmentPayload).order_by(AttachmentPayload.id.desc())).all()
+    stmt = select(AttachmentPayload).order_by(AttachmentPayload.id.desc())
+    stmt = apply_data_scope(db, stmt, account, self_owner_col=AttachmentPayload.created_by,
+                            allow_null_owner=True)
+    rows = db.scalars(stmt).all()
     result = []
     for a in rows:
         size = a.file_size or 0
@@ -1202,7 +1211,9 @@ def list_attachments(db, account) -> list[dict]:
 
 def list_qr_assets(db, account) -> list[dict]:
     """二维码资产列表（无分页）。"""
-    rows = db.scalars(select(QrAsset).order_by(QrAsset.id.desc())).all()
+    stmt = select(QrAsset).order_by(QrAsset.id.desc())
+    stmt = apply_data_scope(db, stmt, account)  # 无归属字段：仅本人角色安全兜底不可见
+    rows = db.scalars(stmt).all()
     return [
         {
             "id": q.id,

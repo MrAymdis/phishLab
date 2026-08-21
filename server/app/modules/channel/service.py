@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import func, select
 
 from app.core.audit import record_audit
+from app.core.deps import apply_data_scope
 from app.core.errors import BizError, ErrorCode
 from app.core.security import encrypt_secret
 
@@ -71,7 +72,9 @@ def channel_overview(db, account) -> dict:
 
 def list_channels(db, account) -> list[dict]:
     """通道列表；密码/密钥类字段永不回显。"""
-    rows = db.scalars(select(SendChannel).order_by(SendChannel.id)).all()
+    stmt = select(SendChannel).order_by(SendChannel.id)
+    stmt = apply_data_scope(db, stmt, account)  # 平台级资源无归属字段：仅本人角色安全兜底不可见
+    rows = db.scalars(stmt).all()
     idx: dict[str, int] = {}
     result = []
     for ch in rows:
@@ -551,7 +554,9 @@ def test_channel(db, account, channel_id: int, to: str | None = None) -> dict:
 
 def list_domains(db, account) -> list[dict]:
     """演练域名列表（无分页），含 DNS 状态与送达评分。"""
-    rows = db.scalars(select(PhishDomain).order_by(PhishDomain.id.desc())).all()
+    stmt = select(PhishDomain).order_by(PhishDomain.id.desc())
+    stmt = apply_data_scope(db, stmt, account)  # 平台级资源无归属字段：仅本人角色安全兜底不可见
+    rows = db.scalars(stmt).all()
     return [
         {
             "id": d.id,
@@ -672,7 +677,9 @@ def list_sender_profiles(db, account) -> list[dict]:
         .limit(1)
     )
     default_name = default_ch.name if default_ch else ""
-    rows = db.scalars(select(SenderProfile).order_by(SenderProfile.id.desc())).all()
+    stmt = select(SenderProfile).order_by(SenderProfile.id.desc())
+    stmt = apply_data_scope(db, stmt, account)  # 平台级资源无归属字段：仅本人角色安全兜底不可见
+    rows = db.scalars(stmt).all()
     return [
         {
             "id": p.id,
