@@ -19,7 +19,7 @@ from app.db.session import get_db
 
 from .models import PlatformSetting
 
-settings = APIRouter(prefix="/api/v1/settings", tags=["系统设置"], dependencies=[Depends(get_current_account)])
+settings = APIRouter(prefix="/api/v1/settings", tags=["系统设置"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/settings"))])
 public = APIRouter(prefix="/api/v1/settings", tags=["系统设置"])  # 无鉴权：登录页品牌展示
 routers = [settings, public]
 

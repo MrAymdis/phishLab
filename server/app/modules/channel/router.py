@@ -8,9 +8,9 @@ from app.db.session import get_db
 
 from . import service
 
-channels = APIRouter(prefix="/api/v1/channels", tags=["发送配置"], dependencies=[Depends(get_current_account)])
-domains = APIRouter(prefix="/api/v1/domains", tags=["发送配置"], dependencies=[Depends(get_current_account)])
-sender_profiles = APIRouter(prefix="/api/v1/sender-profiles", tags=["发送配置"], dependencies=[Depends(get_current_account)])
+channels = APIRouter(prefix="/api/v1/channels", tags=["发送配置"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/send-config"))])
+domains = APIRouter(prefix="/api/v1/domains", tags=["发送配置"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/send-config"))])
+sender_profiles = APIRouter(prefix="/api/v1/sender-profiles", tags=["发送配置"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/send-config"))])
 routers = [channels, domains, sender_profiles]
 
 

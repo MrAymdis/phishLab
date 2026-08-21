@@ -11,7 +11,7 @@ from app.db.session import get_db
 
 from . import service
 
-ai = APIRouter(prefix="/api/v1/ai", tags=["智能助手"], dependencies=[Depends(get_current_account)])
+ai = APIRouter(prefix="/api/v1/ai", tags=["智能助手"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/ai"))])
 routers = [ai]
 
 

@@ -8,10 +8,10 @@ from app.db.session import get_db
 
 from . import service
 
-email_templates = APIRouter(prefix="/api/v1/email-templates", tags=["素材模板"], dependencies=[Depends(get_current_account)])
-landing_pages = APIRouter(prefix="/api/v1/landing-pages", tags=["素材模板"], dependencies=[Depends(get_current_account)])
-attachments = APIRouter(prefix="/api/v1/attachments", tags=["素材模板"], dependencies=[Depends(get_current_account)])
-qr_assets = APIRouter(prefix="/api/v1/qr-assets", tags=["素材模板"], dependencies=[Depends(get_current_account)])
+email_templates = APIRouter(prefix="/api/v1/email-templates", tags=["素材模板"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/template"))])
+landing_pages = APIRouter(prefix="/api/v1/landing-pages", tags=["素材模板"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/template"))])
+attachments = APIRouter(prefix="/api/v1/attachments", tags=["素材模板"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/template"))])
+qr_assets = APIRouter(prefix="/api/v1/qr-assets", tags=["素材模板"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/template"))])
 routers = [email_templates, landing_pages, attachments, qr_assets]
 
 

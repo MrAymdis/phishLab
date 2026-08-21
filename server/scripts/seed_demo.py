@@ -102,6 +102,8 @@ def seed_rbac(db):
     db.add_all(perms)
 
     # 接口/按钮级操作权限（require_perm 校验；写操作默认拒绝，红线相关）
+    # parent_id 挂到对应菜单权限点（前端树状展示：菜单 → 功能）
+    menu_id = {f"menu:{p}": i + 1 for i, (_n, p) in enumerate(menus)}
     op_perms = [
         ("campaign:create", "演练管理", "创建/复制演练"),
         ("campaign:control", "演练管理", "启动/暂停/恢复/终止/暂存/测试发送"),
@@ -118,7 +120,9 @@ def seed_rbac(db):
         ("openapi:manage", "API开放平台", "开放平台应用创建/管理"),
     ]
     op_rows = [
-        SysPermission(parent_id=0, name=n, perm_code=code, type=3, route="", sort=1000 + i)
+        SysPermission(
+            parent_id=menu_id[f"menu:{n}"], name=n, perm_code=code, type=3, route="", sort=1000 + i,
+        )
         for i, (code, n, _remark) in enumerate(op_perms)
     ]
     db.add_all(op_rows)
@@ -126,7 +130,7 @@ def seed_rbac(db):
 
     db.add(SysAccountRole(account_id=1, role_id=1))
     db.add_all(SysRolePermission(role_id=1, permission_id=p.id) for p in perms)
-    # super_admin 在 require_perm 代码层放行；operator 绑定运营类操作权限
+    # super_admin 在 require_perm 代码层放行；operator 绑定运营类操作权限 + 对应菜单可见
     operator_codes = {
         c for c, _n, _r in op_perms
         if c.startswith(("campaign:", "channel:", "template:", "org:", "training:", "report:", "ai:"))
@@ -134,6 +138,17 @@ def seed_rbac(db):
     db.add_all(
         SysRolePermission(role_id=2, permission_id=p.id)
         for p in op_rows if p.perm_code in operator_codes
+    )
+    # operator：菜单可见（数据概览/演练/模板/发送配置/用户组/培训/报表/举报/AI）
+    db.add_all(
+        SysRolePermission(role_id=2, permission_id=menu_id[m])
+        for m in ("menu:/dashboard", "menu:/campaign", "menu:/template", "menu:/send-config",
+                  "menu:/users", "menu:/training", "menu:/reports", "menu:/mail-report", "menu:/ai")
+    )
+    # auditor：只读报表与审计日志（数据概览/演练/报表/系统设置）
+    db.add_all(
+        SysRolePermission(role_id=3, permission_id=menu_id[m])
+        for m in ("menu:/dashboard", "menu:/campaign", "menu:/reports", "menu:/settings")
     )
     db.flush()
 

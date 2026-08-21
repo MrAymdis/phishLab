@@ -8,7 +8,7 @@ from app.db.session import get_db
 
 from . import service
 
-open_apps = APIRouter(prefix="/api/v1/open-apps", tags=["API开放平台"], dependencies=[Depends(get_current_account)])
+open_apps = APIRouter(prefix="/api/v1/open-apps", tags=["API开放平台"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/openapi"))])
 gateway = APIRouter(prefix="/openapi/v1", tags=["API开放平台-网关"])
 routers = [open_apps, gateway]
 

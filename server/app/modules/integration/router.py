@@ -11,8 +11,8 @@ from app.db.session import get_db
 from . import service
 from .models import SiemConfig, WebhookConfig
 
-webhooks = APIRouter(prefix="/api/v1/webhooks", tags=["系统设置-集成"], dependencies=[Depends(get_current_account)])
-siem = APIRouter(prefix="/api/v1/siem", tags=["系统设置-集成"], dependencies=[Depends(get_current_account)])
+webhooks = APIRouter(prefix="/api/v1/webhooks", tags=["系统设置-集成"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/settings"))])
+siem = APIRouter(prefix="/api/v1/siem", tags=["系统设置-集成"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/settings"))])
 routers = [webhooks, siem]
 
 

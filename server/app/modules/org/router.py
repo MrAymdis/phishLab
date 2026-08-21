@@ -9,10 +9,10 @@ from app.db.session import get_db
 
 from . import service
 
-depts = APIRouter(prefix="/api/v1/depts", tags=["用户和组"], dependencies=[Depends(get_current_account)])
-emp_users = APIRouter(prefix="/api/v1/emp-users", tags=["用户和组"], dependencies=[Depends(get_current_account)])
-groups = APIRouter(prefix="/api/v1/groups", tags=["用户和组"], dependencies=[Depends(get_current_account)])
-tags = APIRouter(prefix="/api/v1/tags", tags=["用户和组"], dependencies=[Depends(get_current_account)])
+depts = APIRouter(prefix="/api/v1/depts", tags=["用户和组"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/users"))])
+emp_users = APIRouter(prefix="/api/v1/emp-users", tags=["用户和组"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/users"))])
+groups = APIRouter(prefix="/api/v1/groups", tags=["用户和组"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/users"))])
+tags = APIRouter(prefix="/api/v1/tags", tags=["用户和组"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/users"))])
 routers = [depts, emp_users, groups, tags]
 
 

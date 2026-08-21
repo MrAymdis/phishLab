@@ -8,7 +8,7 @@ from app.db.session import get_db
 
 from . import service
 
-lic = APIRouter(prefix="/api/v1/license", tags=["系统设置-授权"], dependencies=[Depends(get_current_account)])
+lic = APIRouter(prefix="/api/v1/license", tags=["系统设置-授权"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/settings"))])
 routers = [lic]
 
 

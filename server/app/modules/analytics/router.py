@@ -7,13 +7,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
-from app.core.deps import get_current_account
+from app.core.deps import get_current_account, require_perm
 from app.db.session import get_db
 
 from . import service
 
-overview = APIRouter(prefix="/api/v1/overview", tags=["数据概览"], dependencies=[Depends(get_current_account)])
-reports = APIRouter(prefix="/api/v1/reports", tags=["数据报表"], dependencies=[Depends(get_current_account)])
+overview = APIRouter(prefix="/api/v1/overview", tags=["数据概览"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/dashboard"))])
+reports = APIRouter(prefix="/api/v1/reports", tags=["数据报表"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/reports"))])
 routers = [overview, reports]
 
 

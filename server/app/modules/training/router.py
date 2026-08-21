@@ -7,9 +7,9 @@ from app.db.session import get_db
 
 from . import service
 
-courses = APIRouter(prefix="/api/v1/courses", tags=["安全培训"], dependencies=[Depends(get_current_account)])
-tasks = APIRouter(prefix="/api/v1/training-tasks", tags=["安全培训"], dependencies=[Depends(get_current_account)])
-exam = APIRouter(prefix="/api/v1/exam", tags=["安全培训"], dependencies=[Depends(get_current_account)])
+courses = APIRouter(prefix="/api/v1/courses", tags=["安全培训"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/training"))])
+tasks = APIRouter(prefix="/api/v1/training-tasks", tags=["安全培训"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/training"))])
+exam = APIRouter(prefix="/api/v1/exam", tags=["安全培训"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/training"))])
 routers = [courses, tasks, exam]
 
 

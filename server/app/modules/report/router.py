@@ -10,7 +10,7 @@ from app.db.session import get_db
 
 from . import service
 
-mail_reports = APIRouter(prefix="/api/v1/mail-reports", tags=["邮件举报"], dependencies=[Depends(get_current_account)])
+mail_reports = APIRouter(prefix="/api/v1/mail-reports", tags=["邮件举报"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/mail-report"))])
 plugin = APIRouter(prefix="/report/v1", tags=["邮件举报-插件"])  # 插件端点：X-Api-Key 独立鉴权
 routers = [mail_reports, plugin]
 

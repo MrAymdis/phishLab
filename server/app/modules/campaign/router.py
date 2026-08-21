@@ -12,7 +12,7 @@ from . import schemas, service
 campaigns = APIRouter(
     prefix="/api/v1/campaigns",
     tags=["演练管理"],
-    dependencies=[Depends(get_current_account)],
+    dependencies=[Depends(get_current_account), Depends(require_perm("menu:/campaign"))],
 )
 routers = [campaigns]
 

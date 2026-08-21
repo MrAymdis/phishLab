@@ -11,9 +11,9 @@ from app.core.errors import BizError, ErrorCode
 from app.core.pagination import page_params
 from app.db.session import get_db
 
-roles = APIRouter(prefix="/api/v1/roles", tags=["系统设置-RBAC"], dependencies=[Depends(get_current_account)])
-audit = APIRouter(prefix="/api/v1/audit-logs", tags=["系统设置-审计"], dependencies=[Depends(get_current_account)])
-login_logs = APIRouter(prefix="/api/v1/login-logs", tags=["系统设置-审计"], dependencies=[Depends(get_current_account)])
+roles = APIRouter(prefix="/api/v1/roles", tags=["系统设置-RBAC"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/settings"))])
+audit = APIRouter(prefix="/api/v1/audit-logs", tags=["系统设置-审计"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/settings"))])
+login_logs = APIRouter(prefix="/api/v1/login-logs", tags=["系统设置-审计"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/settings"))])
 routers = [roles, audit, login_logs]
 
 
