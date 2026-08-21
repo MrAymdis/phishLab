@@ -133,7 +133,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Download, Plus } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatusBadge from '@/components/base/StatusBadge.vue'
-import { campaignApi } from '@/api'
+import { analyticsApi, campaignApi } from '@/api'
 
 interface CampaignRow {
   id: number
@@ -252,12 +252,21 @@ function statusSubText(row: CampaignRow): string {
 function onSelectionChange(selection: CampaignRow[]) {
   selectedRows.value = selection
 }
-function batchExport() {
+async function batchExport() {
   if (!selectedRows.value.length) {
     ElMessage.warning('请先在表格中勾选要导出的演练')
     return
   }
-  ElMessage.success(`正在导出已选 ${selectedRows.value.length} 条演练数据，请稍候...`)
+  try {
+    await analyticsApi.exportReport({
+      kind: 'excel',
+      scope: 'batch',
+      campaign_ids: selectedRows.value.map(r => r.id),
+    })
+    ElMessage.success(`已导出 ${selectedRows.value.length} 场演练报表`)
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
 // 行操作：失败提示由 http 拦截器统一弹出，成功则重新拉取列表

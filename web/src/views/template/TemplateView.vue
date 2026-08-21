@@ -244,8 +244,9 @@
             class="toolbar-search"
             clearable
           />
-          <el-button size="small" :icon="Iphone" @click="qrDialogVisible = true">生成二维码</el-button>
-          <el-button type="primary" size="small" :icon="Upload" @click="uploadDialogVisible = true">上传附件</el-button>
+          <el-button size="small" :icon="Iphone" disabled>生成二维码</el-button>
+          <el-button type="primary" size="small" :icon="Upload" disabled>上传附件</el-button>
+          <el-tag size="small" type="warning" effect="plain">附件/二维码管理二期开放，当前仅展示列表</el-tag>
         </div>
 
         <!-- 数据表格 -->
@@ -310,12 +311,12 @@
                 </td>
                 <td class="ta-right">
                   <div class="card-actions table-actions">
-                    <el-button size="small" link @click="downloadPayload(p)">下载</el-button>
-                    <el-button size="small" link @click="editPayload(p)">编辑</el-button>
-                    <el-button size="small" link type="warning" @click="togglePayload(p)">
+                    <el-button size="small" link disabled>下载</el-button>
+                    <el-button size="small" link disabled>编辑</el-button>
+                    <el-button size="small" link type="warning" disabled>
                       {{ p.status === 'enabled' ? '禁用' : '启用' }}
                     </el-button>
-                    <el-button size="small" link type="danger" @click="deletePayload(p)">删除</el-button>
+                    <el-button size="small" link type="danger" disabled>删除</el-button>
                   </div>
                 </td>
               </tr>

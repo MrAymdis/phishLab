@@ -54,8 +54,9 @@ def personal_report(uid: int, account=Depends(get_current_account), db: Session 
 class ReportExport(BaseModel):
     """导出请求：kind 文件格式，scope 报表范围，其余参数按 scope 可选。"""
     kind: str = Field(description="excel / pdf")
-    scope: str = Field(description="campaign / department / trend / personal")
+    scope: str = Field(description="campaign / department / trend / personal / batch")
     campaign_id: int | None = None
+    campaign_ids: list[int] | None = None  # scope=batch：多演练拼接导出
     dept_id: int | None = None
     user_id: int | None = None
     range: str = Field("month", description="时间范围 7d/month/quarter/year")

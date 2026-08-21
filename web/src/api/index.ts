@@ -39,8 +39,9 @@ export const analyticsApi = {
   /** 导出报表文件（Excel/PDF，blob 下载） */
   exportReport: (payload: {
     kind: 'excel' | 'pdf'
-    scope: 'campaign' | 'department' | 'trend' | 'personal'
+    scope: 'campaign' | 'department' | 'trend' | 'personal' | 'batch'
     campaign_id?: number
+    campaign_ids?: number[]
     dept_id?: number
     user_id?: number
     range?: string

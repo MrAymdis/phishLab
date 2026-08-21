@@ -663,7 +663,7 @@ def personal_report(db, account, user_id: int) -> dict:
 # ---------- 导出（Excel / PDF） ----------
 
 _SCOPES = {"campaign": "演练报表", "department": "部门对比报表",
-           "trend": "综合趋势报表", "personal": "个人安全档案"}
+           "trend": "综合趋势报表", "personal": "个人安全档案", "batch": "批量演练报表"}
 
 _SECTION = dict  # {"title", "headers", "rows"}
 
@@ -865,6 +865,21 @@ def export_report(db, account, kind: str, params: dict) -> tuple[bytes, str, str
     elif scope == "trend":
         title = f"综合趋势报表（{range_}）"
         sections = _trend_sections(trend_report(db, account, range_))
+    elif scope == "batch":
+        cids = [int(c) for c in (params.get("campaign_ids") or [])]
+        if not cids:
+            raise BizError(ErrorCode.PARAM_INVALID, "批量导出需指定 campaign_ids")
+        sections = []
+        exported = 0
+        for cid in cids:
+            campaign = db.get(Campaign, cid)
+            if campaign is None:
+                continue
+            sections += _campaign_sections(campaign_report(db, account, cid), campaign)
+            exported += 1
+        if not exported:
+            raise BizError(ErrorCode.NOT_FOUND, "指定演练均不存在")
+        title = f"批量演练报表（{exported} 场）"
     else:
         uid = int(params["user_id"])
         user = db.get(EmpUser, uid)
