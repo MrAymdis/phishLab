@@ -93,7 +93,7 @@
                     :key="r.id"
                     class="role-item"
                     :class="{ active: activeRole === r.id }"
-                    @click="activeRole = r.id"
+                    @click="loadRoleDetail(r.id)"
                   >
                     <div>
                       <div class="role-name">{{ r.name }}</div>
@@ -101,7 +101,7 @@
                     </div>
                     <el-tag size="small" effect="plain">{{ r.user_count }}人</el-tag>
                   </div>
-                  <el-button size="small" type="primary" :icon="Plus" style="width: 100%; margin-top: 10px">
+                  <el-button size="small" type="primary" :icon="Plus" style="width: 100%; margin-top: 10px" @click="openCreateRole">
                     新建自定义角色
                   </el-button>
                 </div>
@@ -114,35 +114,33 @@
                 <el-row :gutter="12">
                   <el-col :span="8">
                     <el-form-item label="角色名称" label-width="80px" size="small">
-                      <el-input :model-value="currentRoleName" placeholder="角色名称" />
+                      <el-input v-model="roleEdit.name" placeholder="角色名称" />
                     </el-form-item>
                   </el-col>
                   <el-col :span="8">
                     <el-form-item label="角色标识" label-width="80px" size="small">
-                      <el-input :model-value="currentRoleCode" placeholder="如 admin" />
+                      <el-input :model-value="roleEdit.code" disabled placeholder="标识不可修改" />
                     </el-form-item>
                   </el-col>
                   <el-col :span="8">
                     <el-form-item label="角色描述" label-width="80px" size="small">
-                      <el-input :model-value="currentRoleDesc" placeholder="角色用途说明" />
+                      <el-input v-model="roleEdit.remark" placeholder="角色用途说明" />
                     </el-form-item>
                   </el-col>
                 </el-row>
                 <el-divider style="margin: 8px 0 14px" />
-                <!-- 菜单权限矩阵 -->
-                <div class="sub-title">菜单权限矩阵</div>
-                <el-table :data="permMatrix" size="small" border style="margin-top: 4px">
-                  <el-table-column prop="menu" label="菜单 / 功能" min-width="180" />
-                  <el-table-column label="查看" width="110" align="center">
-                    <template #default="{ row }"><el-checkbox v-model="row.view" /></template>
-                  </el-table-column>
-                  <el-table-column label="编辑" width="110" align="center">
-                    <template #default="{ row }"><el-checkbox v-model="row.edit" /></template>
-                  </el-table-column>
-                  <el-table-column label="删除" width="110" align="center">
-                    <template #default="{ row }"><el-checkbox v-model="row.del" /></template>
-                  </el-table-column>
-                </el-table>
+                <!-- 菜单权限树 -->
+                <div class="sub-title">权限点（菜单 / 功能）</div>
+                <div style="border: 1px solid var(--el-border-color-lighter); border-radius: 6px; padding: 8px; max-height: 300px; overflow: auto; margin-top: 4px">
+                  <el-tree
+                    ref="permTreeRef"
+                    :data="permTree"
+                    show-checkbox
+                    node-key="id"
+                    default-expand-all
+                    :props="{ label: 'name', children: 'children' }"
+                  />
+                </div>
                 <el-divider style="margin: 14px 0" />
                 <!-- 数据权限 + 字段级权限 -->
                 <el-row :gutter="12">
@@ -176,13 +174,44 @@
                   </el-col>
                 </el-row>
                 <div style="margin-top: 16px">
-                  <el-button type="primary">保存权限配置</el-button>
-                  <el-button>重置</el-button>
+                  <el-button type="primary" :loading="roleSaving" @click="saveRolePerm">保存权限配置</el-button>
+                  <el-button @click="loadRoleDetail(activeRole)">重置</el-button>
                 </div>
               </div>
             </el-col>
           </el-row>
         </el-tab-pane>
+
+        <!-- 新建自定义角色弹窗 -->
+        <el-dialog v-model="roleDialog.show" title="新建自定义角色" width="560px">
+          <el-form label-width="90px">
+            <el-form-item label="角色名称" required>
+              <el-input v-model="roleForm.name" placeholder="如 培训管理员" maxlength="64" />
+            </el-form-item>
+            <el-form-item label="角色标识" required>
+              <el-input v-model="roleForm.code" placeholder="如 training_admin（英文/下划线）" maxlength="32" />
+            </el-form-item>
+            <el-form-item label="角色描述">
+              <el-input v-model="roleForm.remark" placeholder="角色用途说明" maxlength="255" />
+            </el-form-item>
+            <el-form-item label="权限点">
+              <div style="width: 100%; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; padding: 8px; max-height: 260px; overflow: auto">
+                <el-tree
+                  ref="roleTreeRef"
+                  :data="permTree"
+                  show-checkbox
+                  node-key="id"
+                  default-expand-all
+                  :props="{ label: 'name', children: 'children' }"
+                />
+              </div>
+            </el-form-item>
+          </el-form>
+          <template #footer>
+            <el-button @click="roleDialog.show = false">取消</el-button>
+            <el-button type="primary" :loading="roleCreating" @click="saveCreateRole">创建</el-button>
+          </template>
+        </el-dialog>
 
         <el-tab-pane label="审计日志" name="audit">
           <!-- 统计卡 + 过滤 -->
@@ -697,21 +726,118 @@ const mockRoles = [
 const roles = ref<{ id: number; name: string; code: string; desc: string; user_count: number; data_scope?: string }[]>(mockRoles)
 const currentRole = computed(() => roles.value.find(r => r.id === activeRole.value))
 const currentRoleName = computed(() => currentRole.value?.name)
-const currentRoleCode = computed(() => currentRole.value?.code)
-const currentRoleDesc = computed(() => currentRole.value?.desc)
 
-// 菜单权限矩阵（菜单 × 查看/编辑/删除）
-const permMatrix = reactive([
-  { menu: '数据概览', view: true, edit: false, del: false },
-  { menu: '演练管理', view: true, edit: true, del: false },
-  { menu: '素材模板', view: true, edit: true, del: false },
-  { menu: '发送配置', view: true, edit: false, del: false },
-  { menu: '用户和组', view: true, edit: false, del: false },
-  { menu: '安全培训', view: true, edit: true, del: false },
-  { menu: '数据报表', view: true, edit: false, del: false },
-  { menu: '邮件举报', view: true, edit: true, del: false },
-  { menu: '系统设置', view: false, edit: false, del: false },
-])
+// ---- 自定义角色：权限树 + 详情编辑 ----
+const permTree = ref<{ id: number; parent_id: number; name: string; perm_code: string; children?: any[] }[]>([])
+const permTreeRef = ref<any>(null)
+const roleTreeRef = ref<any>(null)
+const roleEdit = reactive({ id: 0, name: '', code: '', remark: '', data_scope: 1 })
+const roleSaving = ref(false)
+const roleDialog = reactive({ show: false })
+const roleForm = reactive({ name: '', code: '', remark: '', data_scope: 1 })
+const roleCreating = ref(false)
+
+/** 权限点 → 树（按 parent_id 分组，parent_id=0 为根） */
+function buildPermTree(raw: { id: number; parent_id: number; name: string; perm_code: string }[]) {
+  const map = new Map<number, any>()
+  raw.forEach(p => map.set(p.id, { ...p, children: [] }))
+  const roots: any[] = []
+  raw.forEach(p => {
+    const node = map.get(p.id)
+    if (p.parent_id && map.has(p.parent_id)) map.get(p.parent_id).children.push(node)
+    else roots.push(node)
+  })
+  return roots
+}
+
+async function loadPermTree() {
+  try {
+    const raw = (await systemApi.rolePermissions()) as { id: number; parent_id: number; name: string; perm_code: string }[]
+    if (Array.isArray(raw) && raw.length) permTree.value = buildPermTree(raw)
+  } catch { /* 权限树加载失败保持空 */ }
+}
+
+/** 选中角色 → 回填角色信息 + 权限树勾选 */
+async function loadRoleDetail(id: number) {
+  activeRole.value = id
+  try {
+    const r = await systemApi.roleDetail(id) as any
+    roleEdit.id = r.id
+    roleEdit.name = r.name
+    roleEdit.code = r.code
+    roleEdit.remark = r.remark ?? ''
+    roleEdit.data_scope = r.data_scope ?? 1
+    dataScope.value = ({ 1: 'all', 2: 'dept', 4: 'self' } as Record<number, string>)[r.data_scope] ?? 'all'
+    permTreeRef.value?.setCheckedKeys(r.permission_ids ?? [])
+  } catch (err) {
+    ElMessage.error(`角色详情加载失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
+/** 右面板保存：角色信息 + 权限点全量覆盖 */
+async function saveRolePerm() {
+  if (!roleEdit.name.trim()) { ElMessage.warning('请填写角色名称'); return }
+  roleSaving.value = true
+  try {
+    await systemApi.updateRole(roleEdit.id, {
+      name: roleEdit.name.trim(),
+      code: roleEdit.code,
+      data_scope: ({ all: 1, dept: 2, self: 4 } as Record<string, number>)[dataScope.value] ?? 1,
+      remark: roleEdit.remark.trim(),
+      permission_ids: permTreeRef.value?.getCheckedKeys() ?? [],
+    })
+    ElMessage.success('角色已保存')
+    await loadRoles()
+  } catch (err) {
+    ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    roleSaving.value = false
+  }
+}
+
+function openCreateRole() {
+  roleForm.name = ''
+  roleForm.code = ''
+  roleForm.remark = ''
+  roleForm.data_scope = 1
+  roleTreeRef.value?.setCheckedKeys([])
+  roleDialog.show = true
+}
+
+async function saveCreateRole() {
+  if (!roleForm.name.trim()) { ElMessage.warning('请填写角色名称'); return }
+  if (!roleForm.code.trim()) { ElMessage.warning('请填写角色标识'); return }
+  roleCreating.value = true
+  try {
+    const { id } = await systemApi.createRole({
+      name: roleForm.name.trim(),
+      code: roleForm.code.trim(),
+      remark: roleForm.remark.trim(),
+      data_scope: roleForm.data_scope,
+      permission_ids: roleTreeRef.value?.getCheckedKeys() ?? [],
+    })
+    ElMessage.success('角色已创建')
+    roleDialog.show = false
+    await loadRoles()
+    loadRoleDetail(id)
+  } catch (err) {
+    ElMessage.error(`创建失败：${err instanceof Error ? err.message : String(err)}`)
+  } finally {
+    roleCreating.value = false
+  }
+}
+
+async function loadRoles() {
+  try {
+    const data = (await systemApi.roles()) as { id: number; code: string; name: string; data_scope?: number; remark?: string; user_count?: number }[]
+    if (Array.isArray(data) && data.length) {
+      roles.value = data.map(r => ({
+        id: r.id, name: r.name, code: r.code,
+        desc: r.remark || '角色', user_count: r.user_count ?? 0,
+      }))
+    }
+  } catch { /* 列表加载失败保持演示数据 */ }
+}
 
 const opLogs = ref([
   { time: '2026-08-15 14:33:12', user: 'admin', action: '发起演练', target: 'Q3全员防钓鱼演练 (ID: 2026-Q3-ALL)', ip: '10.0.1.22' },
@@ -849,20 +975,10 @@ async function testWebhook() {
 onMounted(async () => {
   loadAccounts()
   loadWebhook()
-  // 角色列表
-  try {
-    const data = (await systemApi.roles()) as { id: number; code: string; name: string; data_scope?: string; remark?: string; user_count?: number }[]
-    if (Array.isArray(data) && data.length) {
-      roles.value = data.map((r, i) => ({
-        id: r.id,
-        name: r.name,
-        code: r.code,
-        desc: r.remark || '角色',
-        user_count: r.user_count ?? mockRoles[i]?.user_count ?? 0,
-        data_scope: r.data_scope,
-      }))
-    }
-  } catch { loadWarning() }
+  // 角色列表 + 权限树，加载完成后默认选中第一个角色
+  await loadRoles()
+  await loadPermTree()
+  if (roles.value.length) loadRoleDetail(roles.value[0].id)
 
   // 操作日志
   try {

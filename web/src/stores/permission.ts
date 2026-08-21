@@ -26,6 +26,8 @@ const DEFAULT_MENUS: MenuItem[] = [
 
 export const usePermissionStore = defineStore('permission', () => {
   const menus = ref<MenuItem[]>(DEFAULT_MENUS)
+  /** 菜单是否已从接口加载（路由守卫据此拦截无权限路由） */
+  const loaded = ref(false)
 
   async function loadMenus() {
     try {
@@ -35,8 +37,10 @@ export const usePermissionStore = defineStore('permission', () => {
       }
     } catch {
       // 接口失败保留默认菜单
+    } finally {
+      loaded.value = true
     }
   }
 
-  return { menus, loadMenus }
+  return { menus, loaded, loadMenus }
 })

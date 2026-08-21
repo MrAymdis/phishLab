@@ -179,13 +179,36 @@ def record_account_audit(db: Session, operator: SysAccount, action: str,
 
 
 def get_menus(db: Session, account: SysAccount) -> list[dict]:
-    """返回当前账号可见菜单（License 模块开关；RBAC 菜单级权限 TODO(一期)）。"""
+    """返回当前账号可见菜单（License 模块开关 ∩ RBAC 菜单级权限）。
+
+    super_admin 角色直通全量；其余账号仅返回拥有 menu:/xxx 权限点的菜单。
+    """
+    from sqlalchemy import select
+
     from app.modules.license import service as license_service  # 延迟导入避免循环
+    from app.modules.rbac.models import SysAccountRole, SysPermission, SysRole, SysRolePermission
+
+    is_super = db.scalar(
+        select(SysRole.id)
+        .join(SysAccountRole, SysAccountRole.role_id == SysRole.id)
+        .where(SysAccountRole.account_id == account.id, SysRole.code == "super_admin")
+    ) is not None
+    if is_super:
+        allowed_routes = None  # None = 全量
+    else:
+        allowed_routes = set(db.scalars(
+            select(SysPermission.route)
+            .join(SysRolePermission, SysRolePermission.permission_id == SysPermission.id)
+            .join(SysAccountRole, SysAccountRole.role_id == SysRolePermission.role_id)
+            .where(SysAccountRole.account_id == account.id, SysPermission.route.is_not(None))
+        ).all())
 
     menus = []
     for m in _MENUS:
         gate = _MENU_FEATURE_GATE.get(m["path"])
         if gate and not license_service.feature_enabled(db, gate):
+            continue
+        if allowed_routes is not None and m["path"] not in allowed_routes:
             continue
         menus.append(m)
     return menus

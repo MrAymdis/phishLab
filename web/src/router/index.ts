@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import { getToken } from '@/api/http'
+import { usePermissionStore } from '@/stores/permission'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -36,12 +37,21 @@ const router = createRouter({
   routes,
 })
 
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   document.title = `${String(to.meta.title || '')} - 钓鱼演练平台`
   if (!to.meta.public && !getToken()) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
   if (to.path === '/login' && getToken()) return { path: '/' }
+  // RBAC 菜单级权限：首次导航等待菜单拉取，无权限路由重定向到首个可见菜单
+  const permission = usePermissionStore()
+  if (!to.meta.public && !permission.loaded) {
+    await permission.loadMenus()
+  }
+  if (!to.meta.public && permission.loaded && permission.menus.length) {
+    const allowed = permission.menus.some(m => to.path === m.path || to.path.startsWith(`${m.path}/`))
+    if (!allowed) return { path: permission.menus[0].path }
+  }
 })
 
 export default router

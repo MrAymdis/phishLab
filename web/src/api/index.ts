@@ -262,6 +262,11 @@ export const systemApi = {
     return post('/api/v1/license/offline-import', fd)
   },
   roles: () => get('/api/v1/roles'),
+  rolePermissions: () => get('/api/v1/roles/permissions'),
+  roleDetail: (id: number) => get(`/api/v1/roles/${id}`),
+  createRole: (payload: Record<string, unknown>) => post<{ id: number }>('/api/v1/roles', payload),
+  updateRole: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/roles/${id}`, payload),
   auditLogs: (q: Record<string, unknown>) => get('/api/v1/audit-logs', q),
   loginLogs: (q: Record<string, unknown>) => get('/api/v1/login-logs', q),
   webhooks: () => get('/api/v1/webhooks'),
