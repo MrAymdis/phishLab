@@ -42,7 +42,7 @@ pnpm build                                 # 产物 dist/
 
 # 后端
 cd server && poetry install
-poetry run uvicorn app.main:app --reload --port 8080     # 核心服务
+poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8080   # 核心服务（0.0.0.0 供局域网/容器访问）
 poetry run celery -A worker worker -l info               # 投递引擎 Worker
 poetry run celery -A worker beat                         # 定时调度(单实例)
 poetry run alembic upgrade head                          # 数据库迁移
