@@ -121,6 +121,7 @@ export const templateApi = {
     put(`/api/v1/email-templates/${id}`, payload),
   duplicateEmailTemplate: (id: number) =>
     post<{ id: number }>(`/api/v1/email-templates/${id}/duplicate`),
+  deleteEmailTemplate: (id: number) => del(`/api/v1/email-templates/${id}`),
   testSendEmailTemplate: (id: number, to: string[]) =>
     post<{ ok: boolean; message: string }>(`/api/v1/email-templates/${id}/test-send`, { to }),
   landingPages: () => get('/api/v1/landing-pages'),

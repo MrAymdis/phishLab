@@ -213,7 +213,7 @@ def get_email_template(db, template_id: int) -> dict:
     """获取邮件模板详情（含 html_body 全文）。"""
     t = db.get(EmailTemplate, template_id)
     if t is None:
-        raise ValueError("模板不存在")
+        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
     return {
         "id": t.id,
         "name": t.name,
@@ -240,7 +240,7 @@ def update_email_template(db, account, template_id: int, payload: dict) -> None:
     """更新邮件模板：重新抽取变量，写审计。"""
     t = db.get(EmailTemplate, template_id)
     if t is None:
-        raise ValueError("模板不存在")
+        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
     if "name" in payload:
         t.name = payload["name"]
     if "scene" in payload:
@@ -261,6 +261,21 @@ def update_email_template(db, account, template_id: int, payload: dict) -> None:
     record_audit(
         db, account=account, module="template", action="update_template",
         target_type="email_template", target_id=t.id,
+    )
+
+
+def delete_email_template(db, account, template_id: int) -> None:
+    """删除邮件模板；被演练引用时阻止（防演练历史悬空）。"""
+    t = db.get(EmailTemplate, template_id)
+    if t is None:
+        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
+    if db.scalar(select(Campaign.id).where(Campaign.template_id == template_id).limit(1)):
+        raise BizError(ErrorCode.BIZ_CONFLICT, "模板已被演练引用，无法删除")
+    db.delete(t)
+    db.commit()
+    record_audit(
+        db, account=account, module="template", action="delete_template",
+        target_type="email_template", target_id=template_id, detail={"name": t.name},
     )
 
 
@@ -1084,7 +1099,7 @@ def get_landing_page(db, page_id: int) -> dict:
     """获取落地页详情（含 html_content 全文 + form_schema）。"""
     p = db.get(LandingPage, page_id)
     if p is None:
-        raise ValueError("落地页不存在")
+        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
     fs = p.form_schema or {}
     fields = db.scalars(
         select(LandingFormField).where(LandingFormField.page_id == page_id)
@@ -1122,7 +1137,7 @@ def get_landing_page_preview(db, page_id: int) -> dict:
     """
     p = db.get(LandingPage, page_id)
     if p is None:
-        raise ValueError("落地页不存在")
+        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
     raw = p.html_content or _default_landing_html(p.type, p.name)
     return {
         "id": p.id,
@@ -1170,7 +1185,7 @@ def update_landing_page(db, account, page_id: int, payload: dict) -> None:
     """更新落地页：同步 form_schema、html_content、表单字段。"""
     p = db.get(LandingPage, page_id)
     if p is None:
-        raise ValueError("落地页不存在")
+        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
     if "name" in payload:
         p.name = payload["name"]
     if "type" in payload:

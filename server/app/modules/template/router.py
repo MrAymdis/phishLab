@@ -53,6 +53,11 @@ def duplicate_template(tid: int, account=Depends(get_current_account), db: Sessi
     return resp.ok({"id": service.duplicate_email_template(db, account, tid)})
 
 
+@email_templates.delete("/{tid}", summary="删除邮件模板（被演练引用时阻止）", dependencies=[Depends(require_perm("template:manage"))])
+def delete_template(tid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.delete_email_template(db, account, tid))
+
+
 @email_templates.get("/{tid}", summary="邮件模板详情")
 def get_template(tid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.get_email_template(db, tid))

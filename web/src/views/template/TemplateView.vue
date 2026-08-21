@@ -903,10 +903,20 @@ async function copyEmail(row: EmailTemplate) {
     // 失败提示由 http 拦截器统一弹出
   }
 }
-function deleteEmail(row: EmailTemplate) {
-  ElMessageBox.confirm(`确认删除模板「${row.name}」？`, '提示', { type: 'warning' })
-    .then(() => ElMessage.success('模板已删除'))
-    .catch(() => { /* 用户取消 */ })
+async function deleteEmail(row: EmailTemplate) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除模板「${row.name}」？被演练引用时将被拒绝。`,
+      '删除模板', { type: 'warning' },
+    )
+  } catch { return /* 用户取消 */ }
+  try {
+    await templateApi.deleteEmailTemplate(row.id)
+    ElMessage.success('模板已删除')
+    await loadTemplates()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
 // 邮件模板弹窗
