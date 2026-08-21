@@ -149,9 +149,9 @@
                   <el-col :span="12">
                     <div class="sub-title">数据权限范围</div>
                     <el-radio-group v-model="dataScope" size="small">
-                      <el-radio-button label="all">全部数据</el-radio-button>
-                      <el-radio-button label="dept">本部门及下级</el-radio-button>
-                      <el-radio-button label="self">仅本人</el-radio-button>
+                      <el-radio-button value="all">全部数据</el-radio-button>
+                      <el-radio-button value="dept">本部门及下级</el-radio-button>
+                      <el-radio-button value="self">仅本人</el-radio-button>
                     </el-radio-group>
                     <el-select
                       v-if="dataScope === 'dept'"
@@ -265,9 +265,9 @@
                   </el-form-item>
                   <el-form-item label="协议类型">
                     <el-radio-group v-model="ssoType" :disabled="!ssoEnabled">
-                      <el-radio label="oidc">OIDC (OAuth 2.0)</el-radio>
-                      <el-radio label="saml2">SAML 2.0</el-radio>
-                      <el-radio label="form">表单集成</el-radio>
+                      <el-radio value="oidc">OIDC (OAuth 2.0)</el-radio>
+                      <el-radio value="saml2">SAML 2.0</el-radio>
+                      <el-radio value="form">表单集成</el-radio>
                     </el-radio-group>
                   </el-form-item>
                   <el-form-item v-if="ssoType === 'oidc' && ssoEnabled" label="Issuer (租户ID)">
@@ -298,8 +298,8 @@
                   </el-form-item>
                   <el-form-item label="协议">
                     <el-radio-group v-model="siem.proto">
-                      <el-radio label="udp">UDP</el-radio>
-                      <el-radio label="tcp">TCP</el-radio>
+                      <el-radio value="udp">UDP</el-radio>
+                      <el-radio value="tcp">TCP</el-radio>
                     </el-radio-group>
                   </el-form-item>
                   <el-form-item label="TLS 加密">
@@ -318,9 +318,9 @@
                 <el-form label-width="100px" style="margin-top: 10px" size="small">
                   <el-form-item label="推送类型">
                     <el-radio-group v-model="wh.type">
-                      <el-radio label="wecom">企业微信</el-radio>
-                      <el-radio label="dingtalk">钉钉</el-radio>
-                      <el-radio label="feishu">飞书</el-radio>
+                      <el-radio value="wecom">企业微信</el-radio>
+                      <el-radio value="dingtalk">钉钉</el-radio>
+                      <el-radio value="feishu">飞书</el-radio>
                     </el-radio-group>
                   </el-form-item>
                   <el-form-item label="Webhook URL">
@@ -932,16 +932,7 @@ onMounted(async () => {
     }
   } catch { loadWarning() }
 
-  // Webhook 告警推送
-  try {
-    const list = (await systemApi.webhooks()) as any[]
-    if (Array.isArray(list) && list.length) {
-      const w = list.find(x => x.enabled) || list[0]
-      if (['wecom', 'dingtalk', 'feishu'].includes(w.im_type)) whType.value = w.im_type
-      if (w.url) wh.url = w.url
-      if (Array.isArray(w.event_types) && w.event_types.length) wh.events = w.event_types
-    }
-  } catch { loadWarning() }
+  // Webhook 告警推送（onMounted 开头已由 loadWebhook() 加载，此处为重构前冗余代码，已删除）
 
   // SIEM Syslog 推送
   try {
