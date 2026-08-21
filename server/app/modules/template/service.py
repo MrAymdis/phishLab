@@ -2,6 +2,7 @@
 import ast
 import re
 import secrets
+from datetime import datetime
 from html import escape as _html_escape
 from urllib.parse import urlparse
 
@@ -264,15 +265,61 @@ def update_email_template(db, account, template_id: int, payload: dict) -> None:
 
 
 def test_send_template(db, account, template_id: int, to: list[str]) -> dict:
-    """测试发送：仅限白名单收件人，真实投递由 Worker 队列执行（TODO）。"""
-    if db.get(EmailTemplate, template_id) is None:
-        raise BizError(ErrorCode.NOT_FOUND)
+    """模板测试发送：渲染模板（演示变量）→ 默认 SMTP 通道逐收件人真实投递。
+
+    收件人白名单由前端弹窗约束（管理员手输）；未配置可用 SMTP 通道时明确报错，不再假成功。
+    """
+    from app.core.config import settings
+    from app.modules.channel import service as channel_service
+    from app.modules.channel.models import SendChannel
+
+    tpl = db.get(EmailTemplate, template_id)
+    if tpl is None:
+        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
+    if not to:
+        raise BizError(ErrorCode.PARAM_INVALID, "请提供测试收件人")
+
+    channel = db.scalar(
+        select(SendChannel)
+        .where(SendChannel.type == "smtp", SendChannel.status != "disabled")
+        .order_by(SendChannel.is_default.desc(), SendChannel.id)
+    )
+    if channel is None:
+        raise BizError(ErrorCode.BIZ_CONFLICT, "未配置可用 SMTP 通道，请先在「发送配置」添加并测试通过")
+
+    # 变量替换（演示值；真实演练按目标员工档案逐人渲染）
+    base_map = {
+        "{{.FirstName}}": "测试收件人",
+        "{{.LastName}}": "演示",
+        "{{.Department}}": "安全演练测试",
+        "{{.Date}}": datetime.now().strftime("%Y-%m-%d"),
+        "{{.ResetURL}}": f"{settings.landing_base_url.rstrip('/')}/p/demo",
+        "{{.QRCode}}": f"{settings.landing_base_url.rstrip('/')}/p/demo",
+    }
+    results = []
+    for addr in to:
+        var_map = {**base_map, "{{.Email}}": addr}
+        subject = tpl.subject or ""
+        html = tpl.html_body or ""
+        for k, v in var_map.items():
+            subject = subject.replace(k, v)
+            html = html.replace(k, v)
+        try:
+            r = channel_service.send_html_email(db, account, channel.id, addr, subject, html)
+        except BizError as e:
+            r = {"ok": False, "message": str(e)}
+        results.append({"to": addr, **r})
+    ok_n = sum(1 for r in results if r["ok"])
     record_audit(
         db, account=account, module="template", action="test_send",
         target_type="email_template", target_id=template_id,
-        detail={"to_count": len(to)},
+        detail={"to": to, "ok": ok_n, "channel_id": channel.id},
     )
-    return {"ok": True, "message": f"测试邮件已发送至 {len(to)} 个白名单收件人"}
+    if ok_n == len(results):
+        message = f"测试邮件已发送至 {len(to)} 个收件人"
+    else:
+        message = f"成功 {ok_n}/{len(to)}，失败原因：{next(r['message'] for r in results if not r['ok'])}"
+    return {"ok": ok_n == len(results), "message": message, "results": results}
 
 
 def list_landing_pages(db, account) -> list[dict]:

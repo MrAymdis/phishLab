@@ -873,8 +873,26 @@ async function previewEmail(row: EmailTemplate) {
     emailPreviewLoading.value = false
   }
 }
-function testEmail(row: EmailTemplate) {
-  ElMessage.success(`模板「${row.name}」测试邮件已发送至您的邮箱`)
+async function testEmail(row: EmailTemplate) {
+  let to: string
+  try {
+    const r = await ElMessageBox.prompt(
+      '请输入白名单测试收件邮箱（真实发送，请使用本人/登记邮箱）',
+      `测试发送「${row.name}」`,
+      {
+        inputPattern: /^[^@\s]+@[^@\s]+\.[^@\s]+$/,
+        inputErrorMessage: '请输入有效邮箱地址',
+      },
+    )
+    to = (r.value || '').trim()
+  } catch { return /* 用户取消 */ }
+  try {
+    const res = await templateApi.testSendEmailTemplate(row.id, [to])
+    if (res?.ok) ElMessage.success(res.message)
+    else ElMessage.warning(res?.message || '测试发送失败')
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 async function copyEmail(row: EmailTemplate) {
   try {

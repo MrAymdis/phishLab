@@ -122,7 +122,7 @@ export const templateApi = {
   duplicateEmailTemplate: (id: number) =>
     post<{ id: number }>(`/api/v1/email-templates/${id}/duplicate`),
   testSendEmailTemplate: (id: number, to: string[]) =>
-    post(`/api/v1/email-templates/${id}/test-send`, to),
+    post<{ ok: boolean; message: string }>(`/api/v1/email-templates/${id}/test-send`, { to }),
   landingPages: () => get('/api/v1/landing-pages'),
   getLandingPage: (id: number) => get(`/api/v1/landing-pages/${id}`),
   getLandingPagePreview: (id: number) => get(`/api/v1/landing-pages/${id}/preview`),

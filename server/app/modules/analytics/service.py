@@ -1,8 +1,9 @@
 """报表中心服务：概览指标、单演练报表、部门/趋势/个人报表、异步导出。
 
 数据来源：campaign_target 事实表直查（按投递时间窗口，分子分母同窗口）；
-stat_daily 冗余汇总表暂无写入任务（二期实现），读取它只会拿到过期/演示数据；
-所有比率由数据库计数实时计算，禁止硬编码；空表返回零值结构，不抛异常。
+stat_daily 日归档由 stat_aggregate 任务每日聚合（平台/部门/场景/用户四维度），
+个人画像趋势读用户维度序列；所有比率由数据库计数实时计算，禁止硬编码；
+空表返回零值结构，不抛异常。
 """
 from datetime import datetime, timedelta
 from uuid import uuid4
@@ -12,6 +13,7 @@ from sqlalchemy import case, func, or_, select
 from app.core.audit import record_audit
 from app.core.deps import apply_data_scope
 from app.core.errors import BizError, ErrorCode
+from app.modules.analytics.models import StatDaily
 from app.modules.campaign.models import Campaign, CampaignStat, CampaignTarget
 from app.modules.org.models import EmpDept, EmpRiskProfile, EmpUser
 from app.modules.template.models import AttachmentPayload, EmailTemplate, LandingPage, QrAsset
@@ -50,7 +52,7 @@ _SENT_STATUS = ("sent", "delivered", "bounced", "failed")
 def _agg_platform(db, since):
     """窗口内投递聚合：campaign_target 事实表直查（按投递时间窗口）。
 
-    stat_daily 冗余汇总表暂无写入任务，读取它只会拿到过期/演示数据；
+    实时口径以事实表为准（stat_daily 为日归档，用于留存清理后的长期回放）；
     所有计数限定在「投递时间 >= since」的记录内，保证分子分母同窗口。
     """
     sent = CampaignTarget.send_status.in_(_SENT_STATUS)
@@ -600,9 +602,20 @@ def personal_report(db, account, user_id: int) -> dict:
     dims = [{"label": l, "val": int(v or 50), "color": _risk_color(v or 50)} for l, v in dim_defs]
     risk_level = {1: "低", 2: "中", 3: "高"}.get(profile.risk_level, _level_of(total)) if profile else _level_of(total)
 
-    # 风险分历史：画像尚未按周期归档，无真实序列可用 → 返回空，前端显示空态
+    # 风险分历史：stat_daily 用户维度日行为序列（stat_aggregate 每日归档，近 30 天）
+    # 分数为行为加权启发式（提交+40/点击+20/打开+10/举报-20，50 基准），仅趋势展示用
     labels: list[str] = []
     scores: list[int] = []
+    trend_rows = db.execute(
+        select(StatDaily.stat_date, StatDaily.open_cnt, StatDaily.click_cnt,
+               StatDaily.submit_cnt, StatDaily.report_cnt)
+        .where(StatDaily.dim_type == "user", StatDaily.dim_id == user_id)
+        .order_by(StatDaily.stat_date)
+        .limit(30)
+    ).all()
+    for d, o, c, s, r in trend_rows:
+        labels.append(d.strftime("%m-%d"))
+        scores.append(max(0, min(100, 50 + s * 40 + c * 20 + o * 10 - r * 20)))
 
     # 行为时间轴（近 20 条）
     action_map = {"open": "打开邮件", "click": "点击链接", "submit": "提交数据",

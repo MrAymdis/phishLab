@@ -64,8 +64,10 @@ def update_template(tid: int, payload: EmailTemplateCreate, account=Depends(get_
     return resp.ok({"id": tid})
 
 
-@email_templates.post("/{tid}/test-send", summary="模板测试发送（仅白名单）", dependencies=[Depends(require_perm("template:manage"))])
-def test_send(tid: int, to: list[str], account=Depends(get_current_account), db: Session = Depends(get_db)):
+@email_templates.post("/{tid}/test-send", summary="模板测试发送（默认 SMTP 通道真实投递，收件人白名单前端约束）",
+                       dependencies=[Depends(require_perm("template:manage"))])
+def test_send(tid: int, payload: dict, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    to = [str(a).strip() for a in (payload.get("to") or []) if str(a).strip()]
     return resp.ok(service.test_send_template(db, account, tid, to))
 
 

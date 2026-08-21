@@ -52,7 +52,7 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.campaign_auto.auto_complete",
         "schedule": crontab(minute="*/5"),
     },
-    # 每 10 分钟回写实时计数与汇总
+    # 每 10 分钟补齐 stat_daily 日聚合（幂等：缺天才写，首次自动回填近 90 天）
     "stat-aggregate": {
         "task": "worker.tasks.stat_aggregate.aggregate",
         "schedule": crontab(minute="*/10"),

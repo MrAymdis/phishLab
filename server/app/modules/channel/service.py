@@ -398,6 +398,35 @@ def send_test_email(db, account, channel_id: int, to: str) -> dict:
     return result
 
 
+def send_html_email(db, account, channel_id: int, to: str, subject: str, html: str) -> dict:
+    """按指定通道发送自定义内容邮件（模板测试发送复用，真实投递）。"""
+    from app.core.security import decrypt_secret
+
+    ch = db.get(SendChannel, channel_id)
+    if ch is None:
+        raise BizError(ErrorCode.NOT_FOUND, "SMTP 通道不存在")
+    if ch.type != "smtp":
+        raise BizError(ErrorCode.PARAM_INVALID, "仅 SMTP 通道支持发送")
+    password = ""
+    if ch.smtp_password_enc:
+        try:
+            password = decrypt_secret(ch.smtp_password_enc)
+        except Exception:
+            password = ""
+    cfg = {
+        "smtp_host": ch.smtp_host,
+        "smtp_port": ch.smtp_port,
+        "smtp_encrypt": ch.smtp_encrypt,
+        "smtp_username": ch.smtp_username,
+        "smtp_password": password,
+    }
+    result = _smtp_send(ch.name, cfg, to, subject=subject, html_body=html)
+    ch.last_test_result = result
+    ch.last_test_at = datetime.now()
+    db.commit()
+    return result
+
+
 def send_test_email_draft(db, account, payload: dict) -> dict:
     """用弹窗中尚未保存的配置发送测试邮件（不落库、不影响通道记录）。"""
     ch_type = payload.get("type") or ""
