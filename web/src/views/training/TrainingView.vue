@@ -2,19 +2,19 @@
   <div class="page-container">
     <PageHeader title="安全培训">
       <template #actions>
-        <el-button size="small" type="primary" :icon="VideoPlay" @click="openCourseDialog">新建课程</el-button>
+        <el-button size="small" type="primary" :icon="VideoPlay" @click="openCourseDialog()">新建课程</el-button>
         <el-button size="small" :icon="Calendar" @click="openTaskDialog()">新建培训任务</el-button>
-        <el-button size="small" :icon="Collection">新建题库</el-button>
+        <el-button size="small" :icon="Collection" @click="openQuestionDialog()">新建题目</el-button>
       </template>
     </PageHeader>
 
     <el-tabs v-model="activeTab" style="margin: 8px 16px 0">
       <el-tab-pane label="培训课程库" name="course">
         <el-row :gutter="12" style="margin: 16px 0 0">
-          <el-col :span="6"><StatCard title="课程总数" :value="36" accent="blue" /></el-col>
-          <el-col :span="6"><StatCard title="视频课程" :value="14" accent="teal" /></el-col>
-          <el-col :span="6"><StatCard title="图文课程" :value="12" accent="green" /></el-col>
-          <el-col :span="6"><StatCard title="互动课程" :value="10" accent="purple" /></el-col>
+          <el-col :span="6"><StatCard title="课程总数" :value="courseStats.total" accent="blue" /></el-col>
+          <el-col :span="6"><StatCard title="视频课程" :value="courseStats.video" accent="teal" /></el-col>
+          <el-col :span="6"><StatCard title="图文/PDF课程" :value="courseStats.article + courseStats.pdf" accent="green" /></el-col>
+          <el-col :span="6"><StatCard title="互动课程" :value="courseStats.interactive" accent="purple" /></el-col>
         </el-row>
         <el-row :gutter="12" style="margin: 12px 0 0">
           <el-col :span="24">
@@ -53,7 +53,7 @@
                 <div class="course-title">{{ c.title }}</div>
                 <div class="course-meta">
                   <span><el-icon><Clock /></el-icon> {{ c.duration }} 分钟</span>
-                  <span>课件：{{ c.material }}</span>
+                  <span>课件：{{ c.material || '未指定' }}</span>
                   <el-tag size="small" :type="levelTagType(c.level)" effect="plain">{{ levelLabel(c.level) }}</el-tag>
                 </div>
                 <div class="course-stats">
@@ -67,9 +67,9 @@
                   </div>
                 </div>
                 <div class="course-actions">
-                  <el-button size="small" link>预览</el-button>
-                  <el-button size="small" link type="primary">编辑</el-button>
-                  <el-button size="small" link type="danger">删除</el-button>
+                  <el-button size="small" link type="primary" @click="previewCourse(c)">预览</el-button>
+                  <el-button size="small" link @click="openCourseDialog(c)">编辑</el-button>
+                  <el-button size="small" link type="danger" @click="removeCourse(c)">删除</el-button>
                   <el-divider direction="vertical" />
                   <el-button size="small" link type="success" @click="openTaskDialog(c.id)">新建任务用此课程</el-button>
                 </div>
@@ -81,9 +81,9 @@
 
       <el-tab-pane label="培训任务管理" name="task">
         <el-row :gutter="12" style="margin: 16px 0 0">
-          <el-col :span="8"><StatCard title="进行中计划" :value="4" accent="green" /></el-col>
-          <el-col :span="8"><StatCard title="已完成计划" :value="18" accent="blue" /></el-col>
-          <el-col :span="8"><StatCard title="本月覆盖人数" value="3,580" accent="teal" /></el-col>
+          <el-col :span="8"><StatCard title="进行中计划" :value="taskStats.running" accent="green" /></el-col>
+          <el-col :span="8"><StatCard title="已完成计划" :value="taskStats.completed" accent="blue" /></el-col>
+          <el-col :span="8"><StatCard title="覆盖人员总数" :value="taskStats.totalPeople" accent="teal" /></el-col>
         </el-row>
         <el-row :gutter="12" style="margin: 12px 0 16px">
           <el-col :span="24">
@@ -92,10 +92,10 @@
                 <el-button size="small" type="primary" :icon="Plus" @click="openTaskDialog()">新建培训任务</el-button>
                 <el-input v-model="taskKw" size="small" placeholder="搜索任务名称" style="width: 220px; margin-left: 12px" clearable />
               </div>
-              <el-table :data="taskRows" size="small" style="margin-top: 12px">
+              <el-table :data="filteredTasks" size="small" style="margin-top: 12px">
                 <el-table-column label="任务名称" min-width="200">
                   <template #default="{ row }">
-                    <el-link type="primary">{{ row.name }}</el-link>
+                    <el-link type="primary" @click="viewTaskDetail(row)">{{ row.name }}</el-link>
                   </template>
                 </el-table-column>
                 <el-table-column label="关联课程" prop="course" min-width="180" />
@@ -120,23 +120,21 @@
                   <template #default="{ row }">
                     <el-tag v-if="row.status === 'running'" type="success" size="small">进行中</el-tag>
                     <el-tag v-else-if="row.status === 'completed'" size="small">已完成</el-tag>
+                    <el-tag v-else-if="row.status === 'closed'" type="info" size="small" effect="plain">已关闭</el-tag>
                     <el-tag v-else type="danger" size="small">已过期</el-tag>
                   </template>
                 </el-table-column>
-                <el-table-column label="操作" width="220" fixed="right">
+                <el-table-column label="操作" width="260" fixed="right">
                   <template #default="{ row }">
-                    <el-button link size="small" type="primary">查看详情</el-button>
-                    <el-button link size="small" type="warning" v-if="row.status === 'running'">催办</el-button>
-                    <el-button link size="small">导出证明</el-button>
+                    <el-button link size="small" type="primary" @click="viewTaskDetail(row)">详情</el-button>
+                    <el-button link size="small" type="warning" v-if="row.status === 'running'" @click="remindTask(row)">催办</el-button>
+                    <el-button link size="small" type="danger" v-if="row.status === 'running'" @click="closeTask(row)">关闭</el-button>
+                    <el-button link size="small" @click="exportTask(row)">导出明细</el-button>
+                    <el-button link size="small" type="danger" @click="removeTask(row)">删除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
-              <el-pagination
-                style="margin-top: 12px; justify-content: flex-end"
-                layout="total, sizes, prev, pager, next"
-                :total="42"
-                :page-sizes="[10, 20, 50]"
-              />
+              <el-empty v-if="!filteredTasks.length" description="暂无培训任务" :image-size="60" style="margin-top: 12px" />
             </div>
           </el-col>
         </el-row>
@@ -144,12 +142,12 @@
 
       <el-tab-pane label="考试与测评" name="exam">
         <el-row :gutter="12" style="margin: 16px 0 0">
-          <el-col :span="6"><StatCard title="题库总数" value="248" suffix=" 道" accent="blue" /></el-col>
-          <el-col :span="6"><StatCard title="试卷总数" value="15" suffix=" 份" accent="purple" /></el-col>
-          <el-col :span="6"><StatCard title="本月考试次数" value="3,940" accent="teal" /></el-col>
+          <el-col :span="6"><StatCard title="题库总数" :value="questionRows.length" suffix=" 道" accent="blue" /></el-col>
+          <el-col :span="6"><StatCard title="试卷总数" :value="paperRows.length" suffix=" 份" accent="purple" /></el-col>
+          <el-col :span="6"><StatCard title="本月考试次数" :value="examStats.monthTotal" accent="teal" /></el-col>
           <el-col :span="6">
             <div class="card card-orange" style="height: 100%; display: flex; align-items: center; justify-content: center">
-              <el-button type="primary" :icon="Plus">新建题目</el-button>
+              <el-button type="primary" :icon="Plus" @click="openQuestionDialog()">新建题目</el-button>
             </div>
           </el-col>
         </el-row>
@@ -157,8 +155,11 @@
         <el-row :gutter="12" style="margin: 12px 0 0">
           <el-col :span="24">
             <div class="card card-red">
-              <div class="card-title">题目列表</div>
-              <el-table :data="questionRows" size="small" style="margin-top: 8px">
+              <div class="card-title">
+                题目列表
+                <el-input v-model="questionKw" size="small" placeholder="搜索题干" style="width: 220px; margin-left: 12px" clearable />
+              </div>
+              <el-table :data="filteredQuestions" size="small" style="margin-top: 8px">
                 <el-table-column label="题型" width="90" align="center">
                   <template #default="{ row }">
                     <el-tag v-if="row.type === 'single'" type="primary" size="small">单选</el-tag>
@@ -182,33 +183,28 @@
                 </el-table-column>
                 <el-table-column label="关联课程" prop="course" min-width="160" show-overflow-tooltip />
                 <el-table-column label="操作" width="130" fixed="right">
-                  <template #default>
-                    <el-button link size="small" type="primary">编辑</el-button>
-                    <el-button link size="small" type="danger">删除</el-button>
+                  <template #default="{ row }">
+                    <el-button link size="small" type="primary" @click="openQuestionDialog(row)">编辑</el-button>
+                    <el-button link size="small" type="danger" @click="removeQuestion(row)">删除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
-              <el-pagination
-                style="margin-top: 12px; justify-content: flex-end"
-                layout="total, sizes, prev, pager, next"
-                :total="186"
-                :page-sizes="[10, 20, 50]"
-              />
+              <el-empty v-if="!filteredQuestions.length" description="题库为空，点击右上角新建题目" :image-size="60" style="margin-top: 12px" />
             </div>
           </el-col>
         </el-row>
 
-        <el-row :gutter="12" style="margin: 12px 0 16px">
+        <el-row :gutter="12" style="margin: 12px 0 0">
           <el-col :span="24">
             <div class="card card-purple">
               <div class="card-title">
                 组卷管理
-                <el-button size="small" type="primary" :icon="Document" style="margin-left: 12px">新建试卷</el-button>
+                <el-button size="small" type="primary" :icon="Document" style="margin-left: 12px" @click="openPaperDialog()">新建试卷</el-button>
               </div>
               <el-table :data="paperRows" size="small" style="margin-top: 8px">
                 <el-table-column label="试卷名称" min-width="200">
                   <template #default="{ row }">
-                    <el-link type="primary">{{ row.name }}</el-link>
+                    <el-link type="primary" @click="previewPaper(row)">{{ row.name }}</el-link>
                   </template>
                 </el-table-column>
                 <el-table-column label="题数（单/多/判）" width="160" align="center">
@@ -221,77 +217,60 @@
                 <el-table-column label="通关分数线" width="100" align="center">
                   <template #default="{ row }">{{ row.pass }} 分（{{ row.passPct }}%）</template>
                 </el-table-column>
-                <el-table-column label="已发布次数" width="110" align="center" prop="publishCount" />
-                <el-table-column label="操作" width="260" fixed="right">
-                  <template #default>
-                    <el-button link size="small">预览</el-button>
-                    <el-button link size="small" type="success">发布</el-button>
-                    <el-button link size="small" type="primary">编辑</el-button>
-                    <el-button link size="small">导出试卷</el-button>
+                <el-table-column label="状态" width="90" align="center">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.status === 'published'" type="success" size="small">已发布</el-tag>
+                    <el-tag v-else type="info" size="small" effect="plain">草稿</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="考试人次" width="90" align="center" prop="publishCount" />
+                <el-table-column label="操作" width="230" fixed="right">
+                  <template #default="{ row }">
+                    <el-button link size="small" @click="previewPaper(row)">预览</el-button>
+                    <el-button link size="small" type="success" v-if="row.status !== 'published'" @click="publishPaper(row)">发布</el-button>
+                    <el-button link size="small" type="primary" @click="openPaperDialog(row)">编辑</el-button>
+                    <el-button link size="small" type="danger" @click="removePaper(row)">删除</el-button>
                   </template>
                 </el-table-column>
               </el-table>
+              <el-empty v-if="!paperRows.length" description="暂无试卷" :image-size="60" style="margin-top: 12px" />
+            </div>
+          </el-col>
+        </el-row>
+
+        <el-row :gutter="12" style="margin: 12px 0 16px">
+          <el-col :span="24">
+            <div class="card card-teal">
+              <div class="card-title">考试记录</div>
+              <el-table :data="examRecordRows" size="small" style="margin-top: 8px">
+                <el-table-column label="时间" prop="time" width="150" />
+                <el-table-column label="试卷" prop="paper" min-width="200" />
+                <el-table-column label="员工" prop="user" width="140" />
+                <el-table-column label="部门" prop="dept" width="120" />
+                <el-table-column label="分数" prop="score" width="90" align="center" />
+                <el-table-column label="结果" width="90" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.passed ? 'success' : 'danger'" size="small">{{ row.passed ? '通过' : '未通过' }}</el-tag>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <el-empty v-if="!examRecordRows.length" description="暂无考试记录" :image-size="60" style="margin-top: 12px" />
+              <el-pagination
+                v-if="examStats.total > examPageSize"
+                style="margin-top: 12px; justify-content: flex-end"
+                layout="total, prev, pager, next"
+                :total="examStats.total"
+                :page-size="examPageSize"
+                v-model:current-page="examPage"
+              />
             </div>
           </el-col>
         </el-row>
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="taskDialogVisible" title="新建培训任务" width="620px">
-      <el-form :model="taskForm" label-width="120px">
-        <el-form-item label="选择课程">
-          <el-select v-model="taskForm.courseId" style="width: 100%" placeholder="请选择课程">
-            <el-option label="《信息安全基础规范》" :value="1" />
-            <el-option label="《钓鱼邮件识别入门》" :value="2" />
-            <el-option label="《钓鱼邮件识别进阶》" :value="3" />
-            <el-option label="《企业数据安全红线》" :value="4" />
-            <el-option label="《财务人员专项安全课》" :value="5" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="人员选择">
-          <el-select v-model="taskForm.targets" multiple filterable style="width: 100%" placeholder="选择部门/组/人员">
-            <el-option-group label="部门">
-              <el-option label="财务部（56人）" value="dept_finance" />
-              <el-option label="市场部（128人）" value="dept_marketing" />
-              <el-option label="行政部（32人）" value="dept_admin" />
-              <el-option label="人力资源部（28人）" value="dept_hr" />
-              <el-option label="技术部（156人）" value="dept_tech" />
-              <el-option label="研发部（342人）" value="dept_rd" />
-            </el-option-group>
-            <el-option-group label="分组">
-              <el-option label="高管组（12人）" value="grp_exec" />
-              <el-option label="全员（3580人）" value="grp_all" />
-              <el-option label="新员工组（30人）" value="grp_new" />
-            </el-option-group>
-            <el-option-group label="人员">
-              <el-option label="张小明（财务部）" value="u_001" />
-              <el-option label="李晓华（市场部）" value="u_002" />
-            </el-option-group>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="截止日期">
-          <el-date-picker
-            v-model="taskForm.deadline"
-            type="datetime"
-            style="width: 100%"
-            placeholder="选择截止日期"
-          />
-        </el-form-item>
-        <el-form-item label="自动推送规则">
-          <el-switch v-model="taskForm.autoAssign" />
-          <span style="margin-left: 8px; color: var(--color-text-secondary); font-size: 12px">
-            演练中招后自动分配给中招人员
-          </span>
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="taskDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveTask">创建任务</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- ============ 新建课程弹窗 ============ -->
-    <el-dialog v-model="courseDialogVisible" title="新建课程" width="600px" destroy-on-close>
+    <!-- ============ 新建/编辑课程弹窗 ============ -->
+    <el-dialog v-model="courseDialogVisible" :title="courseForm.id ? '编辑课程' : '新建课程'" width="600px" destroy-on-close>
       <el-form :model="courseForm" label-width="100px">
         <el-form-item label="课程名称" required>
           <el-input v-model="courseForm.name" placeholder="如：《钓鱼邮件识别进阶》" />
@@ -317,109 +296,288 @@
             </el-form-item>
           </el-col>
         </el-row>
-        <el-form-item label="课程时长">
-          <el-input-number v-model="courseForm.duration" :min="5" :max="240" :step="5" />
-          <span style="margin-left: 8px; color: var(--color-text-secondary); font-size: 12px">分钟</span>
-        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="课程时长">
+              <el-input-number v-model="courseForm.duration" :min="5" :max="240" :step="5" />
+              <span style="margin-left: 8px; color: var(--color-text-secondary); font-size: 12px">分钟</span>
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="课件形态">
+              <el-input v-model="courseForm.material" placeholder="如：视频课件 / 图文+PDF" />
+            </el-form-item>
+          </el-col>
+        </el-row>
         <el-form-item label="课程描述">
           <el-input v-model="courseForm.desc" type="textarea" :rows="3" placeholder="课程目标、适用人群、内容简介" />
-        </el-form-item>
-        <el-form-item label="上传课件">
-          <el-upload drag action="#" :auto-upload="false" style="width: 100%">
-            <el-icon :size="36" color="var(--color-text-tertiary)"><UploadFilled /></el-icon>
-            <div style="font-size: 13px; margin-top: 6px">拖拽课件文件到此处，或 <em>点击上传</em></div>
-            <template #tip>
-              <div style="font-size: 11px; color: var(--color-text-tertiary)">支持 mp4 / pptx / pdf / html，单个文件不超过 500MB</div>
-            </template>
-          </el-upload>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="courseDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveCourse">创建课程</el-button>
+        <el-button type="primary" @click="saveCourse">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ============ 课程预览弹窗 ============ -->
+    <el-dialog v-model="coursePreviewVisible" title="课程详情" width="560px">
+      <div v-if="coursePreview" class="preview-body">
+        <div class="preview-title">{{ coursePreview.title }}</div>
+        <div class="preview-meta">
+          <el-tag size="small">{{ courseTypeLabel[coursePreview.type] || coursePreview.type }}</el-tag>
+          <el-tag size="small" :type="levelTagType(coursePreview.level)" effect="plain">{{ levelLabel(coursePreview.level) }}</el-tag>
+          <span>时长 {{ coursePreview.duration }} 分钟</span>
+          <span>课件：{{ coursePreview.material || '未指定' }}</span>
+        </div>
+        <div v-if="coursePreview.description" class="preview-desc">{{ coursePreview.description }}</div>
+        <el-empty v-else description="暂无课程描述" :image-size="48" />
+      </div>
+    </el-dialog>
+
+    <!-- ============ 新建/编辑题目弹窗 ============ -->
+    <el-dialog v-model="questionDialogVisible" :title="questionForm.id ? '编辑题目' : '新建题目'" width="640px" destroy-on-close>
+      <el-form :model="questionForm" label-width="80px">
+        <el-row :gutter="12">
+          <el-col :span="10">
+            <el-form-item label="题型">
+              <el-select v-model="questionForm.type" style="width: 100%" @change="onQuestionTypeChange">
+                <el-option label="单选" value="single" />
+                <el-option label="多选" value="multi" />
+                <el-option label="判断" value="judge" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="7">
+            <el-form-item label="难度">
+              <el-select v-model="questionForm.diff" style="width: 100%">
+                <el-option label="易" value="easy" />
+                <el-option label="中" value="mid" />
+                <el-option label="难" value="hard" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+          <el-col :span="7">
+            <el-form-item label="课程">
+              <el-select v-model="questionForm.course_id" style="width: 100%" clearable placeholder="可空">
+                <el-option v-for="c in courses" :key="c.id" :label="c.title" :value="c.id" />
+              </el-select>
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="题干" required>
+          <el-input v-model="questionForm.content" type="textarea" :rows="2" placeholder="输入题目内容" />
+        </el-form-item>
+        <el-form-item v-if="questionForm.type !== 'judge'" label="选项" required>
+          <div class="opt-list">
+            <div v-for="(opt, i) in questionForm.options" :key="i" class="opt-row">
+              <el-tag size="small">{{ String.fromCharCode(65 + i) }}</el-tag>
+              <el-input v-model="questionForm.options[i]" size="small" placeholder="选项内容" style="flex: 1" />
+              <el-button link type="danger" :disabled="questionForm.options.length <= 2" @click="questionForm.options.splice(i, 1)">删除</el-button>
+            </div>
+            <el-button size="small" @click="questionForm.options.push('')">添加选项</el-button>
+          </div>
+        </el-form-item>
+        <el-form-item v-else label="选项">
+          <span style="color: var(--color-text-secondary)">A. 正确　B. 错误</span>
+        </el-form-item>
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="答案" required>
+              <el-input v-model="questionForm.answer" :placeholder="questionForm.type === 'judge' ? 'A 或 B' : '如 A 或 A,B'" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="12">
+            <el-form-item label="解析">
+              <el-input v-model="questionForm.analysis" placeholder="答案解析（可选）" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+      </el-form>
+      <template #footer>
+        <el-button @click="questionDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveQuestion">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ============ 新建/编辑试卷弹窗 ============ -->
+    <el-dialog v-model="paperDialogVisible" :title="paperForm.id ? '编辑试卷' : '新建试卷'" width="760px" destroy-on-close>
+      <el-form :model="paperForm" label-width="100px">
+        <el-row :gutter="12">
+          <el-col :span="12">
+            <el-form-item label="试卷名称" required>
+              <el-input v-model="paperForm.title" placeholder="如：Q3全员信息安全摸底考试" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="分数线">
+              <el-input-number v-model="paperForm.pass_score" :min="0" :max="100" />
+            </el-form-item>
+          </el-col>
+          <el-col :span="6">
+            <el-form-item label="时长(分)">
+              <el-input-number v-model="paperForm.duration_min" :min="5" :max="180" :step="5" />
+            </el-form-item>
+          </el-col>
+        </el-row>
+        <el-form-item label="选择题目">
+          <el-table :data="questionBankForPaper" size="small" max-height="260" @selection-change="onPaperQuestionSelect">
+            <el-table-column type="selection" width="42" />
+            <el-table-column label="题型" width="70">
+              <template #default="{ row }">
+                <el-tag size="small">{{ row.type === 'single' ? '单选' : row.type === 'multi' ? '多选' : '判断' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="题干" prop="content" show-overflow-tooltip min-width="300" />
+            <el-table-column label="难度" width="70" align="center">
+              <template #default="{ row }">{{ row.diff === 'hard' ? '难' : row.diff === 'mid' ? '中' : '易' }}</template>
+            </el-table-column>
+            <el-table-column label="分值" width="110">
+              <template #default="{ row }">
+                <el-input-number
+                  v-model="row._score"
+                  :min="1" :max="20" size="small" controls-position="right"
+                  style="width: 90px" :disabled="!paperSelectedIds.includes(row.id)"
+                />
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-form-item>
+        <div v-if="paperForm.questions.length" class="paper-summary">
+          已选 {{ paperForm.questions.length }} 题，合计 {{ paperTotalScore }} 分
+        </div>
+      </el-form>
+      <template #footer>
+        <el-button @click="paperDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="savePaper">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ============ 试卷预览弹窗 ============ -->
+    <el-dialog v-model="paperPreviewVisible" title="试卷预览（管理端含答案）" width="720px">
+      <template v-if="paperPreview">
+        <div class="preview-title">{{ paperPreview.name }}</div>
+        <div class="preview-meta">
+          <span>共 {{ paperPreview.questions.length }} 题 · 总分 {{ paperPreview.total }} 分</span>
+          <span>分数线 {{ paperPreview.pass }} 分</span>
+          <span>限时 {{ paperPreview.duration }} 分钟</span>
+          <el-tag v-if="paperPreview.status === 'published'" type="success" size="small">已发布</el-tag>
+          <el-tag v-else size="small" effect="plain">草稿</el-tag>
+        </div>
+        <div v-for="(q, i) in paperPreview.questions" :key="q.id" class="paper-q">
+          <div class="paper-q-head">
+            <span>{{ i + 1 }}. [{{ q.type === 'single' ? '单选' : q.type === 'multi' ? '多选' : '判断' }}] {{ q.content }}</span>
+            <el-tag size="small" effect="plain">{{ q.score }} 分</el-tag>
+          </div>
+          <div v-if="q.type !== 'judge'" class="paper-q-options">
+            <span v-for="(opt, j) in q.options" :key="j">{{ String.fromCharCode(65 + j) }}. {{ fmtOption(opt) }}</span>
+          </div>
+          <div v-else class="paper-q-options">A. 正确　B. 错误</div>
+          <div class="paper-q-answer">
+            <el-tag type="success" size="small" effect="plain">答案：{{ q.answer }}</el-tag>
+            <span v-if="q.analysis" class="paper-q-analysis">解析：{{ q.analysis }}</span>
+          </div>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- ============ 培训任务弹窗 ============ -->
+    <el-dialog v-model="taskDialogVisible" :title="'新建培训任务' + (taskForm.courseId ? '（课程已选定）' : '')" width="640px" destroy-on-close>
+      <el-form :model="taskForm" label-width="110px">
+        <el-form-item label="任务名称" required>
+          <el-input v-model="taskForm.name" placeholder="如：Q3全员安全意识强化任务" />
+        </el-form-item>
+        <el-form-item label="选择课程" required>
+          <el-select v-model="taskForm.courseId" style="width: 100%" placeholder="请选择课程">
+            <el-option v-for="c in courses" :key="c.id" :label="c.title" :value="c.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="分配范围" required>
+          <el-radio-group v-model="taskForm.scope">
+            <el-radio-button value="all">全员</el-radio-button>
+            <el-radio-button value="dept">按部门</el-radio-button>
+            <el-radio-button value="users">按人员</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="taskForm.scope === 'dept'" label="选择部门">
+          <div class="dept-tree-box">
+            <el-tree
+              ref="deptTreeRef"
+              :data="deptTreeData"
+              show-checkbox
+              node-key="id"
+              :props="{ label: 'label', children: 'children' }"
+              default-expand-all
+            />
+          </div>
+        </el-form-item>
+        <el-form-item v-if="taskForm.scope === 'users'" label="选择人员">
+          <el-select v-model="taskForm.userIds" multiple filterable style="width: 100%" placeholder="搜索并选择员工">
+            <el-option v-for="u in empUsers" :key="u.id" :label="`${u.name}（${u.dept || '未分配'}）`" :value="u.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="截止日期" required>
+          <el-date-picker
+            v-model="taskForm.deadline"
+            type="datetime"
+            style="width: 100%"
+            placeholder="选择截止日期"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="taskDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveTask">创建任务</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ============ 任务详情弹窗 ============ -->
+    <el-dialog v-model="taskDetailVisible" :title="taskDetail?.name || '任务详情'" width="760px">
+      <template v-if="taskDetail">
+        <div class="preview-meta" style="margin-bottom: 12px">
+          <span>课程：{{ taskDetail.course }}</span>
+          <span>对象：{{ taskDetail.target }}</span>
+          <span>截止：{{ taskDetail.deadline }}</span>
+          <span>完成：{{ taskDetail.people.filter(p => p.status === 'completed').length }}/{{ taskDetail.people.length }} 人</span>
+        </div>
+        <el-table :data="taskDetail.people" size="small" max-height="400">
+          <el-table-column label="姓名" prop="name" width="140" />
+          <el-table-column label="部门" prop="dept" width="140" />
+          <el-table-column label="进度" min-width="180">
+            <template #default="{ row }">
+              <el-progress :percentage="row.progress" :stroke-width="8" :color="row.progress >= 100 ? '#10B981' : '#378ADD'" />
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="100" align="center">
+            <template #default="{ row }">
+              <el-tag :type="row.status === 'completed' ? 'success' : row.status === 'learning' ? 'warning' : 'info'" size="small">
+                {{ row.status === 'completed' ? '已完成' : row.status === 'learning' ? '学习中' : row.status === 'overdue' ? '已逾期' : '未开始' }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="完成时间" prop="completed_at" width="150" />
+        </el-table>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { VideoPlay, Calendar, Collection, Plus, Clock, Document, UploadFilled } from '@element-plus/icons-vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { VideoPlay, Calendar, Collection, Plus, Clock, Document } from '@element-plus/icons-vue'
+import type { ElTree } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
-import { trainingApi } from '@/api'
+import { orgApi, trainingApi } from '@/api'
 
 const activeTab = ref('course')
 const courseKw = ref('')
 const categoryFilter = ref('')
 const levelFilter = ref('')
 const taskKw = ref('')
-const taskDialogVisible = ref(false)
 
-const taskForm = reactive({
-  courseId: null as number | null,
-  targets: [] as string[],
-  deadline: '',
-  autoAssign: false,
-})
-
-const openTaskDialog = (courseId?: number) => {
-  if (courseId) taskForm.courseId = courseId
-  taskDialogVisible.value = true
-}
-
-// ============ 新建课程弹窗 ============
-const courseDialogVisible = ref(false)
-const courseForm = reactive({
-  name: '',
-  type: 'video',
-  level: 'easy',
-  duration: 20,
-  desc: '',
-})
-
-function openCourseDialog() {
-  Object.assign(courseForm, { name: '', type: 'video', level: 'easy', duration: 20, desc: '' })
-  courseDialogVisible.value = true
-}
-
-async function saveCourse() {
-  if (!courseForm.name) {
-    ElMessage.warning('请填写课程名称')
-    return
-  }
-  try {
-    await trainingApi.createCourse({ ...courseForm })
-    courseDialogVisible.value = false
-    ElMessage.success('课程已创建')
-    loadCourses()
-  } catch { /* 拦截器已提示 */ }
-}
-
-async function saveTask() {
-  if (!taskForm.courseId) {
-    ElMessage.warning('请选择课程')
-    return
-  }
-  try {
-    await trainingApi.createTask({ ...taskForm })
-    taskDialogVisible.value = false
-    ElMessage.success('培训任务已创建')
-    loadTasks()
-  } catch { /* 拦截器已提示 */ }
-}
-
-function levelLabel(level: string) {
-  return level === 'easy' ? '初级' : level === 'mid' ? '中级' : '高级'
-}
-
-function levelTagType(level: string) {
-  return level === 'easy' ? 'success' : level === 'mid' ? 'warning' : 'danger'
-}
-
+// ============ 课程 ============
 const accentList = ['blue', 'green', 'orange', 'purple', 'red', 'teal'] as const
-/** 课程封面视觉映射（按类型取样式，非数据 mock） */
 const COVER_BY_TYPE: Record<string, { bg: string; icon: string }> = {
   video: { bg: 'linear-gradient(135deg, #378ADD, #1E5FA8)', icon: '🛡️' },
   article: { bg: 'linear-gradient(135deg, #10B981, #059669)', icon: '📧' },
@@ -438,24 +596,24 @@ interface CourseRow {
   duration: number
   learners: number
   completion: number
+  description?: string
   accent: string
   coverBg: string
   coverIcon: string
 }
-interface TaskRow {
-  name: string; course: string; target: string; count: number
-  start: string; end: string; progress: number; started: number; done: number; status: string
-}
-interface QuestionRow {
-  type: string; content: string; options: string; diff: string; course: string
-}
-interface PaperRow {
-  name: string; single: number; multi: number; judge: number; total: number
-  pass: number; passPct: number; publishCount: number
-}
 const courses = ref<CourseRow[]>([])
 
-// 类型 + 难度 + 关键词组合过滤（供课程卡片渲染）
+const courseTypeLabel: Record<string, string> = { video: '视频', article: '图文', pdf: 'PDF', interactive: '互动式' }
+const courseTagType: Record<string, string> = { video: 'primary', article: 'success', interactive: 'warning', pdf: 'info' }
+
+const courseStats = computed(() => {
+  const s = { total: courses.value.length, video: 0, article: 0, pdf: 0, interactive: 0 }
+  for (const c of courses.value) {
+    if (c.type in s) s[c.type as keyof typeof s] += 1
+  }
+  return s
+})
+
 const filteredCourses = computed(() => {
   const kw = courseKw.value.trim().toLowerCase()
   return courses.value.filter(c => {
@@ -466,18 +624,10 @@ const filteredCourses = computed(() => {
   })
 })
 
-const taskRows = ref<TaskRow[]>([])
-const questionRows = ref<QuestionRow[]>([])
-const paperRows = ref<PaperRow[]>([])
-
-// ============ 接口加载（失败静默，http 拦截器统一提示） ============
-const courseTypeLabel: Record<string, string> = { video: '视频', article: '图文', pdf: 'PDF', interactive: '互动式' }
-const courseTagType: Record<string, string> = { video: 'primary', article: 'success', interactive: 'warning', pdf: 'info' }
-
 async function loadCourses() {
   try {
     const list = (await trainingApi.courses()) as Array<Record<string, any>>
-    if (Array.isArray(list) && list.length) {
+    if (Array.isArray(list)) {
       courses.value = list.map((c, i) => {
         const cover = COVER_BY_TYPE[c.type] ?? COVER_BY_TYPE.default
         return {
@@ -490,42 +640,464 @@ async function loadCourses() {
         } as CourseRow
       })
     }
-  } catch {
-    /* 失败静默：http 拦截器统一提示，保持空状态 */
-  }
+  } catch { /* 拦截器已提示 */ }
 }
+
+// 课程弹窗（新建/编辑）
+const courseDialogVisible = ref(false)
+const courseForm = reactive({
+  id: 0, name: '', type: 'video', level: 'easy', duration: 20, desc: '', material: '',
+})
+function openCourseDialog(c?: CourseRow) {
+  Object.assign(courseForm, c
+    ? { id: c.id, name: c.title, type: c.type, level: c.level, duration: c.duration, desc: '', material: c.material || '' }
+    : { id: 0, name: '', type: 'video', level: 'easy', duration: 20, desc: '', material: '' })
+  if (c) {
+    trainingApi.courseDetail(c.id).then((d: any) => {
+      if (d?.description) courseForm.desc = d.description
+    }).catch(() => { /* 拦截器已提示 */ })
+  }
+  courseDialogVisible.value = true
+}
+async function saveCourse() {
+  if (!courseForm.name) { ElMessage.warning('请填写课程名称'); return }
+  try {
+    if (courseForm.id) {
+      await trainingApi.updateCourse(courseForm.id, { ...courseForm })
+      ElMessage.success('课程已更新')
+    } else {
+      await trainingApi.createCourse({ ...courseForm })
+      ElMessage.success('课程已创建')
+    }
+    courseDialogVisible.value = false
+    loadCourses()
+  } catch { /* 拦截器已提示 */ }
+}
+
+// 课程预览
+const coursePreviewVisible = ref(false)
+const coursePreview = ref<CourseRow | null>(null)
+async function previewCourse(c: CourseRow) {
+  try {
+    const detail = (await trainingApi.courseDetail(c.id)) as any
+    coursePreview.value = { ...c, ...(detail || {}) }
+  } catch { /* 拦截器已提示 */ }
+  coursePreviewVisible.value = true
+}
+
+async function removeCourse(c: CourseRow) {
+  try {
+    await ElMessageBox.confirm(`确认删除课程「${c.title}」？被题目/任务引用时将被拒绝。`, '删除课程', { type: 'warning' })
+  } catch { return }
+  try {
+    await trainingApi.deleteCourse(c.id)
+    ElMessage.success('课程已删除')
+    loadCourses()
+  } catch { /* 拦截器已提示 */ }
+}
+
+// ============ 培训任务 ============
+interface TaskRow {
+  id: number
+  name: string; course: string; target: string; count: number
+  start: string; end: string; progress: number; started: number; done: number; status: string
+}
+const taskRows = ref<TaskRow[]>([])
+
+const taskStats = computed(() => {
+  const s = { running: 0, completed: 0, totalPeople: 0 }
+  for (const t of taskRows.value) {
+    if (t.status === 'running' || t.status === 'expired') s.running += 1
+    else s.completed += 1
+    s.totalPeople += t.count
+  }
+  return s
+})
+const filteredTasks = computed(() => {
+  const kw = taskKw.value.trim().toLowerCase()
+  return taskRows.value.filter(t => !kw || t.name.toLowerCase().includes(kw))
+})
 
 async function loadTasks() {
   try {
     const list = (await trainingApi.tasks()) as Array<Record<string, any>>
-    if (Array.isArray(list) && list.length) taskRows.value = list as TaskRow[]
-  } catch {
-    /* 失败静默：http 拦截器统一提示，保持空状态 */
-  }
+    if (Array.isArray(list)) taskRows.value = list as TaskRow[]
+  } catch { /* 拦截器已提示 */ }
 }
+
+// 任务弹窗
+const taskDialogVisible = ref(false)
+const deptTreeData = ref<{ id: number; label: string; children?: any[] }[]>([])
+const deptTreeRef = ref<InstanceType<typeof ElTree>>()
+const empUsers = ref<{ id: number; name: string; dept: string }[]>([])
+const taskForm = reactive({
+  name: '',
+  courseId: null as number | null,
+  scope: 'all',
+  userIds: [] as number[],
+  deadline: '' as string,
+})
+
+const openTaskDialog = (courseId?: number) => {
+  Object.assign(taskForm, { name: '', courseId: courseId ?? null, scope: 'all', userIds: [], deadline: '' })
+  loadEmpUsers()
+  taskDialogVisible.value = true
+}
+
+async function loadEmpUsers() {
+  try {
+    if (!deptTreeData.value.length) deptTreeData.value = (await orgApi.deptTree()) as any[]
+    if (!empUsers.value.length) {
+      // pageSize 有后端上限，按页循环拉全量
+      const users: { id: number; name: string; dept: string }[] = []
+      let page = 1
+      let total = 1
+      while (users.length < total && page <= 20) {
+        const res = (await orgApi.users({ page, pageSize: 100 })) as { total: number; list: { id: number; name: string; dept: string }[] }
+        total = res.total || 0
+        users.push(...(res.list || []))
+        page += 1
+      }
+      empUsers.value = users
+    }
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function saveTask() {
+  if (!taskForm.name) { ElMessage.warning('请填写任务名称'); return }
+  if (!taskForm.courseId) { ElMessage.warning('请选择课程'); return }
+  if (!taskForm.deadline) { ElMessage.warning('请选择截止日期'); return }
+  let targets: Record<string, unknown> = {}
+  let labels: string[] = []
+  if (taskForm.scope === 'all') {
+    targets = { all: true }
+    labels = ['全员']
+  } else if (taskForm.scope === 'dept') {
+    const checked = deptTreeRef.value?.getCheckedNodes(true) ?? []
+    const ids = checked.map((n: any) => n.id)
+    if (!ids.length) { ElMessage.warning('请选择部门'); return }
+    targets = { dept_ids: ids }
+    labels = checked.map((n: any) => n.label)
+  } else {
+    if (!taskForm.userIds.length) { ElMessage.warning('请选择人员'); return }
+    targets = { user_ids: taskForm.userIds }
+    labels = empUsers.value.filter(u => taskForm.userIds.includes(u.id)).map(u => u.name)
+  }
+  try {
+    await trainingApi.createTask({
+      name: taskForm.name,
+      courseId: taskForm.courseId,
+      deadline: taskForm.deadline,
+      targets: { ...targets, labels },
+    })
+    taskDialogVisible.value = false
+    ElMessage.success('培训任务已创建')
+    loadTasks()
+  } catch { /* 拦截器已提示 */ }
+}
+
+// 任务详情 / 催办 / 关闭 / 删除 / 导出
+const taskDetailVisible = ref(false)
+const taskDetail = ref<{ name: string; course: string; target: string; deadline: string; people: any[] } | null>(null)
+async function viewTaskDetail(row: TaskRow) {
+  try {
+    taskDetail.value = (await trainingApi.taskDetail(row.id)) as any
+    taskDetailVisible.value = true
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function remindTask(row: TaskRow) {
+  try {
+    const r = (await trainingApi.remindTask(row.id)) as { undone: number }
+    ElMessage.success(`催办已发出，尚有 ${r.undone} 人未完成（通知渠道二期接入）`)
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function closeTask(row: TaskRow) {
+  try {
+    await ElMessageBox.confirm(`确认关闭任务「${row.name}」？未完成人员明细将保留。`, '关闭任务', { type: 'warning' })
+  } catch { return }
+  try {
+    await trainingApi.closeTask(row.id)
+    ElMessage.success('任务已关闭')
+    loadTasks()
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function removeTask(row: TaskRow) {
+  try {
+    await ElMessageBox.confirm(`确认删除任务「${row.name}」？人员学习明细将一并删除。`, '删除任务', { type: 'warning' })
+  } catch { return }
+  try {
+    await trainingApi.deleteTask(row.id)
+    ElMessage.success('任务已删除')
+    loadTasks()
+  } catch { /* 拦截器已提示 */ }
+}
+
+function exportTask(row: TaskRow) {
+  trainingApi.exportTask(row.id)
+}
+
+// ============ 题库 ============
+interface QuestionRow {
+  id: number
+  type: string; content: string; options: string; diff: string; course: string
+}
+const questionRows = ref<QuestionRow[]>([])
+
+const questionKw = ref('')
+const filteredQuestions = computed(() => {
+  const kw = questionKw.value.trim().toLowerCase()
+  if (!kw) return questionRows.value
+  return questionRows.value.filter(q => q.content.toLowerCase().includes(kw))
+})
 
 async function loadQuestionBank() {
   try {
     const list = (await trainingApi.questionBank()) as Array<Record<string, any>>
-    if (Array.isArray(list) && list.length) {
-      // 后端 options 为数组，转为界面展示的分隔字符串
+    if (Array.isArray(list)) {
       questionRows.value = list.map(q => ({
         ...q,
         options: Array.isArray(q.options) ? q.options.join(' / ') : q.options,
       })) as QuestionRow[]
     }
-  } catch {
-    /* 失败静默：http 拦截器统一提示，保持空状态 */
+  } catch { /* 拦截器已提示 */ }
+}
+
+const questionDialogVisible = ref(false)
+const questionForm = reactive({
+  id: 0, type: 'single', content: '', options: ['', ''] as string[],
+  answer: '', diff: 'easy', analysis: '', course_id: null as number | null,
+})
+function openQuestionDialog(q?: QuestionRow) {
+  if (q) {
+    Object.assign(questionForm, {
+      id: q.id, type: q.type, content: q.content,
+      options: q.type === 'judge' ? [] : (q.options || '').split(' / ').filter(Boolean).map(fmtOption),
+      answer: '', diff: q.diff, analysis: '', course_id: null,
+    })
+    // 回填答案/解析/课程
+    loadQuestionMeta(q.id)
+  } else {
+    Object.assign(questionForm, { id: 0, type: 'single', content: '', options: ['', ''], answer: '', diff: 'easy', analysis: '', course_id: null })
+  }
+  questionDialogVisible.value = true
+}
+async function loadQuestionMeta(id: number) {
+  try {
+    const q = (await trainingApi.questionDetail(id)) as any
+    if (q) {
+      questionForm.answer = q.answer || ''
+      questionForm.analysis = q.analysis || ''
+      questionForm.course_id = q.course_id ?? null
+    }
+  } catch { /* 拦截器已提示 */ }
+}
+function onQuestionTypeChange() {
+  if (questionForm.type === 'judge') {
+    questionForm.options = []
+    questionForm.answer = 'A'
+  } else if (!questionForm.options.length || questionForm.options.length < 2) {
+    questionForm.options = ['', '']
+    questionForm.answer = ''
   }
 }
+async function saveQuestion() {
+  if (!questionForm.content) { ElMessage.warning('请填写题干'); return }
+  const payload: Record<string, unknown> = {
+    type: questionForm.type,
+    content: questionForm.content,
+    answer: questionForm.answer.trim(),
+    diff: questionForm.diff,
+    analysis: questionForm.analysis,
+    course_id: questionForm.course_id,
+  }
+  if (questionForm.type !== 'judge') {
+    const options = questionForm.options.map(o => o.trim()).filter(Boolean)
+    if (options.length < 2) { ElMessage.warning('至少提供 2 个选项'); return }
+    payload.options = options
+  }
+  try {
+    if (questionForm.id) {
+      await trainingApi.updateQuestion(questionForm.id, payload)
+      ElMessage.success('题目已更新')
+    } else {
+      await trainingApi.createQuestion(payload)
+      ElMessage.success('题目已创建')
+    }
+    questionDialogVisible.value = false
+    loadQuestionBank()
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function removeQuestion(q: QuestionRow) {
+  try {
+    await ElMessageBox.confirm('确认删除该题目？被试卷引用时将被拒绝。', '删除题目', { type: 'warning' })
+  } catch { return }
+  try {
+    await trainingApi.deleteQuestion(q.id)
+    ElMessage.success('题目已删除')
+    loadQuestionBank()
+  } catch { /* 拦截器已提示 */ }
+}
+
+// ============ 试卷 ============
+interface PaperRow {
+  id: number
+  name: string; single: number; multi: number; judge: number; total: number
+  pass: number; passPct: number; publishCount: number; status: string
+}
+const paperRows = ref<PaperRow[]>([])
 
 async function loadPapers() {
   try {
     const list = (await trainingApi.papers()) as Array<Record<string, any>>
-    if (Array.isArray(list) && list.length) paperRows.value = list as PaperRow[]
-  } catch {
-    /* 失败静默：http 拦截器统一提示，保持空状态 */
-  }
+    if (Array.isArray(list)) paperRows.value = list as PaperRow[]
+  } catch { /* 拦截器已提示 */ }
+}
+
+const paperDialogVisible = ref(false)
+const paperForm = reactive({
+  id: 0, title: '', pass_score: 60, duration_min: 30, questions: [] as { id: number; score: number }[],
+})
+const questionBankForPaper = ref<{ id: number; type: string; content: string; diff: string; _score: number }[]>([])
+const paperSelectedIds = ref<number[]>([])
+const paperTotalScore = computed(() => paperForm.questions.reduce((s, q) => s + q.score, 0))
+
+function openPaperDialog(p?: PaperRow) {
+  Object.assign(paperForm, p
+    ? { id: p.id, title: p.name, pass_score: p.pass, duration_min: 30, questions: [] }
+    : { id: 0, title: '', pass_score: 60, duration_min: 30, questions: [] })
+  paperSelectedIds.value = []
+  paperDialogVisible.value = true
+  loadPaperQuestionBank()
+  if (p) loadPaperQuestions(p.id)
+}
+
+async function loadPaperQuestionBank() {
+  try {
+    const list = (await trainingApi.questionBank()) as any[]
+    if (Array.isArray(list)) {
+      questionBankForPaper.value = list.map((q: any) => ({
+        id: q.id, type: q.type, content: q.content,
+        diff: q.diff, _score: 5,
+      }))
+    }
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function loadPaperQuestions(pid: number) {
+  try {
+    const detail = (await trainingApi.paperDetail(pid)) as { questions: { id: number; score: number }[]; duration: number }
+    if (detail) {
+      paperForm.questions = (detail.questions || []).map(q => ({ id: q.id, score: q.score }))
+      paperSelectedIds.value = paperForm.questions.map(q => q.id)
+      if (detail.duration) paperForm.duration_min = detail.duration
+      for (const q of questionBankForPaper.value) {
+        const found = paperForm.questions.find(x => x.id === q.id)
+        if (found) q._score = found.score
+      }
+    }
+  } catch { /* 拦截器已提示 */ }
+}
+
+function onPaperQuestionSelect(rows: any[]) {
+  paperSelectedIds.value = rows.map(r => r.id)
+  const map = new Map(rows.map(r => [r.id, r._score]))
+  paperForm.questions = rows.map(r => ({ id: r.id, score: Number(map.get(r.id)) || 5 }))
+}
+
+async function savePaper() {
+  if (!paperForm.title) { ElMessage.warning('请填写试卷名称'); return }
+  if (!paperForm.questions.length) { ElMessage.warning('请至少选择一道题目'); return }
+  try {
+    if (paperForm.id) {
+      await trainingApi.updatePaper(paperForm.id, {
+        title: paperForm.title,
+        pass_score: paperForm.pass_score,
+        duration_min: paperForm.duration_min,
+        questions: paperForm.questions,
+      })
+      ElMessage.success('试卷已更新')
+    } else {
+      await trainingApi.createPaper({
+        title: paperForm.title,
+        pass_score: paperForm.pass_score,
+        duration_min: paperForm.duration_min,
+        questions: paperForm.questions,
+      })
+      ElMessage.success('试卷已创建')
+    }
+    paperDialogVisible.value = false
+    loadPapers()
+  } catch { /* 拦截器已提示 */ }
+}
+
+// 试卷预览
+const paperPreviewVisible = ref(false)
+const paperPreview = ref<any>(null)
+async function previewPaper(p: PaperRow) {
+  try {
+    paperPreview.value = await trainingApi.paperDetail(p.id)
+    paperPreviewVisible.value = true
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function publishPaper(row: PaperRow) {
+  try {
+    await ElMessageBox.confirm(`确认发布试卷「${row.name}」？发布后可用于考试（考试分发二期接入）。`, '发布试卷', { type: 'warning' })
+  } catch { return }
+  try {
+    await trainingApi.publishPaper(row.id)
+    ElMessage.success('试卷已发布')
+    loadPapers()
+  } catch { /* 拦截器已提示 */ }
+}
+
+async function removePaper(row: PaperRow) {
+  try {
+    await ElMessageBox.confirm(`确认删除试卷「${row.name}」？考试记录将保留。`, '删除试卷', { type: 'warning' })
+  } catch { return }
+  try {
+    await trainingApi.deletePaper(row.id)
+    ElMessage.success('试卷已删除')
+    loadPapers()
+  } catch { /* 拦截器已提示 */ }
+}
+
+// ============ 考试记录 ============
+const examRecordRows = ref<{ id: number; time: string; paper: string; user: string; dept: string; score: number; passed: boolean }[]>([])
+const examPage = ref(1)
+const examPageSize = 10
+const examTotal = ref(0)
+const examMonthTotal = ref(0)
+const examStats = computed(() => ({
+  monthTotal: examMonthTotal.value,
+  total: examTotal.value,
+}))
+
+async function loadExamRecords() {
+  try {
+    const res = (await trainingApi.examRecords({ page: examPage.value, pageSize: examPageSize })) as any
+    if (res) {
+      examRecordRows.value = res.list || []
+      examTotal.value = res.total || 0
+      examMonthTotal.value = res.monthTotal || 0
+    }
+  } catch { /* 拦截器已提示 */ }
+}
+
+// ============ 工具 ============
+function levelLabel(level: string) {
+  return level === 'easy' ? '初级' : level === 'mid' ? '中级' : '高级'
+}
+/** 选项文本可能自带 "A." 前缀（seed 数据），展示时统一剥掉由界面拼字母 */
+function fmtOption(opt: string) {
+  return opt.replace(/^[A-Z][.、]\s*/, '')
+}
+function levelTagType(level: string) {
+  return level === 'easy' ? 'success' : level === 'mid' ? 'warning' : 'danger'
 }
 
 onMounted(() => {
@@ -533,7 +1105,10 @@ onMounted(() => {
   loadTasks()
   loadQuestionBank()
   loadPapers()
+  loadExamRecords()
 })
+
+watch(examPage, () => loadExamRecords())
 </script>
 
 <style scoped lang="scss">
@@ -577,6 +1152,7 @@ onMounted(() => {
   font-size: 12px;
   color: var(--color-text-secondary);
   margin-bottom: 12px;
+  flex-wrap: wrap;
   .el-icon { vertical-align: middle; margin-right: 2px; }
 }
 .course-stats {
@@ -612,5 +1188,60 @@ onMounted(() => {
     color: var(--color-text-tertiary);
     margin-top: 4px;
   }
+}
+.opt-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+.opt-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.paper-summary {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 8px;
+}
+.preview-body {
+  .preview-title { font-size: 16px; font-weight: 600; margin-bottom: 8px; }
+  .preview-meta {
+    display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px;
+    color: var(--color-text-secondary); margin-bottom: 12px;
+  }
+  .preview-desc {
+    font-size: 13px; color: var(--color-text-primary);
+    background: var(--color-background-secondary); border-radius: 8px; padding: 12px;
+    line-height: 1.7;
+  }
+}
+.paper-q {
+  border-bottom: 1px dashed var(--color-border-tertiary);
+  padding: 10px 0;
+  .paper-q-head {
+    display: flex; justify-content: space-between; gap: 8px;
+    font-size: 13px; font-weight: 500;
+  }
+  .paper-q-options {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 12px; color: var(--color-text-secondary);
+    margin: 6px 0;
+  }
+  .paper-q-answer {
+    display: flex; gap: 10px; align-items: center; font-size: 12px;
+  }
+  .paper-q-analysis {
+    color: var(--color-text-tertiary);
+  }
+}
+.dept-tree-box {
+  width: 100%;
+  max-height: 220px;
+  overflow: auto;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 6px;
+  padding: 8px;
 }
 </style>

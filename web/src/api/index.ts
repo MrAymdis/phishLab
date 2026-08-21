@@ -187,14 +187,42 @@ export const channelApi = {
 
 // ---- 培训 / 举报 ----
 export const trainingApi = {
+  // 课程
   courses: () => get('/api/v1/courses'),
+  courseDetail: (id: number) => get(`/api/v1/courses/${id}`),
   createCourse: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/courses', payload),
+  updateCourse: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/courses/${id}`, payload),
+  deleteCourse: (id: number) => del(`/api/v1/courses/${id}`),
+  // 培训任务
   tasks: () => get('/api/v1/training-tasks'),
+  taskDetail: (id: number) => get(`/api/v1/training-tasks/${id}`),
   createTask: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/training-tasks', payload),
+  closeTask: (id: number) => post(`/api/v1/training-tasks/${id}/close`),
+  remindTask: (id: number) => post<{ undone: number }>(`/api/v1/training-tasks/${id}/remind`),
+  deleteTask: (id: number) => del(`/api/v1/training-tasks/${id}`),
+  exportTask: (id: number) => download(`/api/v1/training-tasks/${id}/export`),
+  // 题库
   questionBank: () => get('/api/v1/exam/questions'),
+  questionDetail: (id: number) => get(`/api/v1/exam/questions/${id}`),
+  createQuestion: (payload: Record<string, unknown>) =>
+    post<{ id: number }>('/api/v1/exam/questions', payload),
+  updateQuestion: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/exam/questions/${id}`, payload),
+  deleteQuestion: (id: number) => del(`/api/v1/exam/questions/${id}`),
+  // 试卷
   papers: () => get('/api/v1/exam/papers'),
+  paperDetail: (id: number) => get(`/api/v1/exam/papers/${id}`),
+  createPaper: (payload: Record<string, unknown>) =>
+    post<{ id: number }>('/api/v1/exam/papers', payload),
+  updatePaper: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/exam/papers/${id}`, payload),
+  publishPaper: (id: number) => post(`/api/v1/exam/papers/${id}/publish`),
+  deletePaper: (id: number) => del(`/api/v1/exam/papers/${id}`),
+  // 考试记录
+  examRecords: (q: Record<string, unknown>) => get('/api/v1/exam/records', q),
 }
 export const reportApi = {
   list: (q: Record<string, unknown>) => get('/api/v1/mail-reports', q),
