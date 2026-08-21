@@ -1,7 +1,7 @@
 from io import BytesIO
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -23,6 +23,13 @@ routers = [courses, tasks, exam]
 @courses.get("", summary="课程库列表")
 def list_courses(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.list_courses(db, account))
+
+
+@courses.post("/upload", summary="上传课程封面/课件（本地静态目录）",
+              dependencies=[Depends(require_perm("training:manage"))])
+async def upload_course_file(file: UploadFile = File(...), file_type: str = "content",
+                             account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.upload_course_file(db, account, file, file_type))
 
 
 @courses.get("/{cid}", summary="课程详情（预览）")

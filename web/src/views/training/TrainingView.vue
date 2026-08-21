@@ -46,14 +46,19 @@
           <el-col :span="8" v-for="c in filteredCourses" :key="c.id">
             <div class="card course-card" :class="`card-${c.accent}`">
               <div class="course-cover" :style="{ background: c.coverBg }">
-                <span class="cover-icon">{{ c.coverIcon }}</span>
+                <img v-if="c.cover_url" :src="c.cover_url" class="cover-img" alt="" />
+                <span v-if="!c.cover_url" class="cover-icon">{{ c.coverIcon }}</span>
                 <el-tag size="small" class="cover-tag" :type="c.tagType">{{ c.typeLabel }}</el-tag>
               </div>
               <div class="course-body">
                 <div class="course-title">{{ c.title }}</div>
                 <div class="course-meta">
                   <span><el-icon><Clock /></el-icon> {{ c.duration }} 分钟</span>
-                  <span>课件：{{ c.material || '未指定' }}</span>
+                  <span>
+                    课件：
+                    <el-link v-if="c.content_url" type="primary" :href="c.content_url" target="_blank">{{ c.material || '查看课件' }}</el-link>
+                    <template v-else>{{ c.material || '未指定' }}</template>
+                  </span>
                   <el-tag size="small" :type="levelTagType(c.level)" effect="plain">{{ levelLabel(c.level) }}</el-tag>
                 </div>
                 <div class="course-stats">
@@ -309,6 +314,38 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="课程封面">
+          <div class="upload-row">
+            <el-upload
+              :show-file-list="false"
+              accept=".png,.jpg,.jpeg,.webp,.gif"
+              :http-request="(opt: any) => handleFileUpload(opt, 'cover')"
+            >
+              <el-button size="small" :icon="UploadFilled">上传封面图</el-button>
+            </el-upload>
+            <span v-if="courseForm.cover_url" class="upload-info">
+              <el-link type="success" :href="courseForm.cover_url" target="_blank">已上传封面</el-link>
+              <el-button link type="danger" size="small" @click="courseForm.cover_url = ''">移除</el-button>
+            </span>
+            <span v-else class="upload-info dim">建议 800×450，≤2MB（png/jpg/webp）</span>
+          </div>
+        </el-form-item>
+        <el-form-item label="课件文件">
+          <div class="upload-row">
+            <el-upload
+              :show-file-list="false"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.mp4,.webm,.mov,.mp3,.wav"
+              :http-request="(opt: any) => handleFileUpload(opt, 'content')"
+            >
+              <el-button size="small" :icon="UploadFilled">上传课件</el-button>
+            </el-upload>
+            <span v-if="courseForm.content_url" class="upload-info">
+              <el-link type="primary" :href="courseForm.content_url" target="_blank">打开课件</el-link>
+              <el-button link type="danger" size="small" @click="courseForm.content_url = ''">移除</el-button>
+            </span>
+            <span v-else class="upload-info dim">文档/视频/音频，≤100MB</span>
+          </div>
+        </el-form-item>
         <el-form-item label="课程描述">
           <el-input v-model="courseForm.desc" type="textarea" :rows="3" placeholder="课程目标、适用人群、内容简介" />
         </el-form-item>
@@ -564,7 +601,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay, Calendar, Collection, Plus, Clock, Document } from '@element-plus/icons-vue'
+import { VideoPlay, Calendar, Collection, Plus, Clock, Document, UploadFilled } from '@element-plus/icons-vue'
 import type { ElTree } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
@@ -597,6 +634,8 @@ interface CourseRow {
   learners: number
   completion: number
   description?: string
+  cover_url?: string
+  content_url?: string
   accent: string
   coverBg: string
   coverIcon: string
@@ -647,17 +686,28 @@ async function loadCourses() {
 const courseDialogVisible = ref(false)
 const courseForm = reactive({
   id: 0, name: '', type: 'video', level: 'easy', duration: 20, desc: '', material: '',
+  cover_url: '', content_url: '',
 })
 function openCourseDialog(c?: CourseRow) {
   Object.assign(courseForm, c
-    ? { id: c.id, name: c.title, type: c.type, level: c.level, duration: c.duration, desc: '', material: c.material || '' }
-    : { id: 0, name: '', type: 'video', level: 'easy', duration: 20, desc: '', material: '' })
+    ? { id: c.id, name: c.title, type: c.type, level: c.level, duration: c.duration, desc: '', material: c.material || '', cover_url: '', content_url: '' }
+    : { id: 0, name: '', type: 'video', level: 'easy', duration: 20, desc: '', material: '', cover_url: '', content_url: '' })
   if (c) {
     trainingApi.courseDetail(c.id).then((d: any) => {
       if (d?.description) courseForm.desc = d.description
+      courseForm.cover_url = d?.cover_url || ''
+      courseForm.content_url = d?.content_url || ''
     }).catch(() => { /* 拦截器已提示 */ })
   }
   courseDialogVisible.value = true
+}
+async function handleFileUpload(opt: { file: File }, fileType: 'cover' | 'content') {
+  try {
+    const r = await trainingApi.uploadCourseFile(opt.file, fileType)
+    if (fileType === 'cover') courseForm.cover_url = r.url
+    else courseForm.content_url = r.url
+    ElMessage.success(fileType === 'cover' ? '封面已上传' : '课件已上传')
+  } catch { /* 拦截器已提示 */ }
 }
 async function saveCourse() {
   if (!courseForm.name) { ElMessage.warning('请填写课程名称'); return }
@@ -1132,6 +1182,30 @@ watch(examPage, () => loadExamRecords())
 .cover-icon {
   font-size: 48px;
   opacity: 0.9;
+}
+.cover-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+.upload-info {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.upload-info.dim {
+  color: var(--color-text-tertiary);
 }
 .cover-tag {
   position: absolute;

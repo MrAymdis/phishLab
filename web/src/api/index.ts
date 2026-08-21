@@ -194,6 +194,14 @@ export const trainingApi = {
     post<{ id: number }>('/api/v1/courses', payload),
   updateCourse: (id: number, payload: Record<string, unknown>) =>
     put(`/api/v1/courses/${id}`, payload),
+  /** 上传课程封面/课件（cover 图片 ≤2MB；content 文档音视频 ≤100MB），返回 /static 访问地址 */
+  uploadCourseFile: (file: File, fileType: 'cover' | 'content') => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return post<{ url: string; size: number; filename: string }>(
+      `/api/v1/courses/upload?file_type=${fileType}`, fd,
+    )
+  },
   deleteCourse: (id: number) => del(`/api/v1/courses/${id}`),
   // 培训任务
   tasks: () => get('/api/v1/training-tasks'),

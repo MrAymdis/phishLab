@@ -3,10 +3,13 @@
 演练联动（SUBMIT → 自动生成培训任务）TODO(二期) 由事件消费者触发。
 """
 from datetime import datetime, timedelta
+from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy import func, select
 
 from app.core.audit import record_audit
+from app.core.config import settings as app_settings
 from app.core.deps import apply_data_scope
 from app.core.errors import BizError, ErrorCode
 
@@ -63,6 +66,9 @@ def create_course(db, account, payload: dict) -> int:
         level=payload.get("level") or "easy",
         source="custom",
         status="approved",
+        material=payload.get("material") or None,
+        cover_url=payload.get("cover_url") or None,
+        content_url=payload.get("content_url") or None,
         created_by=account.id,
     )
     db.add(course)
@@ -447,6 +453,10 @@ def update_course(db, account, course_id: int, payload: dict) -> None:
         c.description = payload["desc"]
     if payload.get("material"):
         c.material = payload["material"]
+    if "cover_url" in payload:
+        c.cover_url = payload["cover_url"] or None
+    if "content_url" in payload:
+        c.content_url = payload["content_url"] or None
     db.commit()
     record_audit(db, account=account, module="training", action="update_course",
                  target_type="course", target_id=str(course_id), detail={"title": c.title})
@@ -467,6 +477,59 @@ def delete_course(db, account, course_id: int) -> None:
     record_audit(db, account=account, module="training", action="delete_course",
                  target_type="course", target_id=str(course_id), detail={"title": c.title})
     return None
+
+
+# ---------- 课件上传 ----------
+
+# 扩展名白名单：cover=封面图片；content=课件文档/音视频
+_UPLOAD_ALLOWED = {
+    "cover": {"png", "jpg", "jpeg", "webp", "gif"},
+    "content": {"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "txt",
+                "mp4", "webm", "mov", "mp3", "wav"},
+}
+_UPLOAD_MAX = {"cover": 2 * 1024 * 1024, "content": 100 * 1024 * 1024}
+
+
+def upload_course_file(db, account, file, file_type: str) -> dict:
+    """上传课程封面/课件到本地静态目录（与 logo 上传同模式；MinIO 二期接入）。
+
+    file_type: cover=封面图片(≤2MB) / content=课件文档音视频(≤100MB)。
+    流式写盘避免大文件占内存；文件名 uuid 化防冲突；返回 /static/course/ 访问地址。
+    """
+    if file_type not in _UPLOAD_ALLOWED:
+        raise BizError(ErrorCode.PARAM_INVALID, "upload 类型必须为 cover/content")
+    allowed = _UPLOAD_ALLOWED[file_type]
+    ext = (Path(file.filename or "").suffix or "").lower().lstrip(".")
+    if ext not in allowed:
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       f"{'封面' if file_type == 'cover' else '课件'}仅支持 {'/'.join(sorted(allowed))}")
+
+    dest_dir = Path(app_settings.static_dir) / "course"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}.{ext}"
+    dest = dest_dir / filename
+    max_size = _UPLOAD_MAX[file_type]
+    size = 0
+    try:
+        with dest.open("wb") as out:
+            while chunk := file.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > max_size:
+                    raise BizError(ErrorCode.PARAM_INVALID,
+                                   f"{'封面' if file_type == 'cover' else '课件'}不能超过 {max_size // (1024 * 1024)}MB")
+                out.write(chunk)
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        raise
+    if size == 0:
+        dest.unlink(missing_ok=True)
+        raise BizError(ErrorCode.PARAM_INVALID, "上传文件为空")
+
+    url = f"/static/course/{filename}"
+    record_audit(db, account=account, module="training", action="upload_course_file",
+                 target_type="course_file", target_id=url,
+                 detail={"type": file_type, "size": size, "original": file.filename})
+    return {"url": url, "size": size, "filename": file.filename or filename}
 
 
 # ---------- 题目 CRUD ----------
