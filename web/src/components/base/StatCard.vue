@@ -24,6 +24,8 @@ defineProps<{
 <style scoped lang="scss">
 .stat-card {
   min-width: 0;
+  height: 100%;
+  box-sizing: border-box;
 }
 .stat-title {
   font-size: 12px;

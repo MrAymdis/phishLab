@@ -17,51 +17,48 @@
 
     <el-tabs v-model="activeTab" style="margin: 8px 16px 0">
       <el-tab-pane label="演练报表" name="drill">
-        <el-row :gutter="12" style="margin: 16px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 16px 0 0">
           <el-col :span="8">
-            <div class="card card-blue">
+            <div class="card card-blue" style="height: 100%">
               <div class="card-title">选择演练</div>
               <el-select v-model="selectedDrill" size="default" style="width: 100%; margin-top: 8px" @change="loadDrillReport">
                 <el-option v-for="c in drillOptions" :key="c.id" :label="c.label" :value="c.id" />
               </el-select>
             </div>
           </el-col>
-          <el-col :span="5">
+          <el-col :span="8">
             <StatCard title="综合得分" :value="drillScore" suffix=" 分" sub="100 - 中招率×2" accent="teal" />
           </el-col>
-          <el-col :span="5">
-            <StatCard title="高危行为" :value="drillHighRisk" suffix=" 次" sub="提交了密码" accent="orange" />
-          </el-col>
-          <el-col :span="6">
+          <el-col :span="8">
             <StatCard title="覆盖部门" :value="drillDeptCount" suffix=" 个" accent="purple" />
           </el-col>
         </el-row>
 
         <!-- 核心行为指标 -->
-        <el-row :gutter="12" style="margin: 12px 0 0">
-          <el-col :span="4" v-for="m in drillMetrics" :key="m.title">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 0">
+          <el-col :span="6" v-for="m in drillMetrics" :key="m.title">
             <StatCard :title="m.title" :value="m.value" :suffix="m.suffix" :sub="m.sub" :accent="m.accent" />
           </el-col>
         </el-row>
 
-        <el-row :gutter="12" style="margin: 12px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 0">
           <el-col :span="12">
-            <div class="card card-orange">
+            <div class="card card-orange" style="height: 100%">
               <div class="card-title">转化漏斗分析</div>
               <FunnelChart :items="drillFunnel" height="320px" />
             </div>
           </el-col>
           <el-col :span="12">
-            <div class="card card-blue">
+            <div class="card card-blue" style="height: 100%">
               <div class="card-title">演练期间每日趋势</div>
               <BaseChart :option="dailyTrendChart" height="320px" />
             </div>
           </el-col>
         </el-row>
 
-        <el-row :gutter="12" style="margin: 12px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 0">
           <el-col :span="24">
-            <div class="card card-purple">
+            <div class="card card-purple" style="height: 100%">
               <div class="card-title">部门对比明细</div>
               <el-table :data="deptCompareRows" size="small" style="margin-top: 8px">
                 <el-table-column label="部门" prop="dept" min-width="140" />
@@ -90,9 +87,9 @@
           </el-col>
         </el-row>
 
-        <el-row :gutter="12" style="margin: 12px 0 16px">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 16px">
           <el-col :span="24">
-            <div class="card card-red">
+            <div class="card card-red" style="height: 100%">
               <div class="card-title">中招明细</div>
               <el-table :data="pagedVictims" size="small" style="margin-top: 8px">
                 <el-table-column label="姓名" prop="name" width="90" />
@@ -130,9 +127,9 @@
 
       <el-tab-pane label="部门报表" name="dept">
         <!-- 时间范围筛选 -->
-        <el-row :gutter="12" style="margin: 16px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 16px 0 0">
           <el-col :span="24">
-            <div class="card card-blue">
+            <div class="card card-blue" style="height: 100%">
               <div class="toolbar">
                 <span style="font-size: 12px; color: var(--color-text-tertiary)">统计周期：</span>
                 <el-radio-group v-model="deptRange" size="small">
@@ -145,15 +142,15 @@
           </el-col>
         </el-row>
 
-        <el-row :gutter="12" style="margin: 12px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 0">
           <el-col :span="12">
-            <div class="card card-purple">
+            <div class="card card-purple" style="height: 100%">
               <div class="card-title">各部门安全意识横向对比（中招率%）</div>
               <BaseChart :option="deptBarChart" height="420px" />
             </div>
           </el-col>
           <el-col :span="12">
-            <div class="card card-green">
+            <div class="card card-green" style="height: 100%">
               <div class="card-title">
                 <el-select v-model="selectedDept" size="small" style="width: 180px" @change="loadDeptPersons">
                   <el-option label="全部部门" :value="0" />
@@ -187,9 +184,9 @@
         </el-row>
 
         <!-- 部门维度明细表 -->
-        <el-row :gutter="12" style="margin: 12px 0 16px">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 16px">
           <el-col :span="24">
-            <div class="card card-teal">
+            <div class="card card-teal" style="height: 100%">
               <div class="card-title">部门维度明细</div>
               <el-table :data="deptDetailRows" size="small" style="margin-top: 8px">
                 <el-table-column label="部门" prop="dept" min-width="140" />
@@ -222,9 +219,9 @@
       </el-tab-pane>
 
       <el-tab-pane label="综合趋势" name="trend">
-        <el-row :gutter="12" style="margin: 16px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 16px 0 0">
           <el-col :span="24">
-            <div class="card card-teal">
+            <div class="card card-teal" style="height: 100%">
               <div class="card-title">
                 <div class="trend-filter">
                   <el-radio-group v-model="trendRange" size="small">
@@ -242,9 +239,9 @@
           </el-col>
         </el-row>
 
-        <el-row :gutter="12" style="margin: 12px 0 16px">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 16px">
           <el-col :span="24">
-            <div class="card card-blue">
+            <div class="card card-blue" style="height: 100%">
               <div class="card-title">场景防范意识表</div>
               <el-table :data="filteredScenes" size="small" style="margin-top: 8px">
                 <el-table-column label="场景名称" prop="name" min-width="160" />
@@ -273,23 +270,23 @@
         </el-row>
 
         <!-- 趋势总结卡片 -->
-        <el-row :gutter="12" style="margin: 12px 0 16px">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 16px">
           <el-col :span="8">
-            <div class="card card-green">
+            <div class="card card-green" style="height: 100%">
               <div class="card-title">安全意识提升率</div>
               <div class="summary-big">{{ trendImprovement }}<span class="summary-unit">%</span></div>
               <div class="summary-desc">{{ trendImprovementDesc }}</div>
             </div>
           </el-col>
           <el-col :span="8">
-            <div class="card card-red">
+            <div class="card card-red" style="height: 100%">
               <div class="card-title">最薄弱场景</div>
               <div class="summary-big danger">{{ weakestScene }}</div>
               <div class="summary-desc">{{ weakestSceneDesc }}</div>
             </div>
           </el-col>
           <el-col :span="8">
-            <div class="card card-blue">
+            <div class="card card-blue" style="height: 100%">
               <div class="card-title">意识最佳部门</div>
               <div class="summary-big info">{{ bestDept }}</div>
               <div class="summary-desc">{{ bestDeptDesc }}</div>
@@ -299,9 +296,9 @@
       </el-tab-pane>
 
       <el-tab-pane label="员工个人报表" name="person">
-        <el-row :gutter="12" style="margin: 16px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 16px 0 0">
           <el-col :span="8">
-            <div class="card card-blue">
+            <div class="card card-blue" style="height: 100%">
               <div class="card-title">搜索员工</div>
               <el-select
                 v-model="selectedPersonId"
@@ -319,7 +316,7 @@
             </div>
           </el-col>
           <el-col :span="16">
-            <div class="card card-teal">
+            <div class="card card-teal" style="height: 100%">
               <div class="person-card">
                 <div class="avatar-block">{{ (selectedPerson.name || '?').slice(0, 1) }}</div>
                 <div class="person-info">
@@ -336,9 +333,9 @@
           </el-col>
         </el-row>
 
-        <el-row :gutter="12" style="margin: 12px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 0">
           <el-col :span="12">
-            <div class="card card-orange">
+            <div class="card card-orange" style="height: 100%">
               <div class="card-title">五维能力雷达（个人风险画像）</div>
               <BaseChart :option="radarChart" height="300px" />
               <div class="risk-score">
@@ -348,7 +345,7 @@
             </div>
           </el-col>
           <el-col :span="12">
-            <div class="card card-purple">
+            <div class="card card-purple" style="height: 100%">
               <div class="card-title">历史行为轨迹</div>
               <el-timeline style="margin-top: 4px">
                 <el-timeline-item
@@ -367,9 +364,9 @@
         </el-row>
 
         <!-- 个人风险值变化趋势 -->
-        <el-row :gutter="12" style="margin: 12px 0 0">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 0">
           <el-col :span="24">
-            <div class="card card-red">
+            <div class="card card-red" style="height: 100%">
               <div class="card-title">个人风险值变化趋势（近6月）</div>
               <BaseChart v-if="personRiskTrendHasData" :option="personRiskTrend" height="240px" />
               <el-empty v-else description="风险历史暂未归档（画像按周期归档二期提供）" :image-size="70" style="padding: 24px 0" />
@@ -377,9 +374,9 @@
           </el-col>
         </el-row>
 
-        <el-row :gutter="12" style="margin: 12px 0 16px">
+        <el-row :gutter="12" align="stretch" style="margin: 12px 0 16px">
           <el-col :span="24">
-            <div class="card card-green">
+            <div class="card card-green" style="height: 100%">
               <div class="card-title">培训完成记录</div>
               <el-table :data="trainRows" size="small" style="margin-top: 8px">
                 <el-table-column label="课程名称" prop="course" min-width="200" />
@@ -455,7 +452,6 @@ async function doExport(kind: 'excel' | 'pdf') {
 const selectedDrill = ref<number | null>(null)
 const drillOptions = ref<{ id: number; label: string }[]>([])
 const drillScore = ref('--')
-const drillHighRisk = ref(0)
 const drillDeptCount = ref(0)
 const victimPage = ref(1)
 const victimPageSize = ref(10)
@@ -499,11 +495,13 @@ async function loadDrillReport() {
   try {
     const data = (await analyticsApi.campaignReport(selectedDrill.value)) as Record<string, any>
     const metrics: any[] = data?.metrics ?? []
-    // 综合得分已在顶部卡片展示，指标行只保留前 5 张
-    drillMetrics.value = metrics.slice(0, 5).map((m: any) => ({
-      ...m,
-      value: typeof m.value === 'number' ? m.value.toLocaleString() : m.value,
-    }))
+    // 综合得分已在顶部卡片展示，指标行去掉打开数（与漏斗/趋势重复）
+    drillMetrics.value = metrics.slice(0, 5)
+      .filter((m: any) => m.title !== '打开数')
+      .map((m: any) => ({
+        ...m,
+        value: typeof m.value === 'number' ? m.value.toLocaleString() : m.value,
+      }))
     drillScore.value = metrics[5]?.value ?? '--'
     drillFunnel.value = (data?.funnel ?? []).map((f: any) => ({
       ...f,
@@ -515,7 +513,6 @@ async function loadDrillReport() {
       ...v,
       risk: v.input_pwd ? 'high' : v.clicks >= 2 ? 'mid' : 'low',
     }))
-    drillHighRisk.value = victims.filter((v: any) => v.input_pwd).length
     deptCompareRows.value = data?.deptCompare ?? []
     drillDeptCount.value = deptCompareRows.value.length
     if (data?.dailyTrend?.labels) {
