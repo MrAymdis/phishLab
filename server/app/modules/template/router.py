@@ -36,6 +36,8 @@ class LandingPageCreate(BaseModel):
 
 class CloneRequest(BaseModel):
     url: str
+    name: str | None = None
+    type: str | None = None  # mail_login/oa_login/pan_auth/custom/cloned
 
 
 @email_templates.get("", summary="邮件模板列表")
@@ -107,10 +109,16 @@ def duplicate_page(pid: int, account=Depends(get_current_account), db: Session =
     return resp.ok({"id": service.duplicate_landing_page(db, account, pid)})
 
 
+@landing_pages.delete("/{pid}", summary="删除落地页（被演练引用时阻止）",
+                      dependencies=[Depends(require_perm("template:manage"))])
+def delete_page(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.delete_landing_page(db, account, pid))
+
+
 @landing_pages.post("/clone", summary="URL 克隆工具（红线：仅限客户自有系统页面，全程审计）",
                     dependencies=[Depends(require_perm("template:manage"))])
 def clone(payload: CloneRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok({"id": service.clone_url(db, account, payload.url)})
+    return resp.ok({"id": service.clone_url(db, account, payload.url, payload.name, payload.type)})
 
 
 @attachments.get("", summary="附件载荷列表")

@@ -182,7 +182,7 @@
               <div class="card-actions">
                 <el-button size="small" link @click="previewLanding(l)">预览</el-button>
                 <el-button size="small" link @click="openLandingDialog(l)">编辑</el-button>
-                <el-button size="small" link @click="cloneLanding(l)">克隆</el-button>
+                <el-button size="small" link @click="cloneLanding(l)">复制</el-button>
                 <el-button size="small" link type="danger" @click="deleteLanding(l)">删除</el-button>
               </div>
             </div>
@@ -741,6 +741,7 @@ interface LandingPage {
   id: number
   name: string
   type: string
+  source?: string
   typeText: string
   fields: number
   collect: number
@@ -1001,7 +1002,7 @@ async function saveEmail(mode: 'draft' | 'test') {
 // ============ Tab2: 落地页 ============
 const landingStats = computed<StatItem[]>(() => {
   const data = landingData.value
-  const cloned = data.filter((d) => d.type === 'cloned').length
+  const cloned = data.filter((d) => d.source === 'cloned').length
   const custom = data.filter((d) => d.type === 'custom').length
   return [
     { accent: 'blue', title: '落地页总数', value: String(data.length), sub: '实时统计', subTone: 'success' },
@@ -1114,10 +1115,20 @@ async function cloneLanding(row: LandingPage) {
     // 失败提示由 http 拦截器统一弹出
   }
 }
-function deleteLanding(row: LandingPage) {
-  ElMessageBox.confirm(`确认删除落地页「${row.name}」？`, '提示', { type: 'warning' })
-    .then(() => ElMessage.success('落地页已删除'))
-    .catch(() => { /* 用户取消 */ })
+async function deleteLanding(row: LandingPage) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除落地页「${row.name}」？被演练引用时将被拒绝。`,
+      '删除落地页', { type: 'warning' },
+    )
+  } catch { return /* 用户取消 */ }
+  try {
+    await templateApi.deleteLandingPage(row.id)
+    ElMessage.success('落地页已删除')
+    await loadTemplates()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 
 // 克隆落地页弹窗
@@ -1128,7 +1139,11 @@ async function submitClone() {
   if (!cloneForm.url) { ElMessage.warning('请填写源页面URL'); return }
   if (!cloneForm.name) { ElMessage.warning('请填写页面名称'); return }
   try {
-    await templateApi.cloneLandingPage(cloneForm.url)
+    await templateApi.cloneLandingPage(
+      cloneForm.url,
+      cloneForm.name,
+      VIEW_TYPE_TO_PAGE[cloneForm.type] ?? 'cloned',
+    )
     ElMessage.success('页面克隆完成，已生成草稿（请稍后刷新列表查看）')
     cloneDialogVisible.value = false
     await loadTemplates()
@@ -1285,7 +1300,7 @@ watch(payloadKw, () => { payloadPage.value = 1 })
 // 后端枚举值 → 前端筛选键归一化
 const SCENE_TO_CAT: Record<string, string> = { system: 'upgrade', prize: 'lottery', security: 'alert' }
 const PAGE_TYPE_TO_VIEW: Record<string, string> = {
-  mail_login: 'mail', oa_login: 'oa', pan_auth: 'pan', cloned: 'custom',
+  mail_login: 'mail', oa_login: 'oa', pan_auth: 'pan',
 }
 const ATTACH_TYPE_TO_VIEW: Record<string, string> = { macro_doc: 'macro' }
 

@@ -133,7 +133,9 @@ export const templateApi = {
     put(`/api/v1/landing-pages/${id}`, payload),
   duplicateLandingPage: (id: number) =>
     post<{ id: number }>(`/api/v1/landing-pages/${id}/duplicate`),
-  cloneLandingPage: (url: string) => post<{ id: number }>('/api/v1/landing-pages/clone', { url }),
+  cloneLandingPage: (url: string, name?: string, type?: string) =>
+    post<{ id: number }>('/api/v1/landing-pages/clone', { url, name, type }),
+  deleteLandingPage: (id: number) => del(`/api/v1/landing-pages/${id}`),
   payloads: () => get('/api/v1/attachments'),
   qrAssets: () => get('/api/v1/qr-assets'),
 }

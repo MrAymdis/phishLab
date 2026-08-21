@@ -373,6 +373,7 @@ def list_landing_pages(db, account) -> list[dict]:
                 "id": p.id,
                 "name": p.name,
                 "type": p.type,
+                "source": p.source,
                 "typeText": _PAGE_TYPE_LABELS.get(p.type, p.type),
                 "fields": fields,
                 "collect": collect,
@@ -1216,16 +1217,37 @@ def update_landing_page(db, account, page_id: int, payload: dict) -> None:
     )
 
 
-def clone_url(db, account, url: str) -> int:
+_PAGE_TYPES = ("mail_login", "oa_login", "pan_auth", "custom", "cloned")
+
+
+def delete_landing_page(db, account, page_id: int) -> None:
+    """删除落地页；被演练引用时阻止（防演练历史悬空），表单字段级联删除。"""
+    p = db.get(LandingPage, page_id)
+    if p is None:
+        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
+    if db.scalar(select(Campaign.id).where(Campaign.landing_page_id == page_id).limit(1)):
+        raise BizError(ErrorCode.BIZ_CONFLICT, "落地页已被演练引用，无法删除")
+    db.execute(LandingFormField.__table__.delete().where(LandingFormField.page_id == page_id))
+    db.delete(p)
+    db.commit()
+    record_audit(
+        db, account=account, module="template", action="delete_landing_page",
+        target_type="landing_page", target_id=page_id, detail={"name": p.name},
+    )
+
+
+def clone_url(db, account, url: str, name: str | None = None, page_type: str | None = None) -> int:
     """URL 克隆：抓取 → 存草稿待人工核对（仅限客户自有系统，操作留审计）。"""
     try:
         resp = httpx.get(url, timeout=8, follow_redirects=True)
     except Exception as err:
         raise BizError(ErrorCode.INTEGRATION_ERROR, f"页面克隆失败：{err}")
     host = urlparse(url).netloc or url
+    if page_type not in _PAGE_TYPES:
+        page_type = "cloned"
     page = LandingPage(
-        name=f"克隆-{host}",
-        type="cloned",
+        name=(name or "").strip() or f"克隆-{host}",
+        type=page_type,
         slug=secrets.token_hex(6),
         html_content=resp.text[:500000],
         source="cloned",
