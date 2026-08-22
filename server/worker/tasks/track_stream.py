@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 
 import redis
 from sqlalchemy import func, select
+from sqlalchemy.dialects.mysql import insert
 
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -86,8 +87,6 @@ def consume():
         dept_ids = {u.dept_id for u in users.values() if u.dept_id}
         depts = {d.id: d for d in db.scalars(
             select(EmpDept).where(EmpDept.id.in_(dept_ids))).all()} if dept_ids else {}
-        stats = {s.campaign_id: s for s in db.scalars(
-            select(CampaignStat).where(CampaignStat.campaign_id.in_(cids))).all()} if cids else {}
         profiles = {p.user_id: p for p in db.scalars(
             select(EmpRiskProfile).where(EmpRiskProfile.user_id.in_(uids))).all()} if uids else {}
         # 行为计数预加载（替代每事件 _behavior_counts 聚合查询；本批事件内存增量）
@@ -196,20 +195,20 @@ def consume():
                 target.report_flag = 1
                 target.report_at = target.report_at or ts
 
-            # 冗余计数：人数字径（仅首次行为计入，重复打开/点击不重复计数）
-            stat = stats.get(campaign.id)
-            if stat is None:
-                stat = CampaignStat(campaign_id=campaign.id)
-                db.add(stat)
-                stats[campaign.id] = stat
+            # 冗余计数：人数字径（仅首次行为计入；原子累加防并发消费 lost update）
+            inc_col = None
             if event_type == "open" and first_open:
-                stat.open_cnt += 1
+                inc_col = "open_cnt"
             elif event_type == "click" and first_click:
-                stat.click_cnt += 1
+                inc_col = "click_cnt"
             elif event_type == "submit" and first_submit:
-                stat.submit_cnt += 1
+                inc_col = "submit_cnt"
             elif event_type == "report" and first_report:
-                stat.report_cnt += 1
+                inc_col = "report_cnt"
+            if inc_col:
+                stmt = insert(CampaignStat).values(campaign_id=campaign.id, **{inc_col: 1})
+                db.execute(stmt.on_duplicate_key_update(
+                    **{inc_col: getattr(CampaignStat, inc_col) + 1}))
 
             # 提交事件 → 高危预警
             if event_type == "submit" and user:

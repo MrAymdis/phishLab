@@ -91,11 +91,12 @@ def _deliver_target(db, t, campaign, assets: dict) -> bool:
     t.send_status = "sent" if ok else "failed"
     t.sent_at = datetime.now() if ok else None
     if ok:
-        stat = db.get(CampaignStat, campaign.id)
-        if stat is None:
-            stat = CampaignStat(campaign_id=campaign.id)
-            db.add(stat)
-        stat.delivered_cnt += 1
+        # 原子累加：并发批次投递下避免读-改-写竞态（lost update）
+        from sqlalchemy.dialects.mysql import insert
+
+        stmt = insert(CampaignStat).values(campaign_id=campaign.id, delivered_cnt=1)
+        db.execute(stmt.on_duplicate_key_update(
+            delivered_cnt=CampaignStat.delivered_cnt + 1))
     db.commit()
     logger.info("投递完成 target=%s ok=%s", t.id, ok)
     return ok
