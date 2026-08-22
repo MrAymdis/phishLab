@@ -58,7 +58,7 @@ def health():
 
 @app.get("/px/{token}.gif")
 def pixel(token: str, request: Request):
-    """打开追踪像素。TODO(一期)：去重时间窗、pixel_degrade 演练配置判断。"""
+    """打开追踪像素（事件去重由消费侧 60s 窗口处理）。TODO(二期)：pixel_degrade 演练配置判断。"""
     _emit(token, "open", request)
     return Response(content=_PIXEL, media_type="image/gif",
                     headers={"Cache-Control": "no-store"})
@@ -66,7 +66,16 @@ def pixel(token: str, request: Request):
 
 @app.get("/t/{token}")
 def redirect(token: str, request: Request):
-    """链接点击跳转。TODO(一期)：token → landing URL 查询（本地缓存 + DB 降级）。"""
-    _emit(token, "click", request)
-    landing = f"{settings.landing_base_url}/p/placeholder"
+    """链接点击跳转：token → 演练落地页 slug（只读查库）→ 记 click 事件 → 302。
+
+    token 无效时兜底跳 placeholder 页（渲染默认登录卡片，无害）。
+    """
+    from app.modules.tracking.stream import resolve_landing_slug
+
+    slug = resolve_landing_slug(token)
+    if slug:
+        _emit(token, "click", request)
+    landing = f"{settings.landing_base_url}/p/{slug or 'placeholder'}"
+    if slug:
+        landing += f"?token={token}"
     return Response(status_code=302, headers={"Location": landing})

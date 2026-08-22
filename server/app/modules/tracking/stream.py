@@ -16,6 +16,36 @@ def _client() -> redis.Redis:
     return redis.from_url(settings.redis_url, decode_responses=True)
 
 
+def resolve_landing_slug(token: str) -> str | None:
+    """token → 演练落地页 slug（点击跳转 /t/{token} 用）。
+
+    只读查询（红线：追踪侧禁止写 MySQL）；token 无效返回 None，调用方兜底。
+    """
+    from sqlalchemy import select
+
+    from app.db.session import SessionLocal
+    from app.modules.campaign.models import Campaign, CampaignTarget
+    from app.modules.template.models import LandingPage
+
+    if not token:
+        return None
+    try:
+        db = SessionLocal()
+        try:
+            target = db.scalar(select(CampaignTarget).where(CampaignTarget.token == token))
+            if target is None:
+                return None
+            campaign = db.get(Campaign, target.campaign_id)
+            if campaign is None or not campaign.landing_page_id:
+                return None
+            page = db.get(LandingPage, campaign.landing_page_id)
+            return page.slug if page else None
+        finally:
+            db.close()
+    except Exception:
+        return None  # DB 异常回退兜底跳转，不阻断链路
+
+
 def push_event(*, token: str, event_type: str, ip: str = "", ua: str = "",
                detail: dict | None = None) -> bool:
     """追加一条追踪事件（open/click/submit/report...）。token 未知也入流，消费端丢弃。"""

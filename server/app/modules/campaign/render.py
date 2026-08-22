@@ -23,11 +23,13 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None)
     domain = db.get(PhishDomain, campaign.domain_id) if campaign.domain_id else None
     domain_name = domain.domain if domain else "drill-domain.com"
     slug = lp.slug if lp else "demo"
-    # 链接追踪开关（track_link=0 时链接不携带 token，点击不计入追踪）
+    # 链接追踪开关：开启时走 /t/{token} 短链跳转（记 click → 302 落地页，链接形态更真实，
+    # 落地页 slug 不直接暴露在邮件里）；关闭时直连落地页（无 token，点击不计入追踪）
     track_link = tpl.track_link if tpl else 1
-    landing_url = f"http://{domain_name}:{settings.landing_port}/p/{slug}"
     if track_link:
-        landing_url += f"?token={token}"
+        landing_url = f"http://{domain_name}:{settings.landing_port}/t/{token}"
+    else:
+        landing_url = f"http://{domain_name}:{settings.landing_port}/p/{slug}"
 
     dept = db.get(EmpDept, user.dept_id) if user is not None and user.dept_id else None
     var_map = {

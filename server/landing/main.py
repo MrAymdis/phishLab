@@ -201,6 +201,27 @@ def pixel(token: str, request: Request):
     )
 
 
+@app.get("/t/{token}")
+def redirect(token: str, request: Request):
+    """链接点击跳转：记 click 事件 → 302 到演练落地页（带 token 供提交归属）。
+
+    演练域名解析到本服务（与 /px 同驻）；token 无效时兜底 placeholder 页。
+    """
+    from app.modules.tracking.stream import push_event, resolve_landing_slug
+
+    slug = resolve_landing_slug(token)
+    if slug:
+        push_event(
+            token=token, event_type="click",
+            ip=request.client.host if request.client else "",
+            ua=request.headers.get("user-agent", ""),
+        )
+    location = f"/p/{slug or 'placeholder'}"
+    if slug:
+        location += f"?token={token}"
+    return RedirectResponse(location, status_code=302)
+
+
 @app.get("/p/{slug}", response_class=HTMLResponse)
 def serve(slug: str, request: Request, token: str = ""):
     """渲染落地页：自定义/克隆页面渲染 html_content（消毒后），内置类型渲染通用登录卡片。
