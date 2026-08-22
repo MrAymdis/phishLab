@@ -87,14 +87,28 @@ def _render_custom_html(page, slug: str, token: str, submit_base: str = "") -> s
     )
 
 
-def _load_page(slug: str):
-    """slug → LandingPage；独立部署下与主库同库。TODO(三期)：接入 Redis 缓存。"""
+def _load_page_and_fields(slug: str) -> tuple[object | None, list[dict] | None]:
+    """slug → (LandingPage, 表单字段)；页面与字段单会话加载（避免同请求两次连接）。
+
+    page 为 None 或字段为空时返回 None/None，由调用方回退默认登录卡片。
+    TODO(三期)：接入 Redis 缓存。
+    """
     from app.db.session import SessionLocal
-    from app.modules.template.models import LandingPage
+    from app.modules.template.models import LandingFormField, LandingPage
 
     db = SessionLocal()
     try:
-        return db.query(LandingPage).filter(LandingPage.slug == slug).first()
+        page = db.query(LandingPage).filter(LandingPage.slug == slug).first()
+        if page is None:
+            return None, None
+        fields = [
+            {"field_key": f.field_key, "label": f.label or f.field_key,
+             "sensitive_flag": f.sensitive_flag}
+            for f in db.query(LandingFormField)
+            .filter(LandingFormField.page_id == page.id)
+            .order_by(LandingFormField.sort).all()
+        ]
+        return page, fields or None
     finally:
         db.close()
 
@@ -146,37 +160,6 @@ def learn(course_id: int):
 <p style="color:#555;margin:0 0 20px">{title}</p>
 <p style="color:#999;font-size:12px;line-height:1.7">{desc or "培训课件接入中，敬请期待。"}</p>
 </div></body></html>""")
-
-
-def _load_page_fields(slug: str, page=None) -> tuple[str, list[dict]]:
-    """slug → (页面名, 表单字段)。TODO(三期)：接入 Redis 缓存。"""
-    from app.db.session import SessionLocal
-    from app.modules.template.models import LandingFormField
-
-    if page is None:
-        page = _load_page(slug)
-    if page is None:
-        return "统一认证平台", [
-            {"field_key": "username", "label": "用户名"},
-            {"field_key": "password", "label": "密码", "sensitive_flag": 1},
-        ]
-    db = SessionLocal()
-    try:
-        fields = [
-            {"field_key": f.field_key, "label": f.label or f.field_key,
-             "sensitive_flag": f.sensitive_flag}
-            for f in db.query(LandingFormField)
-            .filter(LandingFormField.page_id == page.id)
-            .order_by(LandingFormField.sort).all()
-        ]
-    finally:
-        db.close()
-    if not fields:
-        fields = [
-            {"field_key": "username", "label": "用户名"},
-            {"field_key": "password", "label": "密码", "sensitive_flag": 1},
-        ]
-    return page.name, fields
 
 
 @app.get("/health")
@@ -249,14 +232,21 @@ def serve(slug: str, request: Request, token: str = ""):
             ip=request.client.host if request.client else "",
             ua=request.headers.get("user-agent", ""),
         )
-    page = _load_page(slug)
+    page, fields = _load_page_and_fields(slug)
     if page is not None and page.html_content:
         return HTMLResponse(
             _render_custom_html(page, slug, token, str(request.base_url)),
             headers={"Cache-Control": "no-store"},
         )
-    # TODO(一期)：注入指纹采集 JS（Canvas/WebGL/字体），写入 fingerprint 表
-    title, fields = _load_page_fields(slug, page)
+    if page is None:
+        title = "统一认证平台"
+    else:
+        title = page.name
+    if not fields:
+        fields = [
+            {"field_key": "username", "label": "用户名"},
+            {"field_key": "password", "label": "密码", "sensitive_flag": 1},
+        ]
     return _render_login_page(title, fields, slug, token=token)
 
 
