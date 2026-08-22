@@ -105,6 +105,9 @@ def consume():
                 else:
                     fp.last_seen_at = ts
                     fp.seen_count += 1
+                    # 旧指纹补快照：首见于 detail 功能上线前，本次事件携带原始组件则回填
+                    if fp.detail is None and isinstance(detail.get("fp"), dict):
+                        fp.detail = detail["fp"]
                 fingerprint_id = fp.id
 
             db.add(TrackEvent(
