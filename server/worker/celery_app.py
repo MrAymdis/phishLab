@@ -42,11 +42,9 @@ celery_app.conf.beat_schedule = {
         "task": "worker.tasks.track_stream.consume",
         "schedule": 10.0,
     },
-    # 每 6 小时 DNS 巡检（SPF/DKIM/DMARC + 送达评分）
-    "dns-patrol": {
-        "task": "worker.tasks.dns_patrol.patrol",
-        "schedule": crontab(minute=0, hour="*/6"),
-    },
+    # 注：DNS 巡检已改为手动触发（API: GET /api/v1/domains/{id}/dns-check，发送配置页
+    # 域名列表「检测」按钮）——自动巡检的 dnspython 同步查询会阻塞投递 worker 线程，
+    # 且域名 DNS 记录配置后极少变化，定时巡检价值有限。
     # 每 5 分钟扫描 running 演练：投递完毕/到期自动置 completed
     "campaign-auto-complete": {
         "task": "worker.tasks.campaign_auto.auto_complete",
