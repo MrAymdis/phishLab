@@ -65,13 +65,21 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None)
         )
 
     # 打开追踪像素（track_pixel=1 时注入）：邮件被查看（客户端加载图片）时记录 open 事件。
+    # pixel_degrade=1（像素降级）：以 120×30 正常图片替代 1×1 隐藏像素，防收件人/客户端识别
     track_pixel = tpl.track_pixel if tpl else 1
     if track_pixel:
-        pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{token}.gif"
-        html += (
-            f'<img src="{pixel_url}" width="1" height="1" '
-            f'style="border:0;width:1px;height:1px;opacity:0" alt="" />'
-        )
+        if campaign.pixel_degrade:
+            pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{token}.png"
+            html += (
+                f'<img src="{pixel_url}" width="120" height="30" '
+                f'style="border:0;display:block;margin-top:8px" alt="" />'
+            )
+        else:
+            pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{token}.gif"
+            html += (
+                f'<img src="{pixel_url}" width="1" height="1" '
+                f'style="border:0;width:1px;height:1px;opacity:0" alt="" />'
+            )
 
     # 发件人显示名：模板 sender → 通道名 → 演练伪装发件人（display_name/name）
     ch = db.get(SendChannel, campaign.channel_id) if campaign.channel_id else None

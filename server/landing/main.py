@@ -222,6 +222,20 @@ def redirect(token: str, request: Request):
     return RedirectResponse(location, status_code=302)
 
 
+@app.get("/px/{token}.png")
+def pixel_png(token: str, request: Request):
+    """像素降级模式：正常尺寸图片替代 1×1 像素，同样记录 open 事件。"""
+    from app.modules.tracking.stream import pixel_png_bytes, push_event
+
+    push_event(
+        token=token, event_type="open",
+        ip=request.client.host if request.client else "",
+        ua=request.headers.get("user-agent", ""),
+    )
+    return Response(pixel_png_bytes(), media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
 @app.get("/p/{slug}", response_class=HTMLResponse)
 def serve(slug: str, request: Request, token: str = ""):
     """渲染落地页：自定义/克隆页面渲染 html_content（消毒后），内置类型渲染通用登录卡片。

@@ -334,13 +334,15 @@
         <div class="form-group">
           <label class="form-label">高级防识别设置</label>
           <div class="field-box">
-            <label class="field-item">
-              <el-checkbox v-model="triggerForm.adv[0]" />
+            <label class="field-item" style="opacity:.55">
+              <el-checkbox v-model="triggerForm.adv[0]" disabled />
               <span>邮件内容随机化（防止垃圾网关识别）</span>
+              <el-tag size="small" type="info" effect="plain">三期</el-tag>
             </label>
-            <label class="field-item">
-              <el-checkbox v-model="triggerForm.adv[1]" />
+            <label class="field-item" style="opacity:.55">
+              <el-checkbox v-model="triggerForm.adv[1]" disabled />
               <span>随机发件时间抖动（±5分钟）</span>
+              <el-tag size="small" type="info" effect="plain">三期</el-tag>
             </label>
             <label class="field-item">
               <el-checkbox v-model="triggerForm.adv[2]" />
@@ -792,6 +794,7 @@ async function submit() {
       schedule_type: triggerForm.mode === 'now' ? 'now' : 'timed',
       schedule_at: triggerForm.mode === 'schedule' ? triggerForm.schedule_time : null,
       batch_count: 3,
+      pixel_degrade: triggerForm.adv[2],
       // 前端 mode：train/popup/none/url；后端 policy：redirect/popup/none/url（train→redirect 映射）
       training_policy: trainForm.mode === 'train' ? 'redirect' : trainForm.mode,
       training_redirect_url: trainForm.mode === 'url' ? trainForm.redirect_url.trim() : '',

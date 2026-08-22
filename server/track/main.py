@@ -64,6 +64,16 @@ def pixel(token: str, request: Request):
                     headers={"Cache-Control": "no-store"})
 
 
+@app.get("/px/{token}.png")
+def pixel_png(token: str, request: Request):
+    """像素降级模式：正常尺寸图片替代 1×1 像素，同样记录 open 事件。"""
+    from app.modules.tracking.stream import pixel_png_bytes
+
+    _emit(token, "open", request)
+    return Response(content=pixel_png_bytes(), media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
 @app.get("/t/{token}")
 def redirect(token: str, request: Request):
     """链接点击跳转：token → 演练落地页 slug（只读查库）→ 记 click 事件 → 302。

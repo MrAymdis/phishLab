@@ -11,6 +11,26 @@ EVENT_STREAM = "evt:stream"
 EVENT_GROUP = "evt-consumers"
 MAX_LEN = 10000  # 流裁剪上限，防止积压
 
+_pixel_png_cache: bytes | None = None
+
+
+def pixel_png_bytes() -> bytes:
+    """像素降级图片：120×30 浅灰横幅 PNG（替代 1×1 追踪像素，防识别）。
+
+    缓存生成结果，双服务（landing/track）共用。
+    """
+    global _pixel_png_cache
+    if _pixel_png_cache is None:
+        import io
+
+        from PIL import Image
+
+        img = Image.new("RGB", (120, 30), (245, 247, 250))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        _pixel_png_cache = buf.getvalue()
+    return _pixel_png_cache
+
 
 def _client() -> redis.Redis:
     return redis.from_url(settings.redis_url, decode_responses=True)
