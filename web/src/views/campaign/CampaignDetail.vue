@@ -158,7 +158,17 @@ async function load() {
 type SseFrameData = { type: string; data?: Record<string, unknown> }
 const sseConnected = ref(false)
 let stopStream: (() => void) | null = null
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 const polling = usePolling(() => load(), 5000)
+
+/** SSE 断线 10 秒后自动重连（重连成功即停轮询；组件卸载时清理） */
+function scheduleReconnect() {
+  if (reconnectTimer) return
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null
+    startStream()
+  }, 10000)
+}
 
 function startStream() {
   const id = Number(route.params.id)
@@ -186,10 +196,12 @@ function startStream() {
     onError: () => {
       sseConnected.value = false
       polling.start()
+      scheduleReconnect()
     },
     onClose: () => {
       sseConnected.value = false
       polling.start()
+      scheduleReconnect()
     },
   })
 }
@@ -245,6 +257,10 @@ onMounted(() => {
 onUnmounted(() => {
   stopStream?.()
   polling.stop()
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
 })
 </script>
 

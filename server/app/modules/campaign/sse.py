@@ -30,14 +30,18 @@ async def campaign_event_stream(db, account, campaign_id: int):
     try:
         dash = service.dashboard(db, account, campaign_id)
         tl = service.timeline(db, account, campaign_id, 1, 50)
-        yield _frame("snapshot", {
-            "dashboard": dash,
-            "timeline": tl["list"],
-            "timeline_total": tl["total"],
-        })
     except Exception as err:  # 演练不存在/无权访问：推错误帧后结束
         yield _frame("error", {"message": str(err)})
+        db.close()
         return
+    # 快照数据就绪立即释放 DB 会话：SSE 长连接（可能数小时）不再占用连接池——
+    # 此前每个挂起的 SSE 占 1 个连接（池上限 15），反复刷新会耗尽连接池卡死全部接口
+    db.close()
+    yield _frame("snapshot", {
+        "dashboard": dash,
+        "timeline": tl["list"],
+        "timeline_total": tl["total"],
+    })
 
     r = redis.from_url(settings.redis_url, decode_responses=True)
     pubsub = r.pubsub()
