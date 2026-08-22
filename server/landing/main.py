@@ -9,6 +9,7 @@
   popup    → 教育弹窗（可关闭）
   redirect → 302 培训学习页 /learn/{course_id}
 """
+import json
 import logging
 from urllib.parse import quote
 
@@ -322,9 +323,14 @@ async def submit(slug: str, request: Request):
                 detail[f"{key}_plain"] = {"encrypted": base64.b64encode(encrypt_secret(v)).decode()}
             except Exception:
                 pass  # 加密失败退化为不存密文，不阻断提交
-    fp_hash = _fp_hash(str(form.get("fp") or ""))
+    fp_raw = str(form.get("fp") or "")
+    fp_hash = _fp_hash(fp_raw)
     if fp_hash:
         detail["fp_hash"] = fp_hash
+        try:  # 原始组件（分辨率/GPU/字体/语言/时区等）随事件留存，供设备级查询
+            detail["fp"] = json.loads(fp_raw)
+        except (json.JSONDecodeError, TypeError):
+            pass
     push_event(
         token=token, event_type="submit",
         ip=request.client.host if request.client else "",

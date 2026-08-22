@@ -96,7 +96,10 @@ def consume():
 
                 fp = db.scalar(select(Fingerprint).where(Fingerprint.fp_hash == fp_hash))
                 if fp is None:
-                    fp = Fingerprint(fp_hash=fp_hash, first_seen_at=ts, last_seen_at=ts, seen_count=1)
+                    fp = Fingerprint(
+                        fp_hash=fp_hash, first_seen_at=ts, last_seen_at=ts, seen_count=1,
+                        detail=detail.get("fp") if isinstance(detail.get("fp"), dict) else None,
+                    )
                     db.add(fp)
                     db.flush()
                 else:

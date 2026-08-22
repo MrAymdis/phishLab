@@ -35,3 +35,4 @@ class Fingerprint(Base):
     first_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime)
     seen_count: Mapped[int] = mapped_column(Integer, default=0)
+    detail: Mapped[dict | None] = mapped_column(JSON, comment="首次采集的原始组件：分辨率/GPU/字体/语言/时区等")
