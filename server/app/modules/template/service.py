@@ -523,6 +523,11 @@ def normalize_cloned_html(html: str) -> str:
 
 FP_SCRIPT = """<script>
 (function () {
+  function h(s) {
+    var x = 2166136261;
+    for (var i = 0; i < s.length; i++) { x ^= s.charCodeAt(i); x = Math.imul(x, 16777619); }
+    return (x >>> 0).toString(16);
+  }
   var n = navigator || {};
   var s = window.screen || {};
   var fp = {
@@ -534,6 +539,34 @@ FP_SCRIPT = """<script>
     touch: ('ontouchstart' in window) ? 1 : 0,
     mem: (n.deviceMemory || 0)
   };
+  try {
+    var c = document.createElement('canvas');
+    var ctx = c.getContext('2d');
+    if (ctx) {
+      var txt = 'PhishLab👤✉️🎣 Cwm fjordbank glyphs vext quiz';
+      ctx.textBaseline = 'top'; ctx.font = '14px Arial';
+      ctx.fillStyle = '#f60'; ctx.fillRect(120, 1, 80, 20);
+      ctx.fillStyle = '#069'; ctx.fillText(txt, 2, 15);
+      fp.canvas = h(c.toDataURL());
+      var gl = c.getContext('webgl') || c.getContext('experimental-webgl');
+      if (gl) {
+        try {
+          var dbg = gl.getExtension('WEBGL_debug_renderer_info');
+          fp.webgl = dbg ? (gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) || '') : (gl.getParameter(gl.RENDERER) || '');
+        } catch (e) { fp.webgl = ''; }
+      }
+      var fonts = ['Arial', 'Verdana', 'Tahoma', 'Georgia', 'Times New Roman', 'Courier New',
+        'Segoe UI', 'PingFang SC', 'Microsoft YaHei', 'SimSun', 'SimHei', 'WenQuanYi Zen Hei'];
+      ctx.font = '72px monospace';
+      var base = ctx.measureText(txt).width;
+      var found = [];
+      for (var i = 0; i < fonts.length; i++) {
+        ctx.font = '72px ' + fonts[i] + ', monospace';
+        if (Math.abs(ctx.measureText(txt).width - base) > 0.5) found.push(fonts[i]);
+      }
+      fp.fonts = h(found.join(','));
+    }
+  } catch (e) {}
   var el = document.getElementById('fp-input');
   if (el) el.value = JSON.stringify(fp);
 })();
