@@ -13,14 +13,30 @@ from app.modules.org.models import EmpDept
 from app.modules.template.models import EmailTemplate, LandingPage
 
 
-def render_campaign_email(db, campaign, user, token: str, to: str | None = None) -> dict:
+_MISSING = object()
+
+
+def render_campaign_email(db, campaign, user, token: str, to: str | None = None,
+                          assets: dict | None = None) -> dict:
     """渲染单封演练邮件，返回 {to, subject, html, sender_name, attachments}。
 
     user 传 None 表示测试发送（收件人非演练目标员工），姓名/部门用演示值。
+    assets：批次投递预加载的共享实体 {tpl, lp, domain, ch, sp, users, depts}——
+    千人规模批次避免每封重复查询；单封路径不传（走 db 查询）。
     """
-    tpl = db.get(EmailTemplate, campaign.template_id) if campaign.template_id else None
-    lp = db.get(LandingPage, campaign.landing_page_id) if campaign.landing_page_id else None
-    domain = db.get(PhishDomain, campaign.domain_id) if campaign.domain_id else None
+    a = assets or {}
+    if "tpl" in a:
+        tpl = a["tpl"]
+    else:
+        tpl = db.get(EmailTemplate, campaign.template_id) if campaign.template_id else None
+    if "lp" in a:
+        lp = a["lp"]
+    else:
+        lp = db.get(LandingPage, campaign.landing_page_id) if campaign.landing_page_id else None
+    if "domain" in a:
+        domain = a["domain"]
+    else:
+        domain = db.get(PhishDomain, campaign.domain_id) if campaign.domain_id else None
     domain_name = domain.domain if domain else "drill-domain.com"
     slug = lp.slug if lp else "demo"
     # 链接追踪开关：开启时走 /t/{token} 短链跳转（记 click → 302 落地页，链接形态更真实，
@@ -31,7 +47,13 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None)
     else:
         landing_url = f"http://{domain_name}:{settings.landing_port}/p/{slug}"
 
-    dept = db.get(EmpDept, user.dept_id) if user is not None and user.dept_id else None
+    dept = None
+    if user is not None and user.dept_id:
+        depts = a.get("depts") or {}
+        if user.dept_id in depts:
+            dept = depts[user.dept_id]
+        else:
+            dept = db.get(EmpDept, user.dept_id)
     var_map = {
         "{{.FirstName}}": user.name if user else "测试收件人",
         "{{.LastName}}": "",
@@ -82,14 +104,19 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None)
             )
 
     # 发件人显示名：模板 sender → 通道名 → 演练伪装发件人（display_name/name）
-    ch = db.get(SendChannel, campaign.channel_id) if campaign.channel_id else None
-    if ch is None or ch.type != "smtp":
-        ch = db.scalar(
-            select(SendChannel).where(SendChannel.type == "smtp").order_by(SendChannel.id)
-        )
+    if "ch" in a:
+        ch = a["ch"]
+    else:
+        ch = db.get(SendChannel, campaign.channel_id) if campaign.channel_id else None
+        if ch is None or ch.type != "smtp":
+            ch = db.scalar(
+                select(SendChannel).where(SendChannel.type == "smtp").order_by(SendChannel.id)
+            )
     sender_name = tpl.sender if tpl and tpl.sender else (ch.name if ch else "PhishLab")
     if campaign.sender_profile_id:
-        sp = db.get(SenderProfile, campaign.sender_profile_id)
+        sp = a.get("sp", _MISSING)
+        if sp is _MISSING:
+            sp = db.get(SenderProfile, campaign.sender_profile_id)
         if sp:
             sender_name = sp.display_name or sp.name
     return {

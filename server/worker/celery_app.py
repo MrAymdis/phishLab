@@ -14,7 +14,6 @@ celery_app = Celery(
     include=[
         "worker.tasks.delivery",
         "worker.tasks.track_stream",
-        "worker.tasks.dns_patrol",
         "worker.tasks.stat_aggregate",
         "worker.tasks.retention_clean",
         "worker.tasks.risk_recalc",
