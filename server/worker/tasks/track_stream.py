@@ -1,13 +1,18 @@
 """追踪事件消费者：evt:stream → track_event 落库 + 计数回写 + 高危预警。
 
 Beat 每 10 秒调度；消费组 + ACK 保证至少一次投递，事件按 token 幂等去重
-（同 token+event_type+10 分钟窗口内重复事件丢弃）。
+（同 token+event_type+60 秒窗口内重复事件丢弃）。
+
+千人规模优化：整批事件（≤200 条/次）共享实体预加载——target/campaign/user/dept/
+stat/profile/fingerprint/行为计数/去重窗口各一次 IN 查询，替代逐事件 8+ 次查询。
 """
 import json
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta
 
 import redis
+from sqlalchemy import func, select
 
 from app.core.config import settings
 from app.db.session import SessionLocal
@@ -15,6 +20,8 @@ from app.modules.tracking.stream import ack, read_pending
 from worker.celery_app import celery_app
 
 logger = logging.getLogger("phishlab.track")
+
+_DEDUP_WINDOW_SEC = 60
 
 _EVENT_CN = {
     "open": "打开了邮件",
@@ -36,72 +43,119 @@ _EVENT_ICON = {
 
 @celery_app.task(name="worker.tasks.track_stream.consume")
 def consume():
-    """拉取一批事件落库（最多 200 条/次）。"""
-    from sqlalchemy import select
-
+    """拉取一批事件落库（最多 200 条/次），共享实体批量预加载。"""
     from app.modules.campaign.models import Campaign, CampaignAlert, CampaignStat, CampaignTarget
-    from app.modules.org.models import EmpDept, EmpUser
-    from app.modules.tracking.models import TrackEvent
+    from app.modules.org.models import EmpDept, EmpRiskProfile, EmpUser
+    from app.modules.org.service import _risk_level_of, _total_from_behavior
+    from app.modules.tracking.models import Fingerprint, TrackEvent
 
     r = redis.from_url(settings.redis_url, decode_responses=True)
     events = read_pending(r, count=200)
     if not events:
         return 0
 
+    # 解析事件
+    parsed = []
+    for event_id, fields in events:
+        token = fields.get("token") or ""
+        event_type = fields.get("event_type") or ""
+        try:
+            detail = json.loads(fields.get("detail") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            detail = {}
+        ts = datetime.now()
+        try:
+            ts = datetime.fromisoformat(fields.get("ts") or "")
+        except ValueError:
+            pass
+        parsed.append((event_id, token, event_type, detail, ts, fields))
+
     db = SessionLocal()
     acked: list[str] = []
     batch_events: dict[int, list[dict]] = {}  # campaign_id → 待推送事件（SSE）
     try:
-        for event_id, fields in events:
-            acked.append(event_id)
-            token = fields.get("token") or ""
-            event_type = fields.get("event_type") or ""
-            try:
-                detail = json.loads(fields.get("detail") or "{}")
-            except (json.JSONDecodeError, TypeError):
-                detail = {}
-            ts = datetime.now()
-            try:
-                ts = datetime.fromisoformat(fields.get("ts") or "")
-            except ValueError:
-                pass
+        tokens = [p[1] for p in parsed]
+        targets = {t.token: t for t in db.scalars(
+            select(CampaignTarget).where(CampaignTarget.token.in_(tokens))).all()}
+        cids = {t.campaign_id for t in targets.values()}
+        campaigns = {c.id: c for c in db.scalars(
+            select(Campaign).where(Campaign.id.in_(cids))).all()} if cids else {}
+        uids = {t.user_id for t in targets.values()}
+        users = {u.id: u for u in db.scalars(
+            select(EmpUser).where(EmpUser.id.in_(uids))).all()} if uids else {}
+        dept_ids = {u.dept_id for u in users.values() if u.dept_id}
+        depts = {d.id: d for d in db.scalars(
+            select(EmpDept).where(EmpDept.id.in_(dept_ids))).all()} if dept_ids else {}
+        stats = {s.campaign_id: s for s in db.scalars(
+            select(CampaignStat).where(CampaignStat.campaign_id.in_(cids))).all()} if cids else {}
+        profiles = {p.user_id: p for p in db.scalars(
+            select(EmpRiskProfile).where(EmpRiskProfile.user_id.in_(uids))).all()} if uids else {}
+        # 行为计数预加载（替代每事件 _behavior_counts 聚合查询；本批事件内存增量）
+        behavior: dict[int, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+        if uids:
+            for uid, et, n in db.execute(
+                select(TrackEvent.user_id, TrackEvent.event_type, func.count(TrackEvent.id))
+                .where(TrackEvent.user_id.in_(uids))
+                .group_by(TrackEvent.user_id, TrackEvent.event_type)
+            ).all():
+                behavior[uid][et] = int(n or 0)
+        # 去重窗口预加载：每 (token, event_type) 最近事件时间（一条 GROUP BY 替代逐条 SELECT）
+        min_ts = min(p[4] for p in parsed)
+        dup_map: dict[tuple[str, str], datetime] = {}
+        if tokens:
+            for token, et, max_ts in db.execute(
+                select(TrackEvent.token, TrackEvent.event_type, func.max(TrackEvent.created_at))
+                .where(TrackEvent.token.in_(tokens),
+                       TrackEvent.created_at >= min_ts - timedelta(seconds=_DEDUP_WINDOW_SEC))
+                .group_by(TrackEvent.token, TrackEvent.event_type)
+            ).all():
+                dup_map[(token, et)] = max_ts
+        # 指纹预加载
+        fp_hashes = {
+            str(d.get("fp_hash"))[:32]
+            for _, _, _, d, _, _ in parsed
+            if isinstance(d, dict) and d.get("fp_hash")
+        }
+        fps = {f.fp_hash: f for f in db.scalars(
+            select(Fingerprint).where(Fingerprint.fp_hash.in_(fp_hashes))).all()} if fp_hashes else {}
 
-            target = db.scalar(select(CampaignTarget).where(CampaignTarget.token == token))
+        # 批内去重（同 token+event_type 60s 窗口，原语义逐条可见）
+        batch_seen: dict[tuple[str, str], datetime] = {}
+
+        for event_id, token, event_type, detail, ts, fields in parsed:
+            acked.append(event_id)
+            target = targets.get(token)
             if target is None:
                 continue  # 未知 token（预览邮件等）：丢弃
-            campaign = db.get(Campaign, target.campaign_id)
+            campaign = campaigns.get(target.campaign_id)
             if campaign is None:
                 continue
-            user = db.get(EmpUser, target.user_id)
-            dept = db.get(EmpDept, user.dept_id) if user else None
+            user = users.get(target.user_id)
+            dept = depts.get(user.dept_id) if user and user.dept_id else None
 
             # 事件去重：同 token+event_type 60 秒窗口内只计一次
-            # （防邮件客户端/图片代理同一时刻重复请求像素导致统计虚高）
-            dup = db.scalar(
-                select(TrackEvent.id).where(
-                    TrackEvent.token == token,
-                    TrackEvent.event_type == event_type,
-                    TrackEvent.created_at >= ts - timedelta(seconds=60),
-                ).limit(1)
-            )
-            if dup is not None:
+            key = (token, event_type)
+            recent = dup_map.get(key)
+            if recent is not None and recent >= ts - timedelta(seconds=_DEDUP_WINDOW_SEC):
                 continue
+            seen_ts = batch_seen.get(key)
+            if seen_ts is not None and seen_ts >= ts - timedelta(seconds=_DEDUP_WINDOW_SEC):
+                continue
+            batch_seen[key] = ts
 
             # 指纹：detail 携带 fp_hash 时 upsert fingerprint 表并关联
             fingerprint_id = None
             fp_hash = detail.get("fp_hash") if isinstance(detail, dict) else None
             if fp_hash:
                 fp_hash = str(fp_hash)[:32]  # fp_hash 列 VARCHAR(32)，防御超长
-                from app.modules.tracking.models import Fingerprint
-
-                fp = db.scalar(select(Fingerprint).where(Fingerprint.fp_hash == fp_hash))
+                fp = fps.get(fp_hash)
                 if fp is None:
                     fp = Fingerprint(
                         fp_hash=fp_hash, first_seen_at=ts, last_seen_at=ts, seen_count=1,
                         detail=detail.get("fp") if isinstance(detail.get("fp"), dict) else None,
                     )
                     db.add(fp)
-                    db.flush()
+                    fps[fp_hash] = fp
                 else:
                     fp.last_seen_at = ts
                     fp.seen_count += 1
@@ -143,10 +197,11 @@ def consume():
                 target.report_at = target.report_at or ts
 
             # 冗余计数：人数字径（仅首次行为计入，重复打开/点击不重复计数）
-            stat = db.get(CampaignStat, campaign.id)
+            stat = stats.get(campaign.id)
             if stat is None:
                 stat = CampaignStat(campaign_id=campaign.id)
                 db.add(stat)
+                stats[campaign.id] = stat
             if event_type == "open" and first_open:
                 stat.open_cnt += 1
             elif event_type == "click" and first_click:
@@ -179,13 +234,11 @@ def consume():
                     pass
 
             # 员工风险画像实时更新（每日全量重算由 risk_recalc 兜底）
-            from app.modules.org.models import EmpRiskProfile
-
-            profile = db.get(EmpRiskProfile, target.user_id)
+            profile = profiles.get(target.user_id)
             if profile is None:
                 profile = EmpRiskProfile(user_id=target.user_id)
                 db.add(profile)
-                db.flush()
+                profiles[target.user_id] = profile
             if event_type == "submit":
                 profile.phish_count += 1
                 profile.pwd_submit = min(100, profile.pwd_submit + 15)
@@ -196,13 +249,13 @@ def consume():
             elif event_type == "report":
                 profile.report_count += 1
                 profile.report_awareness = min(100, profile.report_awareness + 10)
-            # 综合评分：行为次数直接计分（初始值×60% + 提交×8 + 点击×3 + 打开×1 − 举报×5）
-            from app.modules.org.service import _behavior_counts, _risk_level_of, _total_from_behavior
-
-            counts = _behavior_counts(db, target.user_id)
+            # 综合评分：行为次数直接计分（预加载计数 + 本批增量；原语义含当前事件）
+            b = behavior[target.user_id]
+            if event_type in ("open", "click", "submit", "report"):
+                b[event_type] += 1
             profile.total_score = _total_from_behavior(
                 user.initial_risk if user else 70,
-                counts["open_n"], counts["click_n"], counts["submit_n"], counts["report_n"],
+                b["open"], b["click"], b["submit"], b["report"],
             )
             profile.risk_level = _risk_level_of(profile.total_score)
 
@@ -239,7 +292,6 @@ def consume():
         return len(events)
     except Exception:
         db.rollback()
-        # 不 ACK：消费组重放未确认消息，避免丢失
         raise
     finally:
         db.close()
