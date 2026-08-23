@@ -450,13 +450,16 @@ def department_report(db, account, range_: str) -> dict:
     total_map = dict(db.execute(
         select(EmpUser.dept_id, func.count(EmpUser.id)).where(EmpUser.status == 1).group_by(EmpUser.dept_id)
     ).all())
-    train_map = dict(db.execute(
-        select(EmpUser.dept_id,
-               func.sum(case((TrainingAssignment.status == "completed", 1), else_=0)),
-               func.count(TrainingAssignment.id))
-        .join(TrainingAssignment, TrainingAssignment.user_id == EmpUser.id)
-        .group_by(EmpUser.dept_id)
-    ).all())
+    train_map = {
+        dept_id: (completed, assigned)
+        for dept_id, completed, assigned in db.execute(
+            select(EmpUser.dept_id,
+                   func.sum(case((TrainingAssignment.status == "completed", 1), else_=0)),
+                   func.count(TrainingAssignment.id))
+            .join(TrainingAssignment, TrainingAssignment.user_id == EmpUser.id)
+            .group_by(EmpUser.dept_id)
+        ).all()
+    }
 
     rows_out, labels, submit_rates = [], [], []
     for dim_id, target, open_cnt, click_cnt, submit_cnt, report_cnt, name in rows:
