@@ -11,6 +11,39 @@ from .models import LoginLog, SysAccount
 from .schemas import AccountCreate, AccountUpdate, LoginRequest, PasswordChange, ProfileUpdate
 
 
+def bootstrap_super_admin(db: Session, username: str, password: str,
+                          real_name: str | None = None) -> SysAccount:
+    """首启初始化超级管理员：仅系统无任何账号时可用。
+
+    同时补建 super_admin 角色并绑定——只建账号不建角色会导致所有端点
+    403（require_perm/apply_data_scope 无角色 fail-closed），是旧版
+    seed_admin.py 的部署坑。幂等保护：username 唯一 + 系统非空拒绝。
+    """
+    from app.modules.rbac.models import SysAccountRole, SysRole
+
+    if db.scalar(select(SysAccount.id).where(SysAccount.username == username).limit(1)):
+        raise BizError(ErrorCode.BIZ_CONFLICT, f"账号 {username} 已存在")
+    if db.scalar(select(func.count()).select_from(SysAccount)) > 0:
+        raise BizError(ErrorCode.SYSTEM_INITIALIZED, "系统已初始化，请直接登录")
+
+    role = db.scalar(select(SysRole).where(SysRole.code == "super_admin"))
+    if role is None:
+        role = SysRole(code="super_admin", name="超级管理员", data_scope=1)
+        db.add(role)
+        db.flush()
+    acc = SysAccount(
+        username=username,
+        password_hash=hash_password(password),
+        real_name=real_name or "超级管理员",
+        status=1,
+    )
+    db.add(acc)
+    db.flush()
+    db.add(SysAccountRole(account_id=acc.id, role_id=role.id))
+    db.commit()
+    return acc
+
+
 def login(db: Session, req: LoginRequest, ip: str | None = None) -> dict:
     account = db.scalar(select(SysAccount).where(SysAccount.username == req.username))
     ok = account is not None and verify_password(req.password, account.password_hash)

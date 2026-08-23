@@ -21,6 +21,7 @@ class ErrorCode:
     CAMPAIGN_STATE_INVALID = 41001
     CHANNEL_TEST_FAILED = 41101
     BIZ_CONFLICT = 41002
+    SYSTEM_INITIALIZED = 41003
     LICENSE_EXCEEDED = 42901
     # 5xxx 集成
     INTEGRATION_ERROR = 50001
@@ -40,6 +41,7 @@ _DEFAULT_MSG = {
     ErrorCode.PERM_DENIED: "无操作权限",
     ErrorCode.LICENSE_EXCEEDED: "授权配额已用尽",
     ErrorCode.BIZ_CONFLICT: "业务状态冲突",
+    ErrorCode.SYSTEM_INITIALIZED: "系统已初始化",
 }
 
 _HTTP_STATUS = {

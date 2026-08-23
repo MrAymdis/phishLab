@@ -17,6 +17,22 @@ def login(req: schemas.LoginRequest, request: Request, db: Session = Depends(get
     return resp.ok(service.login(db, req, ip=request.client.host if request.client else None))
 
 
+@auth.get("/init-status", summary="系统是否已初始化（无鉴权，登录页引导用）")
+def init_status(db: Session = Depends(get_db)):
+    from sqlalchemy import func, select
+
+    from .models import SysAccount
+
+    initialized = db.scalar(select(func.count()).select_from(SysAccount)) > 0
+    return resp.ok({"initialized": initialized})
+
+
+@auth.post("/init", summary="首启初始化超级管理员（仅系统无任何账号时可用）")
+def init_system(payload: schemas.InitRequest, db: Session = Depends(get_db)):
+    acc = service.bootstrap_super_admin(db, payload.username, payload.password, payload.real_name)
+    return resp.ok({"id": acc.id, "username": acc.username})
+
+
 @auth.get("/me", summary="当前账号信息")
 def me(account=Depends(get_current_account)):
     return resp.ok(schemas.AccountOut.model_validate(account))

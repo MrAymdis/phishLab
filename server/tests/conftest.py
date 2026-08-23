@@ -13,6 +13,7 @@ from app.db.session import SessionLocal, engine  # noqa: E402
 
 # 全量导入模块模型，确保 Base.metadata.create_all 建齐所有表（延迟导入不会触发）
 from app.modules.account.models import SysAccount  # noqa: E402
+from app.modules.rbac.models import SysAccountRole, SysRole  # noqa: E402
 import app.modules.ai.models  # noqa: E402,F401
 import app.modules.analytics.models  # noqa: E402,F401
 import app.modules.campaign.models  # noqa: E402,F401
@@ -33,7 +34,11 @@ import app.modules.training.models  # noqa: E402,F401
 def _init_db():
     Base.metadata.create_all(engine)
     db = SessionLocal()
+    # 测试账号挂 super_admin 角色：无角色时 require_perm/apply_data_scope
+    # 全部 fail-closed（403）——这是此前 smoke 套件 7 个用例全红的根因
+    db.add(SysRole(id=1, code="super_admin", name="超级管理员", data_scope=1))
     db.add(SysAccount(id=1, username="tester", password_hash=hash_password("x"), real_name="测试员", status=1))
+    db.add(SysAccountRole(account_id=1, role_id=1))
     db.commit()
     db.close()
     yield

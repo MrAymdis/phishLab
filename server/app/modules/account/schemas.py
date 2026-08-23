@@ -50,3 +50,11 @@ class PasswordChange(BaseModel):
 
     old_password: str
     new_password: str = Field(min_length=8, max_length=64)
+
+
+class InitRequest(BaseModel):
+    """首启初始化：创建超级管理员（仅系统无任何账号时可用）。"""
+
+    username: str = Field(min_length=2, max_length=64)
+    password: str = Field(min_length=8, max_length=64, description="初始密码，首次登录后请修改")
+    real_name: str | None = Field(None, max_length=64)
