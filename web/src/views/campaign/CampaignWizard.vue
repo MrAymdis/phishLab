@@ -182,9 +182,35 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">发件人伪装名称<span class="required">*</span></label>
-            <el-input v-model="tplForm.sender_name" class="form-input" />
-            <p class="form-hint">员工邮箱中显示的发件人名称</p>
+            <label class="form-label">伪装发件人<span class="required">*</span></label>
+            <p class="form-hint" style="margin-bottom:8px;">收件端展示的发件人名称与邮箱；新建请前往「发送配置 → 伪装发件人」</p>
+            <div class="option-grid cols-2">
+              <div
+                class="option-card"
+                :class="{ selected: senderProfileId === null }"
+                @click="senderProfileId = null"
+              >
+                <div class="option-card-header">
+                  <div class="option-card-icon" style="background:#6B7280;">📧</div>
+                  <div class="option-card-title">不伪装发件人</div>
+                </div>
+                <p class="option-card-desc">使用通道发件账号（收件端显示真实发送账号）</p>
+              </div>
+              <div
+                v-for="sp in senderProfiles"
+                :key="sp.id"
+                class="option-card"
+                :class="{ selected: senderProfileId === sp.id }"
+                @click="senderProfileId = sp.id"
+              >
+                <div class="option-card-header">
+                  <div class="option-card-icon" style="background:#378ADD;">🎭</div>
+                  <div class="option-card-title">{{ sp.display_name || sp.name }}</div>
+                </div>
+                <p class="option-card-desc">{{ sp.from_addr || '未配置伪装邮箱' }}</p>
+              </div>
+            </div>
+            <p v-if="!senderProfiles.length" class="form-hint">暂无伪装发件人，可先「不伪装」或前往发送配置页创建</p>
           </div>
           <div class="form-group">
             <label class="form-label">欺骗性域名<span class="required">*</span></label>
@@ -589,6 +615,8 @@ const landingBgPalette = [
 const templates = ref<{ id: number; subject: string; scene: string; color: string; icon: string; sender?: string }[]>([])
 const landingPages = ref<{ id: number; name: string; tag: string; label: string; bg: string }[]>([])
 const spoofDomains = ref<{ id: number; domain: string; spf: string; dkim: string; dmarc: string }[]>([])
+const senderProfiles = ref<{ id: number; name: string; display_name: string; from_addr: string }[]>([])
+const senderProfileId = ref<number | null>(null)
 const sendChannels = ref<{ id: number; name: string; type: string; type_label: string; server?: string; port?: number; ssl?: boolean; daily_limit: number; score: number; status: string; is_default?: boolean; last_test?: string }[]>([])
 
 const tplForm = reactive({
@@ -650,6 +678,8 @@ async function loadWizardAssets() {
       sendChannels.value = list.filter((ch) => ch.type === 'smtp')
       if (!sendChannelId.value && sendChannels.value.length) sendChannelId.value = sendChannels.value[0].id
     }
+    const sps = (await channelApi.senderProfiles()) as typeof senderProfiles.value
+    if (Array.isArray(sps)) senderProfiles.value = sps
   } catch { /* 通道加载失败不阻断 */ }
 }
 
@@ -674,6 +704,9 @@ const sendChannelId = ref(0) // 选中的 SMTP 发送通道 id
 const selectedChannel = computed(() =>
   sendChannels.value.find((ch) => ch.id === sendChannelId.value),
 )
+const selectedSenderProfile = computed(() =>
+  senderProfiles.value.find((sp) => sp.id === senderProfileId.value),
+)
 const sendForm = reactive({ test_email: '' })
 const testResult = ref('')
 const wizardTestLoading = ref(false)
@@ -697,7 +730,7 @@ async function sendWizardTest() {
       to,
       template_id: tplForm.template_id || undefined,
       landing_page_id: landingForm.page_id || undefined,
-      sender_name: tplForm.sender_name || undefined,
+      sender_name: selectedSenderProfile.value?.display_name || selectedSenderProfile.value?.name || undefined,
       domain: tplForm.spoof_domain || undefined,
     })
     testResult.value = res.ok ? `✓ ${res.message}` : `✗ ${res.message}`
@@ -791,6 +824,7 @@ async function submit() {
       landing_page_id: landingForm.page_id,
       channel_id: sendChannelId.value || null,
       domain_id: selectedDomain.value?.id || null,
+      sender_profile_id: senderProfileId.value || null,
       schedule_type: triggerForm.mode === 'now' ? 'now' : 'timed',
       schedule_at: triggerForm.mode === 'schedule' ? triggerForm.schedule_time : null,
       batch_count: 3,

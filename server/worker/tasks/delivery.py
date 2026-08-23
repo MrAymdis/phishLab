@@ -34,9 +34,38 @@ def _load_campaign_assets(db, campaign, target_ids: list[int]) -> dict:
             "users": users, "depts": depts}
 
 
+def _check_recipient_domain(email: str, cache: dict[str, str | None]) -> str | None:
+    """投递前 DNS 预检收件人域名：返回 None=可投递，否则为失败原因。
+
+    背景：QQ 等 SMTP 服务器对收件人域名不做存在性检查（RCPT 阶段一律 250 入队），
+    NXDOMAIN/无 MX 的域名会显示"假成功"后再异步退信。投递前预检让这类目标
+    立即失败，避免假 sent。批次内同域名共享缓存（千人规模不会每封重复解析）。
+    """
+    import dns.resolver
+
+    domain = (email or "").rsplit("@", 1)[-1].lower()
+    if not domain or "." not in domain:
+        return f"收件人邮箱格式无效：{email}"
+    if domain in cache:
+        return cache[domain]
+    try:
+        dns.resolver.resolve(domain, "MX")
+        cache[domain] = None  # 有 MX，可投递
+    except dns.resolver.NoAnswer:
+        # 无 MX：按 RFC 5321 应回退 A 记录直投，但现代互联网无 MX 即不可收信
+        # （A 记录几乎都是网站/CDN）；直接失败，避免假 sent
+        cache[domain] = f"收件人域名无 MX 记录，无法投递邮件（{domain}）"
+    except dns.resolver.NXDOMAIN:
+        cache[domain] = f"收件人域名不存在（{domain}）"
+    except (dns.resolver.NoNameservers, TimeoutError, OSError):
+        cache[domain] = None  # DNS 服务器不可达：放行交给 SMTP 会话判定
+    return cache[domain]
+
+
 def _send_via_channel(db, ch, to: str, subject: str, html: str, sender_name: str,
-                      attachments: list[dict] | None = None) -> bool:
-    """按通道加密配置发信；成功返回 True。"""
+                      attachments: list[dict] | None = None,
+                      from_addr: str | None = None, reply_to: str | None = None) -> tuple[bool, str]:
+    """按通道加密配置发信；返回 (成功, 失败原因)。from_addr/reply_to 为伪装发件人（From 头展示）。"""
     from app.core.security import decrypt_secret
     from app.modules.channel.service import _smtp_send
 
@@ -54,12 +83,13 @@ def _send_via_channel(db, ch, to: str, subject: str, html: str, sender_name: str
         "smtp_password": password,
     }
     result = _smtp_send(ch.name, cfg, to, subject=subject, html_body=html,
-                        sender_name=sender_name, attachments=attachments)
-    return result["ok"]
+                        sender_name=sender_name, from_addr=from_addr,
+                        reply_to=reply_to, attachments=attachments)
+    return result["ok"], result.get("message", "")
 
 
 def _deliver_target(db, t, campaign, assets: dict) -> bool:
-    """单目标投递（批次内调用）：渲染（共享实体）→ 发送 → 回写状态与计数。
+    """单目标投递（批次内调用）：渲染（共享实体）→ 发送 → 回写状态、原因与计数。
 
     每目标独立提交：批次中途崩溃时已发目标不重复投递（幂等兜底）。
     """
@@ -70,6 +100,7 @@ def _deliver_target(db, t, campaign, assets: dict) -> bool:
     user = users.get(t.user_id)
     if user is None:
         t.send_status = "failed"
+        t.fail_reason = f"目标员工不存在（user_id={t.user_id}）"
         db.commit()
         return False
     rendered = render_campaign_email(db, campaign, user, t.token, assets=assets)
@@ -77,18 +108,37 @@ def _deliver_target(db, t, campaign, assets: dict) -> bool:
     subject = rendered["subject"]
     html = rendered["html"]
     sender_name = rendered["sender_name"]
+    from_addr = rendered.get("from_addr")
+    reply_to = rendered.get("reply_to")
     attachments = rendered.get("attachments") or []
 
     ch = assets.get("ch")
     if ch is None:
         t.send_status = "failed"
+        t.fail_reason = "无可用 SMTP 发送通道"
         db.commit()
         return False
-    logger.info("投递开始 target=%s to=%s subject=%s via=%s 附件=%d",
-                t.id, to, subject, ch.name, len(attachments))
-    ok = _send_via_channel(db, ch, to, subject, html, sender_name, attachments)
+    # DNS 预检收件人域名：NXDOMAIN/无 MX 立即失败（QQ 等对域名不检查，会假 sent 后退信）
+    mx_cache = assets.get("mx_cache")
+    if mx_cache is not None:
+        domain_err = _check_recipient_domain(to, mx_cache)
+        if domain_err:
+            t.send_status = "failed"
+            t.fail_reason = domain_err[:500]
+            t.sent_at = None
+            db.commit()
+            logger.info("投递预检失败 target=%s to=%s：%s", t.id, to, domain_err)
+            return False
+    logger.info("投递开始 target=%s to=%s subject=%s via=%s from=%s 附件=%d",
+                t.id, to, subject, ch.name, from_addr or ch.smtp_username, len(attachments))
+    ok, reason = _send_via_channel(db, ch, to, subject, html, sender_name, attachments,
+                                   from_addr, reply_to)
 
     t.send_status = "sent" if ok else "failed"
+    if ok:
+        t.fail_reason = None
+    else:
+        t.fail_reason = (reason or "发送失败")[:500]
     t.sent_at = datetime.now() if ok else None
     if ok:
         # 原子累加：并发批次投递下避免读-改-写竞态（lost update）
@@ -154,6 +204,8 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
 
         # 批次共享实体预加载（千人规模：7N 查询 → ~7 次）
         assets = _load_campaign_assets(db, campaign, [t.user_id for t in targets])
+        # 收件人域名 DNS 预检缓存（域名 → None=可投递 / 失败原因），批次内共享
+        assets["mx_cache"] = {}
 
         sent = failed = 0
         for t in targets:
@@ -165,6 +217,7 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
                 stale = db.get(CampaignTarget, t.id)
                 if stale is not None:
                     stale.send_status = "failed"
+                    stale.fail_reason = f"投递异常：{str(e)}"[:500]
                     db.commit()
                 ok = False
             if ok:

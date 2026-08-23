@@ -18,6 +18,7 @@ celery_app = Celery(
         "worker.tasks.retention_clean",
         "worker.tasks.risk_recalc",
         "worker.tasks.campaign_auto",
+        "worker.tasks.bounce_scanner",
     ],
 )
 
@@ -63,5 +64,11 @@ celery_app.conf.beat_schedule = {
     "retention-clean": {
         "task": "worker.tasks.retention_clean.clean",
         "schedule": crontab(hour=3, minute=0),
+    },
+    # 每 5 分钟回扫各 SMTP 通道收件箱：退信 → 目标 sent→bounced + 原因
+    # （QQ 退信通常在投递后几分钟内到达，5 分钟间隔保证"退信到、状态即改"）
+    "scan-bounces": {
+        "task": "worker.tasks.bounce_scanner.scan_bounces",
+        "schedule": crontab(minute="*/5"),
     },
 }

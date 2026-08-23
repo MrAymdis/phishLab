@@ -41,6 +41,20 @@
       </el-col>
     </el-row>
 
+    <!-- 投递失败列表（失败/退信邮箱 + 原因；随 SSE 刷新） -->
+    <div v-if="deliveryFailures.length" class="card card-red" style="margin: 12px 16px 0">
+      <div class="card-title">
+        投递失败
+        <el-tag type="danger" size="small">{{ deliveryFailures.length }} 条</el-tag>
+      </div>
+      <el-table :data="deliveryFailures" size="small" style="width: 100%">
+        <el-table-column prop="name" label="员工" width="140" />
+        <el-table-column prop="email" label="收件邮箱" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="reason" label="失败原因" min-width="260" show-overflow-tooltip />
+        <el-table-column prop="time" label="时间" width="160" />
+      </el-table>
+    </div>
+
     <div class="card card-teal" style="margin: 12px 16px 16px">
       <div class="card-title">
         实时用户行为时间轴
@@ -76,6 +90,7 @@ const metrics = ref<{ label: string; value: string | number; sub?: string; accen
 const funnel = ref<{ name: string; value: number; rate?: string }[]>([])
 const alerts = ref<{ msg: string; time: string; advice: string }[]>([])
 const timeline = ref<TimelineEvent[]>([])
+const deliveryFailures = ref<{ id: number; name: string; email: string; status: string; reason: string; time: string }[]>([])
 
 // ============ 接口数据加载（失败保持空状态） ============
 interface CampaignDetailData {
@@ -137,10 +152,11 @@ function applyTimeline(list: TimelineDataItem[]) {
 async function load() {
   const id = Number(route.params.id)
   try {
-    const [detail, dash, tl] = await Promise.all([
+    const [detail, dash, tl, df] = await Promise.all([
       campaignApi.detail(id),
       campaignApi.dashboard(id),
       campaignApi.timeline(id, 1),
+      campaignApi.deliveryFailures(id, 1),
     ])
     // 接口成功即覆盖（新演练为空数据 → 展示空状态）
     const dt = detail as CampaignDetailData | null
@@ -149,6 +165,7 @@ async function load() {
 
     applyDash(dash as CampaignDashData | null)
     applyTimeline(((tl as { list?: TimelineDataItem[] } | null)?.list ?? []) as TimelineDataItem[])
+    deliveryFailures.value = ((df as { list?: { id: number; name: string; email: string; status: string; reason: string; time: string }[] } | null)?.list ?? [])
   } catch {
     // 接口失败保持空状态，由 http 拦截器统一提示
   }

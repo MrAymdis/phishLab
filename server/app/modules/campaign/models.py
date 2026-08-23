@@ -59,6 +59,9 @@ class CampaignTarget(Base, TimestampMixin):
     send_status: Mapped[str] = mapped_column(
         String(12), default="pending", comment="pending/sent/delivered/bounced/failed"
     )
+    fail_reason: Mapped[str | None] = mapped_column(
+        String(500), comment="投递失败原因（SMTP 拒收/认证失败/超时等）"
+    )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime)
     open_count: Mapped[int] = mapped_column(Integer, default=0)

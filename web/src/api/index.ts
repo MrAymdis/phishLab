@@ -74,6 +74,10 @@ export const campaignApi = {
   dashboard: (id: number) => get(`/api/v1/campaigns/${id}/dashboard`),
   timeline: (id: number, page = 1) =>
     get(`/api/v1/campaigns/${id}/timeline`, { page, pageSize: 20 }),
+  deliveryFailures: (id: number, page = 1) =>
+    get<{ list: { id: number; name: string; email: string; status: string; reason: string; time: string }[]; total: number }>(
+      `/api/v1/campaigns/${id}/delivery-failures`, { page, pageSize: 20 },
+    ),
   revealSubmitPassword: (id: number, eventId: number, body: { operation_password: string }) =>
     post<{ fields: { name: string; value: string }[]; event_id: number; user: string | null }>(
       `/api/v1/campaigns/${id}/events/${eventId}/reveal`, body,

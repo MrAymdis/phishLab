@@ -512,7 +512,14 @@ def dashboard(db, account, campaign_id: int) -> dict:
     """
     c = _get_or_404(db, campaign_id)
     stat = db.get(CampaignStat, campaign_id)
-    delivered = stat.delivered_cnt if stat else 0
+    # 投递成功按目标实时口径（delivered_cnt 只在投递时累加，退信纠正为
+    # bounced/failed 后不会回减；sent 即"已发出且尚未收到退信"的真实在途数）
+    delivered = int(db.scalar(
+        select(func.count()).select_from(CampaignTarget).where(
+            CampaignTarget.campaign_id == campaign_id,
+            CampaignTarget.send_status == "sent",
+        )
+    ) or 0)
     submitted = stat.submit_cnt if stat else 0
     reported = stat.report_cnt if stat else 0
     target = c.target_count or 1
@@ -651,6 +658,34 @@ def timeline(db, account, campaign_id: int, page: int, page_size: int):
             "danger": ev.event_type == "submit",
             "good": ev.event_type == "report",
         })
+    return {"list": items, "total": total, "page": page, "pageSize": page_size}
+
+
+def delivery_failures(db, account, campaign_id: int, page: int, page_size: int):
+    """投递失败列表：campaign_target 状态为 failed/bounced，附收件人邮箱/姓名/失败原因。"""
+    base = (
+        select(CampaignTarget, EmpUser.name, EmpUser.email)
+        .outerjoin(EmpUser, EmpUser.id == CampaignTarget.user_id)
+        .where(
+            CampaignTarget.campaign_id == campaign_id,
+            CampaignTarget.send_status.in_(("failed", "bounced")),
+        )
+    )
+    total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
+    rows = db.execute(
+        base.order_by(CampaignTarget.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    items = [
+        {
+            "id": t.id,
+            "name": name or f"员工#{t.user_id}",
+            "email": email or "",
+            "status": t.send_status,
+            "reason": t.fail_reason or "",
+            "time": (t.sent_at or t.updated_at).strftime(_DT_FMT) if (t.sent_at or t.updated_at) else "",
+        }
+        for t, name, email in rows
+    ]
     return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
 

@@ -113,16 +113,22 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None,
                 select(SendChannel).where(SendChannel.type == "smtp").order_by(SendChannel.id)
             )
     sender_name = tpl.sender if tpl and tpl.sender else (ch.name if ch else "PhishLab")
+    from_addr = None
+    reply_to = None
     if campaign.sender_profile_id:
         sp = a.get("sp", _MISSING)
         if sp is _MISSING:
             sp = db.get(SenderProfile, campaign.sender_profile_id)
         if sp:
             sender_name = sp.display_name or sp.name
+            from_addr = sp.from_addr or None  # 伪装发件邮箱（收件端 From 头展示）
+            reply_to = sp.reply_to or None
     return {
         "to": to or (user.email if user else ""),
         "subject": subject,
         "html": html,
         "sender_name": sender_name,
+        "from_addr": from_addr,
+        "reply_to": reply_to,
         "attachments": attachments,
     }

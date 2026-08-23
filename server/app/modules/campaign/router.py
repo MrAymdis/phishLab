@@ -117,6 +117,17 @@ async def stream(cid: int, account=Depends(get_current_account), db: Session = D
     return EventSourceResponse(campaign_event_stream(db, account, cid))
 
 
+@campaigns.get("/{cid}/delivery-failures", summary="投递失败列表（邮箱 + 失败原因）")
+def delivery_failures(
+    cid: int,
+    paging: tuple[int, int] = Depends(page_params),
+    account=Depends(get_current_account),
+    db: Session = Depends(get_db),
+):
+    page, page_size = paging
+    return resp.ok(service.delivery_failures(db, account, cid, page, page_size))
+
+
 @campaigns.post("/{cid}/test-send", summary="发送测试", dependencies=[Depends(require_perm("campaign:control"))])
 def test_send(cid: int, to: list[str], account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.test_send(db, account, cid, to))

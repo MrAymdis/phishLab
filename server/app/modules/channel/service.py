@@ -261,6 +261,7 @@ def _smtp_send(
     name: str, cfg: dict, to: str,
     subject: str | None = None, html_body: str | None = None,
     sender_name: str | None = None, from_addr: str | None = None,
+    reply_to: str | None = None,
     attachments: list[dict] | None = None,
 ) -> dict:
     """纯发信：按 SMTP 配置真实发送一封测试邮件（不触碰数据库）。
@@ -318,6 +319,8 @@ def _smtp_send(
     msg["Subject"] = subject
     # from_addr 为伪装发件人地址（仅影响收件端展示的 From 头，信封仍用发送账号保证送达）
     msg["From"] = formataddr((sender_name or name, from_addr or username))
+    if reply_to:
+        msg["Reply-To"] = reply_to
     msg["To"] = to
 
     t0 = time.perf_counter()
