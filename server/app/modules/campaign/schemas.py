@@ -18,6 +18,7 @@ class CampaignCreate(BaseModel):
     target_snapshot: dict = Field(default_factory=dict, description="部门/分组/标签/CSV 圈选快照")
     schedule_type: Literal["now", "timed"] = "now"
     schedule_at: datetime | None = None
+    ended_at: datetime | None = Field(None, description="演练结束时间（追踪期截止），留空按投递后 7 天")
     batch_count: int = Field(1, ge=1)
     batch_interval_min: int = Field(0, ge=0)
     randomize_content: bool = False

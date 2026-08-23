@@ -344,9 +344,28 @@
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">发送开始时间</label>
-            <el-input v-model="triggerForm.schedule_time" class="form-input" placeholder="2026-08-20 09:30" />
+            <label class="form-label">发送开始时间<span v-if="triggerForm.mode === 'schedule'" class="required">*</span></label>
+            <el-date-picker
+              v-model="triggerForm.schedule_time"
+              type="datetime"
+              value-format="YYYY-MM-DD HH:mm"
+              placeholder="选择发送时间"
+              class="form-input"
+            />
           </div>
+          <div class="form-group">
+            <label class="form-label">演练结束时间</label>
+            <el-date-picker
+              v-model="triggerForm.end_time"
+              type="datetime"
+              value-format="YYYY-MM-DD HH:mm"
+              placeholder="留空：投递后自动追踪 7 天"
+              class="form-input"
+            />
+            <p class="form-hint">追踪期截止后演练自动结束；留空按投递后 7 天</p>
+          </div>
+        </div>
+        <div class="form-row">
           <div class="form-group">
             <label class="form-label">分批次策略</label>
             <el-select v-model="triggerForm.batch" class="form-input">
@@ -356,6 +375,7 @@
             </el-select>
             <p class="form-hint">分批次可防拥堵、防网关识别</p>
           </div>
+          <div class="form-group"></div>
         </div>
         <div class="form-group">
           <label class="form-label">高级防识别设置</label>
@@ -745,6 +765,7 @@ async function sendWizardTest() {
 const triggerForm = reactive({
   mode: 'schedule' as 'schedule' | 'now',
   schedule_time: '2026-08-20 09:30',
+  end_time: '', // 演练结束时间，留空 = 投递后自动追踪 7 天
   batch: '3-30',
   adv: [true, true, false],
 })
@@ -766,7 +787,16 @@ const summaryRows = computed(() => [
   { key: '邮件模板', val: templates.value.find(t => t.id === tplForm.template_id)?.subject || '-' },
   { key: '落地页', val: landingPages.value.find(p => p.id === landingForm.page_id)?.name || '-' },
   { key: '发送配置', val: sendChannels.value.find((ch) => ch.id === sendChannelId.value)?.name || '-' },
-  { key: '发送时间', val: triggerForm.mode === 'schedule' ? `${triggerForm.schedule_time}（分3批）` : '立即发送' },
+  {
+    key: '演练时间范围',
+    val: triggerForm.mode === 'schedule'
+      ? triggerForm.end_time
+        ? `${triggerForm.schedule_time} ~ ${triggerForm.end_time}`
+        : `${triggerForm.schedule_time}（投递后追踪 7 天）`
+      : triggerForm.end_time
+        ? `立即发送 ~ ${triggerForm.end_time}`
+        : '立即发送（投递后追踪 7 天）',
+  },
   {
     key: '培训设置',
     val: trainForm.mode === 'train'
@@ -811,6 +841,19 @@ async function submit() {
     ElMessage.warning('请勾选授权确认（未获得授权不可发起演练）')
     return
   }
+  // 演练结束时间必须晚于发送开始时间（后端同样硬校验）
+  if (triggerForm.end_time) {
+    const start = new Date(triggerForm.schedule_time.replace(' ', 'T'))
+    const end = new Date(triggerForm.end_time.replace(' ', 'T'))
+    if (triggerForm.mode === 'schedule' && Number.isNaN(start.getTime())) {
+      ElMessage.warning('请选择发送开始时间')
+      return
+    }
+    if (end <= start) {
+      ElMessage.warning('演练结束时间必须晚于发送开始时间')
+      return
+    }
+  }
   try {
     await campaignApi.create({
       ...form,
@@ -827,6 +870,7 @@ async function submit() {
       sender_profile_id: senderProfileId.value || null,
       schedule_type: triggerForm.mode === 'now' ? 'now' : 'timed',
       schedule_at: triggerForm.mode === 'schedule' ? triggerForm.schedule_time : null,
+      ended_at: triggerForm.end_time || null,
       batch_count: 3,
       pixel_degrade: triggerForm.adv[2],
       // 前端 mode：train/popup/none/url；后端 policy：redirect/popup/none/url（train→redirect 映射）

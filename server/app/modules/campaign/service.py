@@ -221,10 +221,20 @@ def list_campaigns(db, account, *, status=None, type=None, kw=None,
     return {"stats": stats, "list": items, "total": total, "page": page, "pageSize": page_size}
 
 
+def _validate_time_range(schedule_type: str, schedule_at, ended_at):
+    """结束时间必须在发送开始之后（timed 按 schedule_at，now 按当前时刻）。"""
+    if ended_at is None:
+        return
+    base = schedule_at if (schedule_type == "timed" and schedule_at) else datetime.now()
+    if ended_at <= base:
+        raise BizError(ErrorCode.PARAM_INVALID, "演练结束时间必须晚于发送开始时间")
+
+
 def create_campaign(db, account, payload) -> int:
     """创建演练：授权校验 → 配额检查 → 目标展开 → target+token → 切批次。"""
     if not payload.auth_confirmed:
         raise BizError(ErrorCode.PARAM_INVALID, "必须勾选授权确认")
+    _validate_time_range(payload.schedule_type, payload.schedule_at, payload.ended_at)
     check_quota(db, "campaign", 1)
 
     snapshot = payload.target_snapshot or {}
@@ -247,6 +257,7 @@ def create_campaign(db, account, payload) -> int:
         target_count=len(user_ids),
         schedule_type=payload.schedule_type,
         schedule_at=payload.schedule_at,
+        ended_at=payload.ended_at,
         batch_count=payload.batch_count,
         batch_interval_min=payload.batch_interval_min,
         randomize_content=int(payload.randomize_content),
@@ -385,6 +396,8 @@ def update_draft(db, account, campaign_id: int, payload):
     c.target_snapshot = payload.target_snapshot or {}
     c.schedule_type = payload.schedule_type
     c.schedule_at = payload.schedule_at
+    _validate_time_range(payload.schedule_type, payload.schedule_at, payload.ended_at)
+    c.ended_at = payload.ended_at
     c.batch_count = payload.batch_count
     c.batch_interval_min = payload.batch_interval_min
     c.randomize_content = int(payload.randomize_content)
