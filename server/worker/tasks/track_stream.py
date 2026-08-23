@@ -129,6 +129,8 @@ def consume():
             campaign = campaigns.get(target.campaign_id)
             if campaign is None:
                 continue
+            if campaign.status == "terminated":
+                continue  # 演练已终止：停止追踪，事件丢弃（不落库、不计数、不预警）
             user = users.get(target.user_id)
             dept = depts.get(user.dept_id) if user and user.dept_id else None
 

@@ -7,7 +7,7 @@
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from worker.celery_app import celery_app
 
@@ -154,21 +154,47 @@ def _deliver_target(db, t, campaign, assets: dict) -> bool:
 
 @celery_app.task(name="worker.tasks.delivery.dispatch_due_batches")
 def dispatch_due_batches():
-    """扫描 plan_at 到期且 pending 的批次，派发 deliver_batch。"""
+    """扫描 plan_at 到期且 pending 的批次，派发 deliver_batch。
+
+    只派发「运行中演练」的批次：暂停/终止后批次不再投递（resume 后由本扫描恢复）。
+    """
     from app.db.session import SessionLocal
-    from app.modules.campaign.models import CampaignBatch
+    from app.modules.campaign.models import Campaign, CampaignBatch
 
     db = SessionLocal()
     try:
         rows = db.scalars(
             select(CampaignBatch)
-            .where(CampaignBatch.status == "pending", CampaignBatch.plan_at <= datetime.now())
+            .join(Campaign, Campaign.id == CampaignBatch.campaign_id)
+            .where(
+                CampaignBatch.status == "pending",
+                CampaignBatch.plan_at <= datetime.now(),
+                Campaign.status.in_(("sending", "running")),
+            )
             .order_by(CampaignBatch.plan_at)
         ).all()
         for b in rows:
-            b.status = "sending"
+            # 原子认领：beat 兜底扫描与启动时手动派发并发时仅一方成功，
+            # 防止同一批次被派发两次（否则两个 deliver_batch 重复发信）
+            claimed = db.execute(
+                update(CampaignBatch)
+                .where(CampaignBatch.id == b.id, CampaignBatch.status == "pending")
+                .values(status="sending")
+            )
             db.commit()
-            deliver_batch.delay(b.campaign_id, b.batch_no)
+            if claimed.rowcount == 0:
+                continue  # 已被其他派发器认领
+            try:
+                deliver_batch.delay(b.campaign_id, b.batch_no)
+            except Exception:
+                # 派发失败（如 Redis 不可用）回退 pending，等下次扫描重试，避免僵尸 sending 批次
+                logger.exception("批次派发失败 campaign=%s batch=%s", b.campaign_id, b.batch_no)
+                db.execute(
+                    update(CampaignBatch)
+                    .where(CampaignBatch.id == b.id, CampaignBatch.status == "sending")
+                    .values(status="pending")
+                )
+                db.commit()
         logger.info("dispatch due batches: %d", len(rows))
         return len(rows)
     finally:
@@ -189,7 +215,15 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
                 CampaignBatch.batch_no == batch_no,
             )
         )
-        if batch is None:
+        if batch is None or batch.status not in ("pending", "sending"):
+            return 0  # 批次不存在或已完成：防重复执行
+        campaign = db.get(Campaign, campaign_id)
+        if campaign is None:
+            return 0
+        if campaign.status not in ("sending", "running"):
+            # 演练已暂停/终止：批次回退 pending（resume 后由派发器恢复投递），不真实发信
+            batch.status = "pending"
+            db.commit()
             return 0
         targets = db.scalars(
             select(CampaignTarget).where(
@@ -198,9 +232,6 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
                 CampaignTarget.send_status == "pending",
             )
         ).all()
-        campaign = db.get(Campaign, campaign_id)
-        if campaign is None:
-            return 0
 
         # 批次共享实体预加载（千人规模：7N 查询 → ~7 次）
         assets = _load_campaign_assets(db, campaign, [t.user_id for t in targets])
@@ -211,7 +242,7 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
         for t in targets:
             try:
                 ok = _deliver_target(db, t, campaign, assets)
-            except Exception:
+            except Exception as e:
                 db.rollback()
                 logger.exception("投递异常 target=%s", t.id)
                 stale = db.get(CampaignTarget, t.id)
@@ -229,9 +260,7 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
         batch.sent_count = sent
         batch.started_at = batch.started_at or datetime.now()
         batch.finished_at = datetime.now()
-        # 投递完成后演练保持 running（追踪期开始）
-        if campaign and campaign.status == "running":
-            pass  # 状态不变；completed 由到期任务处理
+        # 投递完成后演练保持 running（追踪期开始）；completed 由到期任务处理
         db.commit()
         logger.info("deliver_batch campaign=%s batch=%s sent=%d failed=%d",
                     campaign_id, batch_no, sent, failed)
