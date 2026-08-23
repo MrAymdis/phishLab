@@ -45,6 +45,11 @@ celery_app.conf.beat_schedule = {
     # 注：DNS 巡检已改为手动触发（API: GET /api/v1/domains/{id}/dns-check，发送配置页
     # 域名列表「检测」按钮）——自动巡检的 dnspython 同步查询会阻塞投递 worker 线程，
     # 且域名 DNS 记录配置后极少变化，定时巡检价值有限。
+    # 每分钟扫描到点的定时演练并自动启动（scheduled + schedule_at <= now）
+    "campaign-auto-start": {
+        "task": "worker.tasks.campaign_auto.start_scheduled",
+        "schedule": 60.0,
+    },
     # 每 5 分钟扫描 running 演练：投递完毕/到期自动置 completed
     "campaign-auto-complete": {
         "task": "worker.tasks.campaign_auto.auto_complete",

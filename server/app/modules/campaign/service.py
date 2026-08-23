@@ -5,7 +5,7 @@
 import secrets
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.core.audit import record_audit
 from app.core.deps import apply_data_scope, get_scoped_or_404
@@ -368,10 +368,10 @@ def get_campaign(db, account, campaign_id: int):
 
 
 def update_draft(db, account, campaign_id: int, payload):
-    """向导草稿暂存（仅 status=draft 可编辑，不触碰状态/目标数）。"""
+    """向导草稿暂存（仅 draft/scheduled 可编辑，不触碰状态/目标数）。"""
     c = _get_or_404(db, account, campaign_id)
-    if c.status != "draft":
-        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿状态可编辑")
+    if c.status not in ("draft", "scheduled"):
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始状态可编辑")
 
     c.name = payload.name
     c.description = payload.description
@@ -406,15 +406,26 @@ def update_draft(db, account, campaign_id: int, payload):
 
 
 def start(db, account, campaign_id: int):
-    """draft/scheduled → running：生成批次调度并派发 Worker 投递。"""
-    c = _get_or_404(db, account, campaign_id)
-    if c.status not in ("draft", "scheduled"):
-        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始状态可启动")
+    """draft/scheduled → running：生成批次调度并派发 Worker 投递。
 
+    原子认领（UPDATE ... WHERE status IN (draft,scheduled)）：手动启动与
+    自动启动（campaign_auto.start_scheduled）并发时仅一方成功，避免重复生成批次。
+    """
     now = datetime.now()
-    c.status = "running"
-    c.started_at = now
-    # 批次行：Worker 按 plan_at 触发投递，uk_campaign_batch 保证幂等
+    claimed = db.execute(
+        update(Campaign)
+        .where(Campaign.id == campaign_id, Campaign.status.in_(("draft", "scheduled")))
+        .values(status="running", started_at=now)
+    )
+    c = db.get(Campaign, campaign_id)
+    if c is None:
+        db.rollback()
+        raise BizError(ErrorCode.NOT_FOUND)
+    if claimed.rowcount == 0:
+        db.rollback()
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始状态可启动")
+    # 批次行：Worker 按 plan_at 触发投递，uk_campaign_batch 保证幂等；
+    # 状态变更与批次生成同事务提交，失败整体回滚不留 running 无批次
     for i in range(c.batch_count):
         db.add(CampaignBatch(
             campaign_id=campaign_id,
@@ -824,12 +835,10 @@ def test_send(db, account, campaign_id: int, to: list[str]) -> dict:
 
 
 def delete_campaign(db, account, campaign_id: int) -> None:
-    """删除演练：草稿/已终止状态可删（进行中不可删，避免追踪事件孤儿；已完成保留报表不删）；关联数据级联删除。"""
-    c = db.get(Campaign, campaign_id)
-    if c is None:
-        raise ValueError("演练不存在")
-    if c.status not in ("draft", "terminated"):
-        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/已终止状态可删除演练")
+    """删除演练：草稿/待开始/已终止状态可删（进行中不可删，避免追踪事件孤儿；已完成保留报表不删）；关联数据级联删除。"""
+    c = _get_or_404(db, account, campaign_id)
+    if c.status not in ("draft", "scheduled", "terminated"):
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始/已终止状态可删除演练")
     db.execute(CampaignTarget.__table__.delete().where(CampaignTarget.campaign_id == campaign_id))
     db.execute(CampaignBatch.__table__.delete().where(CampaignBatch.campaign_id == campaign_id))
     db.execute(CampaignStat.__table__.delete().where(CampaignStat.campaign_id == campaign_id))

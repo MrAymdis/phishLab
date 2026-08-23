@@ -1,8 +1,8 @@
-"""演练自动完成：到达计划结束时间 → completed。
+"""演练自动调度：定时演练到点自动启动 → 到达计划结束时间自动完成。
 
 投递完毕后演练保持 running（追踪期）：打开/点击/中招事件继续采集，
 直到 ended_at（未设置时按开始时间 +7 天追踪期）才自动关闭。
-幂等：仅扫描 running 状态。
+幂等：仅扫描对应状态。
 """
 import logging
 from datetime import datetime, timedelta
@@ -14,6 +14,41 @@ from worker.celery_app import celery_app
 logger = logging.getLogger("phishlab.campaign_auto")
 
 _DEFAULT_TRACKING_DAYS = 7
+
+
+@celery_app.task(name="worker.tasks.campaign_auto.start_scheduled")
+def start_scheduled() -> int:
+    """扫描到点的定时演练（scheduled + schedule_at <= now）自动启动。
+
+    start() 内部原子认领（CAS），与手动启动并发时仅一方成功；
+    已被人工启动/删除的演练抛状态错误，捕获后跳过。
+    """
+    from app.db.session import SessionLocal
+    from app.modules.campaign.models import Campaign
+    from app.modules.campaign.service import start
+
+    db = SessionLocal()
+    try:
+        ids = db.scalars(
+            select(Campaign.id).where(
+                Campaign.status == "scheduled",
+                Campaign.schedule_at.is_not(None),
+                Campaign.schedule_at <= datetime.now(),
+            )
+        ).all()
+        started = 0
+        for cid in ids:
+            try:
+                start(db, None, cid)  # 系统自动启动：审计 account=None
+            except Exception as e:  # 已被人工启动/删除等：跳过不中断
+                db.rollback()
+                logger.warning("定时演练自动启动跳过 campaign=%s：%s", cid, e)
+                continue
+            started += 1
+            logger.info("定时演练自动启动 campaign=%s", cid)
+        return started
+    finally:
+        db.close()
 
 
 @celery_app.task(name="worker.tasks.campaign_auto.auto_complete")
