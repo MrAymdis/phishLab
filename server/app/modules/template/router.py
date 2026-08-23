@@ -62,7 +62,7 @@ def delete_template(tid: int, account=Depends(get_current_account), db: Session 
 
 @email_templates.get("/{tid}", summary="邮件模板详情")
 def get_template(tid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok(service.get_email_template(db, tid))
+    return resp.ok(service.get_email_template(db, account, tid))
 
 
 @email_templates.put("/{tid}", summary="更新邮件模板", dependencies=[Depends(require_perm("template:manage"))])
@@ -85,12 +85,12 @@ def list_pages(account=Depends(get_current_account), db: Session = Depends(get_d
 
 @landing_pages.get("/{pid}", summary="落地页详情")
 def get_page(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok(service.get_landing_page(db, pid))
+    return resp.ok(service.get_landing_page(db, account, pid))
 
 
 @landing_pages.get("/{pid}/preview", summary="落地页预览（消毒后渲染，与线上 /p/{slug} 一致）")
 def preview_page(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok(service.get_landing_page_preview(db, pid))
+    return resp.ok(service.get_landing_page_preview(db, account, pid))
 
 
 @landing_pages.post("", summary="新建落地页", dependencies=[Depends(require_perm("template:manage"))])

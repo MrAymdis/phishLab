@@ -83,7 +83,7 @@ def apply_data_scope(db, stmt, account, *, dept_col=None, self_owner_col=None, s
         .where(SysAccountRole.account_id == account.id)
     ).all()
     if not roles:
-        return stmt  # 无角色（测试/未配置）放行
+        return stmt.where(false())  # 无角色：fail-closed，任何数据不可见
     if any(r.code == "super_admin" or r.data_scope == 1 for r in roles):
         return stmt
 
@@ -132,4 +132,26 @@ def apply_data_scope(db, stmt, account, *, dept_col=None, self_owner_col=None, s
             conds.append(false())
     if conds:
         stmt = stmt.where(or_(*conds))
+    else:
+        # 有角色但无任何可落地条件（如部门级角色未绑定员工、自定义部门角色无部门行）：
+        # fail-closed，不可见任何数据，避免越权看全量
+        stmt = stmt.where(false())
     return stmt
+
+
+def get_scoped_or_404(db, account, model, obj_id, *, dept_col=None, self_owner_col=None,
+                      self_id=None, allow_null_owner: bool = False, msg: str | None = None):
+    """按 ID 读取单条资源并强制数据权限过滤（与对应列表接口同口径）。
+
+    供所有详情/更新/删除/取证等 ID 端点使用：无权限与不存在统一抛 404，
+    避免按 ID 枚举越权（列表接口经 apply_data_scope，单条接口必须同源过滤）。
+    """
+    stmt = apply_data_scope(
+        db, select(model).where(model.id == obj_id), account,
+        dept_col=dept_col, self_owner_col=self_owner_col, self_id=self_id,
+        allow_null_owner=allow_null_owner,
+    )
+    obj = db.scalar(stmt)
+    if obj is None:
+        raise BizError(ErrorCode.NOT_FOUND, msg or "资源不存在或无权访问")
+    return obj

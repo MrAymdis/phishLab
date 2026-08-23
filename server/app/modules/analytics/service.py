@@ -11,7 +11,7 @@ from uuid import uuid4
 from sqlalchemy import case, func, or_, select
 
 from app.core.audit import record_audit
-from app.core.deps import apply_data_scope
+from app.core.deps import apply_data_scope, get_scoped_or_404
 from app.core.errors import BizError, ErrorCode
 from app.modules.analytics.models import StatDaily
 from app.modules.campaign.models import Campaign, CampaignStat, CampaignTarget
@@ -318,9 +318,9 @@ def overview_metrics(db, account, range_: str) -> dict:
 
 def campaign_report(db, account, campaign_id: int) -> dict:
     """单次演练报表：指标卡 + 漏斗（逐级转化率）+ 中招明细 + 日趋势。"""
-    campaign = db.get(Campaign, campaign_id)
-    if campaign is None:
-        raise BizError(ErrorCode.NOT_FOUND)
+    # 数据权限校验（与演练详情同口径：按创建人归属），禁止跨范围导出/查看
+    campaign = get_scoped_or_404(db, account, Campaign, campaign_id,
+                                 self_owner_col=Campaign.creator_id)
 
     target = int(campaign.target_count or 0)
     stat = db.get(CampaignStat, campaign_id)
@@ -586,9 +586,9 @@ def _level_of(total: int) -> str:
 
 def personal_report(db, account, user_id: int) -> dict:
     """员工个人安全档案：五维雷达 + 风险趋势 + 行为时间轴 + 培训记录。"""
-    user = db.get(EmpUser, user_id)
-    if user is None:
-        raise BizError(ErrorCode.NOT_FOUND)
+    # 数据权限校验（与员工列表同口径：按部门归属），禁止按 uid 枚举他人档案
+    user = get_scoped_or_404(db, account, EmpUser, user_id, dept_col=EmpUser.dept_id,
+                             msg="员工不存在")
 
     profile = db.get(EmpRiskProfile, user_id)
     total = int(profile.total_score) if profile else int(user.initial_risk or 50)

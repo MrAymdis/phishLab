@@ -3,7 +3,7 @@ from sqlalchemy import case, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.audit import record_audit
-from app.core.deps import apply_data_scope
+from app.core.deps import apply_data_scope, get_scoped_or_404
 from app.core.errors import BizError, ErrorCode
 from app.core.security import decrypt_secret, encrypt_secret
 from app.modules.campaign.models import Campaign
@@ -308,11 +308,15 @@ def create_user(db: Session, account, payload: dict) -> int:
     return user.id
 
 
+def _get_emp_user_or_404(db, account, user_id: int) -> EmpUser:
+    """按 ID 读取员工并强制数据权限过滤（与员工列表同口径：按部门归属）。"""
+    return get_scoped_or_404(db, account, EmpUser, user_id, dept_col=EmpUser.dept_id,
+                             msg="员工不存在")
+
+
 def get_user(db: Session, account, user_id: int) -> dict:
     """员工档案详情：列表行 + 初始风险/来源/状态/创建时间。"""
-    user = db.get(EmpUser, user_id)
-    if user is None:
-        raise BizError(ErrorCode.NOT_FOUND, "员工不存在")
+    user = _get_emp_user_or_404(db, account, user_id)
     row = _user_rows(db, [user], _load_dept_map(db))[0]
     row.update({
         "initial_risk": user.initial_risk,
@@ -325,9 +329,7 @@ def get_user(db: Session, account, user_id: int) -> dict:
 
 def update_user(db: Session, account, user_id: int, payload: dict) -> dict:
     """编辑员工：改字段（邮箱唯一性排除自身）、重绑标签、initial_risk 变更时同步画像。"""
-    user = db.get(EmpUser, user_id)
-    if user is None:
-        raise BizError(ErrorCode.NOT_FOUND, "员工不存在")
+    user = _get_emp_user_or_404(db, account, user_id)
     email = payload["email"]
     if db.scalar(select(EmpUser.id).where(EmpUser.email == email, EmpUser.id != user_id, EmpUser.status == 1)):
         raise BizError(ErrorCode.PARAM_INVALID, "邮箱已存在")
@@ -372,9 +374,7 @@ def update_user(db: Session, account, user_id: int, payload: dict) -> dict:
 
 def delete_user(db: Session, account, user_id: int) -> dict:
     """软删除：status=0 离职停用，不物理删除。"""
-    user = db.get(EmpUser, user_id)
-    if user is None:
-        raise BizError(ErrorCode.NOT_FOUND, "员工不存在")
+    user = _get_emp_user_or_404(db, account, user_id)
     user.status = 0
     db.commit()
     record_audit(
@@ -566,8 +566,7 @@ def _risk_history(db: Session, user_id: int) -> list[dict]:
 
 def get_risk_profile(db: Session, account, user_id: int) -> dict:
     """五维雷达 + 最近行为轨迹；无画像时返回默认值。"""
-    if db.get(EmpUser, user_id) is None:
-        raise BizError(ErrorCode.NOT_FOUND, "员工不存在")
+    _get_emp_user_or_404(db, account, user_id)
     profile = db.get(EmpRiskProfile, user_id)
     if profile is None:
         dims = [{"label": label, "val": 70, "color": _dim_color(70)} for _, label in _DIM_DEFS]

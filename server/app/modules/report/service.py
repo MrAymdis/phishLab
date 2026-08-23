@@ -222,7 +222,15 @@ def classify(db, account, report_id: int, classification: str, remark: str | Non
     """人工研判：drill/real_phishing/false_positive/spam；正确研判发积分，真实钓鱼 TODO SIEM。"""
     if classification not in VALID_CLASSIFICATION:
         raise BizError(ErrorCode.PARAM_INVALID)
-    report = db.get(MailReport, report_id)
+    # 数据权限过滤（与举报列表同口径：按举报人部门/本人），禁止跨范围研判
+    # outerjoin：插件上报可能未关联员工（reporter_user_id IS NULL），内连接会丢行
+    report = db.scalar(apply_data_scope(
+        db, select(MailReport)
+        .outerjoin(EmpUser, EmpUser.id == MailReport.reporter_user_id)
+        .where(MailReport.id == report_id),
+        account,
+        dept_col=EmpUser.dept_id, self_id=MailReport.reporter_user_id,
+    ))
     if report is None:
         raise BizError(ErrorCode.NOT_FOUND)
 

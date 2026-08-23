@@ -10,7 +10,7 @@ import httpx
 from sqlalchemy import func, select
 
 from app.core.audit import record_audit
-from app.core.deps import apply_data_scope
+from app.core.deps import apply_data_scope, get_scoped_or_404
 from app.core.errors import BizError, ErrorCode
 from app.modules.campaign.models import Campaign, CampaignTarget
 
@@ -145,9 +145,9 @@ def create_email_template(db, account, payload: dict) -> int:
 
 def duplicate_email_template(db, account, template_id: int) -> int:
     """复制模板：生成同名（副本）的新模板，使用计数归零。"""
-    t = db.get(EmailTemplate, template_id)
-    if t is None:
-        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
+    t = get_scoped_or_404(db, account, EmailTemplate, template_id,
+                          self_owner_col=EmailTemplate.created_by, allow_null_owner=True,
+                          msg="模板不存在")
     new = EmailTemplate(
         name=f"{t.name}（副本）",
         scene=t.scene,
@@ -176,9 +176,9 @@ def duplicate_email_template(db, account, template_id: int) -> int:
 
 def duplicate_landing_page(db, account, page_id: int) -> int:
     """复制落地页：复制页面与表单字段，生成新 slug。"""
-    p = db.get(LandingPage, page_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
+    p = get_scoped_or_404(db, account, LandingPage, page_id,
+                          self_owner_col=LandingPage.created_by, allow_null_owner=True,
+                          msg="落地页不存在")
     new = LandingPage(
         name=f"{p.name}（副本）",
         type=p.type,
@@ -209,11 +209,11 @@ def duplicate_landing_page(db, account, page_id: int) -> int:
     return new.id
 
 
-def get_email_template(db, template_id: int) -> dict:
+def get_email_template(db, account, template_id: int) -> dict:
     """获取邮件模板详情（含 html_body 全文）。"""
-    t = db.get(EmailTemplate, template_id)
-    if t is None:
-        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
+    t = get_scoped_or_404(db, account, EmailTemplate, template_id,
+                          self_owner_col=EmailTemplate.created_by, allow_null_owner=True,
+                          msg="模板不存在")
     return {
         "id": t.id,
         "name": t.name,
@@ -238,9 +238,9 @@ def get_email_template(db, template_id: int) -> dict:
 
 def update_email_template(db, account, template_id: int, payload: dict) -> None:
     """更新邮件模板：重新抽取变量，写审计。"""
-    t = db.get(EmailTemplate, template_id)
-    if t is None:
-        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
+    t = get_scoped_or_404(db, account, EmailTemplate, template_id,
+                          self_owner_col=EmailTemplate.created_by, allow_null_owner=True,
+                          msg="模板不存在")
     if "name" in payload:
         t.name = payload["name"]
     if "scene" in payload:
@@ -266,9 +266,9 @@ def update_email_template(db, account, template_id: int, payload: dict) -> None:
 
 def delete_email_template(db, account, template_id: int) -> None:
     """删除邮件模板；被演练引用时阻止（防演练历史悬空）。"""
-    t = db.get(EmailTemplate, template_id)
-    if t is None:
-        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
+    t = get_scoped_or_404(db, account, EmailTemplate, template_id,
+                          self_owner_col=EmailTemplate.created_by, allow_null_owner=True,
+                          msg="模板不存在")
     if db.scalar(select(Campaign.id).where(Campaign.template_id == template_id).limit(1)):
         raise BizError(ErrorCode.BIZ_CONFLICT, "模板已被演练引用，无法删除")
     db.delete(t)
@@ -288,9 +288,9 @@ def test_send_template(db, account, template_id: int, to: list[str]) -> dict:
     from app.modules.channel import service as channel_service
     from app.modules.channel.models import SendChannel
 
-    tpl = db.get(EmailTemplate, template_id)
-    if tpl is None:
-        raise BizError(ErrorCode.NOT_FOUND, "模板不存在")
+    tpl = get_scoped_or_404(db, account, EmailTemplate, template_id,
+                            self_owner_col=EmailTemplate.created_by, allow_null_owner=True,
+                            msg="模板不存在")
     if not to:
         raise BizError(ErrorCode.PARAM_INVALID, "请提供测试收件人")
 
@@ -1129,11 +1129,11 @@ def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: st
     return html
 
 
-def get_landing_page(db, page_id: int) -> dict:
+def get_landing_page(db, account, page_id: int) -> dict:
     """获取落地页详情（含 html_content 全文 + form_schema）。"""
-    p = db.get(LandingPage, page_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
+    p = get_scoped_or_404(db, account, LandingPage, page_id,
+                          self_owner_col=LandingPage.created_by, allow_null_owner=True,
+                          msg="落地页不存在")
     fs = p.form_schema or {}
     fields = db.scalars(
         select(LandingFormField).where(LandingFormField.page_id == page_id)
@@ -1162,16 +1162,16 @@ def get_landing_page(db, page_id: int) -> dict:
     }
 
 
-def get_landing_page_preview(db, page_id: int) -> dict:
+def get_landing_page_preview(db, account, page_id: int) -> dict:
     """落地页预览：返回与线上 /p/{slug} 完全一致的消毒后渲染 HTML。
 
     与 get_landing_page（编辑器用，返回原始 HTML）分离：克隆页原始内容含
     目标站登录 JS，直接放进预览 iframe 既与原站视觉不一致，也可能把
     测试口令发回真实系统。
     """
-    p = db.get(LandingPage, page_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
+    p = get_scoped_or_404(db, account, LandingPage, page_id,
+                          self_owner_col=LandingPage.created_by, allow_null_owner=True,
+                          msg="落地页不存在")
     raw = p.html_content or _default_landing_html(p.type, p.name)
     return {
         "id": p.id,
@@ -1217,9 +1217,9 @@ def create_landing_page(db, account, payload: dict) -> int:
 
 def update_landing_page(db, account, page_id: int, payload: dict) -> None:
     """更新落地页：同步 form_schema、html_content、表单字段。"""
-    p = db.get(LandingPage, page_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
+    p = get_scoped_or_404(db, account, LandingPage, page_id,
+                          self_owner_col=LandingPage.created_by, allow_null_owner=True,
+                          msg="落地页不存在")
     if "name" in payload:
         p.name = payload["name"]
     if "type" in payload:
@@ -1255,9 +1255,9 @@ _PAGE_TYPES = ("mail_login", "oa_login", "pan_auth", "custom", "cloned")
 
 def delete_landing_page(db, account, page_id: int) -> None:
     """删除落地页；被演练引用时阻止（防演练历史悬空），表单字段级联删除。"""
-    p = db.get(LandingPage, page_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "落地页不存在")
+    p = get_scoped_or_404(db, account, LandingPage, page_id,
+                          self_owner_col=LandingPage.created_by, allow_null_owner=True,
+                          msg="落地页不存在")
     if db.scalar(select(Campaign.id).where(Campaign.landing_page_id == page_id).limit(1)):
         raise BizError(ErrorCode.BIZ_CONFLICT, "落地页已被演练引用，无法删除")
     db.execute(LandingFormField.__table__.delete().where(LandingFormField.page_id == page_id))

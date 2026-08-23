@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 
 from app.core.audit import record_audit
-from app.core.deps import apply_data_scope
+from app.core.deps import apply_data_scope, get_scoped_or_404
 from app.core.errors import BizError, ErrorCode
 from app.modules.license.service import check_quota
 from app.modules.org.models import EmpDept, EmpUser, EmpUserTag
@@ -54,11 +54,10 @@ def _dt(v: datetime | None) -> str | None:
     return v.strftime(_DT_FMT) if v else None
 
 
-def _get_or_404(db, campaign_id: int) -> Campaign:
-    c = db.get(Campaign, campaign_id)
-    if c is None:
-        raise BizError(ErrorCode.NOT_FOUND)
-    return c
+def _get_or_404(db, account, campaign_id: int) -> Campaign:
+    """按 ID 读取演练并强制数据权限过滤（与列表同口径：按创建人归属）。"""
+    return get_scoped_or_404(db, account, Campaign, campaign_id,
+                             self_owner_col=Campaign.creator_id)
 
 
 def _stat_map(db, campaign_ids: list[int]) -> dict[int, CampaignStat]:
@@ -286,7 +285,7 @@ def create_campaign(db, account, payload) -> int:
 
 def duplicate_campaign(db, account, campaign_id: int) -> int:
     """复制演练：基于原演练配置创建新草稿（目标按快照重新展开）。"""
-    src = _get_or_404(db, campaign_id)
+    src = _get_or_404(db, account, campaign_id)
     payload_snapshot = src.target_snapshot or {}
     user_ids = _expand_target_ids(db, src.target_mode, payload_snapshot) if payload_snapshot else []
 
@@ -336,7 +335,7 @@ def duplicate_campaign(db, account, campaign_id: int) -> int:
 
 def get_campaign(db, account, campaign_id: int):
     """演练详情（7 步向导回显）。"""
-    c = _get_or_404(db, campaign_id)
+    c = _get_or_404(db, account, campaign_id)
     return {
         "id": c.id,
         "name": c.name,
@@ -370,7 +369,7 @@ def get_campaign(db, account, campaign_id: int):
 
 def update_draft(db, account, campaign_id: int, payload):
     """向导草稿暂存（仅 status=draft 可编辑，不触碰状态/目标数）。"""
-    c = _get_or_404(db, campaign_id)
+    c = _get_or_404(db, account, campaign_id)
     if c.status != "draft":
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿状态可编辑")
 
@@ -408,7 +407,7 @@ def update_draft(db, account, campaign_id: int, payload):
 
 def start(db, account, campaign_id: int):
     """draft/scheduled → running：生成批次调度并派发 Worker 投递。"""
-    c = _get_or_404(db, campaign_id)
+    c = _get_or_404(db, account, campaign_id)
     if c.status not in ("draft", "scheduled"):
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始状态可启动")
 
@@ -452,7 +451,7 @@ def start(db, account, campaign_id: int):
 
 def pause(db, account, campaign_id: int):
     """running → paused：停止批次调度，追踪链路继续。"""
-    c = _get_or_404(db, campaign_id)
+    c = _get_or_404(db, account, campaign_id)
     if c.status != "running":
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅运行中状态可暂停")
     c.status = "paused"
@@ -467,7 +466,7 @@ def pause(db, account, campaign_id: int):
 
 def resume(db, account, campaign_id: int):
     """paused → running：恢复批次调度。"""
-    c = _get_or_404(db, campaign_id)
+    c = _get_or_404(db, account, campaign_id)
     if c.status != "paused":
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅暂停状态可恢复")
     c.status = "running"
@@ -482,7 +481,7 @@ def resume(db, account, campaign_id: int):
 
 def terminate(db, account, campaign_id: int):
     """非终态 → terminated：停止发送与追踪，写审计。"""
-    c = _get_or_404(db, campaign_id)
+    c = _get_or_404(db, account, campaign_id)
     if c.status not in ("draft", "scheduled", "sending", "running", "paused"):
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "当前状态不可终止")
     c.status = "terminated"
@@ -510,7 +509,7 @@ def dashboard(db, account, campaign_id: int) -> dict:
     口径：已阅读/已点击/中招/举报均为「人数」（去重目标），
     打开过即计 1 人，重复打开不重复计数；投递成功为实际送达目标数。
     """
-    c = _get_or_404(db, campaign_id)
+    c = _get_or_404(db, account, campaign_id)
     stat = db.get(CampaignStat, campaign_id)
     # 投递成功按目标实时口径（delivered_cnt 只在投递时累加，退信纠正为
     # bounced/failed 后不会回减；sent 即"已发出且尚未收到退信"的真实在途数）
@@ -617,6 +616,7 @@ def _parse_ua(ua: str | None) -> str:
 
 def timeline(db, account, campaign_id: int, page: int, page_size: int):
     """用户行为时间轴：track_event left join emp_user/emp_dept，附 IP/UA/指纹/提交脱敏详情。"""
+    _get_or_404(db, account, campaign_id)  # 数据权限校验（与详情同口径）
     base = (
         select(TrackEvent, EmpUser.name, EmpDept.name)
         .outerjoin(EmpUser, EmpUser.id == TrackEvent.user_id)
@@ -663,6 +663,7 @@ def timeline(db, account, campaign_id: int, page: int, page_size: int):
 
 def delivery_failures(db, account, campaign_id: int, page: int, page_size: int):
     """投递失败列表：campaign_target 状态为 failed/bounced，附收件人邮箱/姓名/失败原因。"""
+    _get_or_404(db, account, campaign_id)  # 数据权限校验（与详情同口径）
     base = (
         select(CampaignTarget, EmpUser.name, EmpUser.email)
         .outerjoin(EmpUser, EmpUser.id == CampaignTarget.user_id)
@@ -697,6 +698,8 @@ def reveal_submit_password(db, account, campaign_id: int, event_id: int,
     仅 submit 事件可解密；无密文（历史数据/加密失败）时提示无法求证。
     """
     import base64
+
+    _get_or_404(db, account, campaign_id)  # 数据权限校验：禁止跨范围取证
 
     from app.core.security import decrypt_secret, verify_password
     from app.modules.settings.service import get_setting
@@ -753,7 +756,7 @@ def test_send(db, account, campaign_id: int, to: list[str]) -> dict:
     if not addrs:
         raise BizError(ErrorCode.PARAM_INVALID, "请至少提供一个收件人邮箱地址")
 
-    c = _get_or_404(db, campaign_id)
+    c = _get_or_404(db, account, campaign_id)
 
     # 通道解析：演练绑定通道 → 默认 SMTP 通道
     ch = db.get(SendChannel, c.channel_id) if c.channel_id else None

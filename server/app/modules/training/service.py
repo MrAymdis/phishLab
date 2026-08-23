@@ -10,7 +10,7 @@ from sqlalchemy import func, select
 
 from app.core.audit import record_audit
 from app.core.config import settings as app_settings
-from app.core.deps import apply_data_scope
+from app.core.deps import apply_data_scope, get_scoped_or_404
 from app.core.errors import BizError, ErrorCode
 
 from .models import (
@@ -194,9 +194,9 @@ def get_task(db, account, task_id: int) -> dict:
     """任务详情：基本信息 + 人员学习明细（批量补部门，避免 N+1）。"""
     from app.modules.org.models import EmpDept, EmpUser
 
-    task = db.get(TrainingTask, task_id)
-    if task is None:
-        raise BizError(ErrorCode.NOT_FOUND, "培训任务不存在")
+    task = get_scoped_or_404(db, account, TrainingTask, task_id,
+                             self_owner_col=TrainingTask.created_by, allow_null_owner=True,
+                             msg="培训任务不存在")
     assignments = db.scalars(
         select(TrainingAssignment).where(TrainingAssignment.task_id == task_id)
         .order_by(TrainingAssignment.id)
@@ -238,9 +238,9 @@ def get_task(db, account, task_id: int) -> dict:
 
 def close_task(db, account, task_id: int):
     """关闭培训任务（status=closed），未完成学员保留明细。"""
-    task = db.get(TrainingTask, task_id)
-    if task is None:
-        raise BizError(ErrorCode.NOT_FOUND, "培训任务不存在")
+    task = get_scoped_or_404(db, account, TrainingTask, task_id,
+                             self_owner_col=TrainingTask.created_by, allow_null_owner=True,
+                             msg="培训任务不存在")
     task.status = "closed"
     db.commit()
     record_audit(db, account=account, module="training", action="close_task",
@@ -251,9 +251,9 @@ def close_task(db, account, task_id: int):
 
 def remind_task(db, account, task_id: int) -> dict:
     """催办：统计未完成人数并审计（真实通知渠道二期接入）。"""
-    task = db.get(TrainingTask, task_id)
-    if task is None:
-        raise BizError(ErrorCode.NOT_FOUND, "培训任务不存在")
+    task = get_scoped_or_404(db, account, TrainingTask, task_id,
+                             self_owner_col=TrainingTask.created_by, allow_null_owner=True,
+                             msg="培训任务不存在")
     undone = int(db.scalar(
         select(func.count()).select_from(TrainingAssignment).where(
             TrainingAssignment.task_id == task_id,
@@ -268,9 +268,9 @@ def remind_task(db, account, task_id: int) -> dict:
 
 def delete_task(db, account, task_id: int):
     """删除培训任务（连带学习任务明细）。"""
-    task = db.get(TrainingTask, task_id)
-    if task is None:
-        raise BizError(ErrorCode.NOT_FOUND, "培训任务不存在")
+    task = get_scoped_or_404(db, account, TrainingTask, task_id,
+                             self_owner_col=TrainingTask.created_by, allow_null_owner=True,
+                             msg="培训任务不存在")
     db.execute(TrainingAssignment.__table__.delete().where(
         TrainingAssignment.task_id == task_id))
     db.delete(task)
@@ -289,9 +289,9 @@ def export_task_xlsx(db, account, task_id: int) -> tuple[bytes, str]:
 
     from app.modules.org.models import EmpDept, EmpUser
 
-    task = db.get(TrainingTask, task_id)
-    if task is None:
-        raise BizError(ErrorCode.NOT_FOUND, "培训任务不存在")
+    task = get_scoped_or_404(db, account, TrainingTask, task_id,
+                             self_owner_col=TrainingTask.created_by, allow_null_owner=True,
+                             msg="培训任务不存在")
     assignments = db.scalars(
         select(TrainingAssignment).where(TrainingAssignment.task_id == task_id)
         .order_by(TrainingAssignment.id)
@@ -359,9 +359,9 @@ def list_questions(db, account):
 
 def get_question(db, account, question_id: int) -> dict:
     """题目详情（管理端编辑回填：含答案/解析/关联课程）。"""
-    q = db.get(ExamQuestion, question_id)
-    if q is None:
-        raise BizError(ErrorCode.NOT_FOUND, "题目不存在")
+    q = get_scoped_or_404(db, account, ExamQuestion, question_id,
+                          self_owner_col=ExamQuestion.created_by, allow_null_owner=True,
+                          msg="题目不存在")
     course_title = ""
     if q.course_id:
         course = db.get(Course, q.course_id)
@@ -419,9 +419,9 @@ def list_papers(db, account):
 
 def get_course(db, account, course_id: int) -> dict:
     """课程详情（预览）：基本信息 + 封面/课件地址。"""
-    c = db.get(Course, course_id)
-    if c is None:
-        raise BizError(ErrorCode.NOT_FOUND, "课程不存在")
+    c = get_scoped_or_404(db, account, Course, course_id,
+                          self_owner_col=Course.created_by, allow_null_owner=True,
+                          msg="课程不存在")
     return {
         "id": c.id,
         "title": c.title,
@@ -439,9 +439,9 @@ def get_course(db, account, course_id: int) -> dict:
 
 def update_course(db, account, course_id: int, payload: dict) -> None:
     """编辑课程（名称/类型/难度/时长/描述/课件信息）。"""
-    c = db.get(Course, course_id)
-    if c is None:
-        raise BizError(ErrorCode.NOT_FOUND, "课程不存在")
+    c = get_scoped_or_404(db, account, Course, course_id,
+                          self_owner_col=Course.created_by, allow_null_owner=True,
+                          msg="课程不存在")
     title = (payload.get("name") or payload.get("title") or "").strip()
     if title:
         c.title = title
@@ -467,9 +467,9 @@ def update_course(db, account, course_id: int, payload: dict) -> None:
 
 def delete_course(db, account, course_id: int) -> None:
     """删除课程；被题目/学习任务引用时阻止（防数据悬空）。"""
-    c = db.get(Course, course_id)
-    if c is None:
-        raise BizError(ErrorCode.NOT_FOUND, "课程不存在")
+    c = get_scoped_or_404(db, account, Course, course_id,
+                          self_owner_col=Course.created_by, allow_null_owner=True,
+                          msg="课程不存在")
     if db.scalar(select(ExamQuestion.id).where(ExamQuestion.course_id == course_id).limit(1)):
         raise BizError(ErrorCode.BIZ_CONFLICT, "课程已被题库题目关联，无法删除")
     if db.scalar(select(TrainingAssignment.id).where(TrainingAssignment.course_id == course_id).limit(1)):
@@ -583,9 +583,9 @@ def create_question(db, account, payload: dict) -> int:
 
 def update_question(db, account, question_id: int, payload: dict) -> None:
     """编辑题目（全量覆盖字段）。"""
-    q = db.get(ExamQuestion, question_id)
-    if q is None:
-        raise BizError(ErrorCode.NOT_FOUND, "题目不存在")
+    q = get_scoped_or_404(db, account, ExamQuestion, question_id,
+                          self_owner_col=ExamQuestion.created_by, allow_null_owner=True,
+                          msg="题目不存在")
     _validate_question(payload)
     q.type = payload["type"]
     q.content = (payload.get("content") or "").strip()
@@ -602,9 +602,9 @@ def update_question(db, account, question_id: int, payload: dict) -> None:
 
 def delete_question(db, account, question_id: int) -> None:
     """删除题目；被试卷引用时阻止。"""
-    q = db.get(ExamQuestion, question_id)
-    if q is None:
-        raise BizError(ErrorCode.NOT_FOUND, "题目不存在")
+    q = get_scoped_or_404(db, account, ExamQuestion, question_id,
+                          self_owner_col=ExamQuestion.created_by, allow_null_owner=True,
+                          msg="题目不存在")
     if db.scalar(select(ExamPaperQuestion.paper_id).where(
             ExamPaperQuestion.question_id == question_id).limit(1)):
         raise BizError(ErrorCode.BIZ_CONFLICT, "题目已被试卷引用，无法删除")
@@ -654,9 +654,9 @@ def create_paper(db, account, payload: dict) -> int:
 
 def get_paper(db, account, paper_id: int) -> dict:
     """试卷详情（预览）：题目完整列表（管理端含答案/解析）。"""
-    p = db.get(ExamPaper, paper_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "试卷不存在")
+    p = get_scoped_or_404(db, account, ExamPaper, paper_id,
+                          self_owner_col=ExamPaper.created_by, allow_null_owner=True,
+                          msg="试卷不存在")
     rows = db.execute(
         select(ExamQuestion, ExamPaperQuestion.score)
         .join(ExamPaperQuestion, ExamPaperQuestion.question_id == ExamQuestion.id)
@@ -691,9 +691,9 @@ def get_paper(db, account, paper_id: int) -> dict:
 
 def update_paper(db, account, paper_id: int, payload: dict) -> None:
     """编辑试卷：基本信息 + 题目全量覆盖。"""
-    p = db.get(ExamPaper, paper_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "试卷不存在")
+    p = get_scoped_or_404(db, account, ExamPaper, paper_id,
+                          self_owner_col=ExamPaper.created_by, allow_null_owner=True,
+                          msg="试卷不存在")
     title = (payload.get("title") or "").strip()
     if title:
         p.title = title
@@ -766,9 +766,9 @@ def publish_paper(db, account, paper_id: int, audience: dict | None = None) -> d
 
     audience 结构同培训任务：{labels, dept_ids, user_ids, all}；不传则全员。
     """
-    p = db.get(ExamPaper, paper_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "试卷不存在")
+    p = get_scoped_or_404(db, account, ExamPaper, paper_id,
+                          self_owner_col=ExamPaper.created_by, allow_null_owner=True,
+                          msg="试卷不存在")
     snap, count = _normalize_audience(db, audience or {})
     p.status = "published"
     p.publish_audience = snap
@@ -781,9 +781,9 @@ def publish_paper(db, account, paper_id: int, audience: dict | None = None) -> d
 
 def delete_paper(db, account, paper_id: int) -> None:
     """删除试卷（考试记录保留，试卷题目关联级联删除）。"""
-    p = db.get(ExamPaper, paper_id)
-    if p is None:
-        raise BizError(ErrorCode.NOT_FOUND, "试卷不存在")
+    p = get_scoped_or_404(db, account, ExamPaper, paper_id,
+                          self_owner_col=ExamPaper.created_by, allow_null_owner=True,
+                          msg="试卷不存在")
     db.execute(ExamPaperQuestion.__table__.delete().where(
         ExamPaperQuestion.paper_id == paper_id))
     db.delete(p)
