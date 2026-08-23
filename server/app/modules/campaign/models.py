@@ -1,7 +1,7 @@
 """演练域：演练主体、目标明细、批次、实时统计、预警。"""
 from datetime import datetime
 
-from sqlalchemy import JSON, BigInteger, DateTime, Integer, String, UniqueConstraint, func
+from sqlalchemy import JSON, BigInteger, DateTime, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, pk
@@ -49,6 +49,8 @@ class CampaignTarget(Base, TimestampMixin):
     __tablename__ = "campaign_target"
     __table_args__ = (
         UniqueConstraint("campaign_id", "user_id", name="uq_campaign_target_user"),
+        # 投递列表/失败列表按状态过滤 + 按发送时间排序
+        Index("ix_campaign_target_send_status_sent_at", "send_status", "sent_at"),
     )
 
     id: Mapped[int] = pk()

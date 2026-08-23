@@ -23,7 +23,7 @@ class TrackEvent(Base):
     ua: Mapped[str | None] = mapped_column(String(512))
     fingerprint_id: Mapped[int | None] = mapped_column(BigInteger)
     detail: Mapped[dict | None] = mapped_column(JSON, comment="脱敏后:字段名集合/长度/链接/耗时")
-    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False, index=True)
 
 
 class Fingerprint(Base):

@@ -7,6 +7,7 @@ from sqlalchemy import (
     UniqueConstraint, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, pk
 
@@ -83,7 +84,7 @@ class EmpRiskProfile(Base):
     pwd_submit: Mapped[int] = mapped_column(Integer, default=70, comment="密码提交维度")
     attach_run: Mapped[int] = mapped_column(Integer, default=70, comment="附件下载维度")
     report_awareness: Mapped[int] = mapped_column(Integer, default=70, comment="举报意识维度")
-    phish_count: Mapped[int] = mapped_column(Integer, default=0, comment="历史中招次数")
+    phish_count: Mapped[int] = mapped_column(Integer, default=0, index=True, comment="历史中招次数（高危榜排序）")
     report_count: Mapped[int] = mapped_column(Integer, default=0)
     training_completion: Mapped[Decimal] = mapped_column(Numeric(5, 2), default=0, comment="培训完成度%")
     risk_level: Mapped[int] = mapped_column(Integer, default=1, comment="1低(0-70) 2中(71-80) 3高(81-100)")

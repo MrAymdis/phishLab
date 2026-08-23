@@ -43,6 +43,9 @@ def _parse_days(value) -> int | None:
     return None
 
 
+_CHUNK = 5000
+
+
 @celery_app.task(name="worker.tasks.retention_clean.clean")
 def clean():
     """到期数据清理（beat 每日 03:00 调度）：按三类留存期删除超期数据。"""
@@ -68,27 +71,40 @@ def clean():
 
         counts: dict[str, int] = {}
 
-        def _del(name: str, stmt):
-            counts[name] = db.execute(stmt).rowcount or 0
+        def _del(name: str, model, where):
+            """分批删除超期行（每批 _CHUNK 条、逐批提交）。
+
+            track_event 等表可达百万行，单条 DELETE 会锁大范围行 + undo 日志暴涨；
+            分批后每批行锁小，任务中断后重跑可续删（幂等：条件基于时间）。
+            """
+            pk = model.__table__.primary_key.columns[0]
+            n = 0
+            while True:
+                ids = db.scalars(select(pk).where(where).limit(_CHUNK)).all()
+                if not ids:
+                    break
+                n += db.execute(delete(model).where(pk.in_(ids))).rowcount or 0
+                db.commit()
+            counts[name] = n
+            if n > _CHUNK:
+                logger.info("retention %s 分批删除 %s 条（chunk=%s）", name, n, _CHUNK)
 
         # 演练数据：事件明细（含 IP/UA/指纹/提交表单密文）
-        _del("track_event", delete(TrackEvent).where(TrackEvent.created_at < drill_cut))
+        _del("track_event", TrackEvent, TrackEvent.created_at < drill_cut)
         # 演练数据：对象明细（仅已完成/终止演练；进行中演练即使超期也不动）
         done_ids = select(Campaign.id).where(
             Campaign.status.in_(("completed", "terminated")),
             Campaign.created_at < drill_cut,
         )
-        _del("campaign_target",
-             delete(CampaignTarget).where(CampaignTarget.campaign_id.in_(done_ids)))
+        _del("campaign_target", CampaignTarget,
+             CampaignTarget.campaign_id.in_(done_ids))
         # 行为指纹：last_seen 超期即删（事件同步删除，无悬挂引用）
-        _del("fingerprint", delete(Fingerprint).where(Fingerprint.last_seen_at < behavior_cut))
+        _del("fingerprint", Fingerprint, Fingerprint.last_seen_at < behavior_cut)
         # 日志与 AI 会话
-        _del("audit_log", delete(AuditLog).where(AuditLog.created_at < log_cut))
-        _del("login_log", delete(LoginLog).where(LoginLog.created_at < log_cut))
-        _del("open_api_log", delete(OpenApiLog).where(OpenApiLog.created_at < log_cut))
-        _del("ai_message", delete(AiMessage).where(AiMessage.created_at < log_cut))
-
-        db.commit()
+        _del("audit_log", AuditLog, AuditLog.created_at < log_cut)
+        _del("login_log", LoginLog, LoginLog.created_at < log_cut)
+        _del("open_api_log", OpenApiLog, OpenApiLog.created_at < log_cut)
+        _del("ai_message", AiMessage, AiMessage.created_at < log_cut)
         total = sum(counts.values())
         if total:
             logger.info("留存清理完成：共 %s 条 %s", total, counts)
@@ -104,6 +120,7 @@ def clean():
                 "counts": counts,
             },
         )
+        db.commit()  # 审计留痕（各表删除已在分批循环内逐批提交）
         return total
     except Exception:
         db.rollback()
