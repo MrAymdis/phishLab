@@ -419,7 +419,10 @@ def update_draft(db, account, campaign_id: int, payload):
 
 
 def start(db, account, campaign_id: int):
-    """draft/scheduled → running：生成批次调度并派发 Worker 投递。
+    """draft/scheduled → sending（投递中）：生成批次调度并派发 Worker 投递。
+
+    投递完毕（无 pending/sending 批次）由派发器 dispatch_due_batches 自动转
+    running（追踪期），故 running 语义收敛为「投递完成、追踪中」。
 
     原子认领（UPDATE ... WHERE status IN (draft,scheduled)）：手动启动与
     自动启动（campaign_auto.start_scheduled）并发时仅一方成功，避免重复生成批次。
@@ -428,7 +431,7 @@ def start(db, account, campaign_id: int):
     claimed = db.execute(
         update(Campaign)
         .where(Campaign.id == campaign_id, Campaign.status.in_(("draft", "scheduled")))
-        .values(status="running", started_at=now)
+        .values(status="sending", started_at=now)
     )
     c = db.get(Campaign, campaign_id)
     if c is None:
@@ -474,10 +477,10 @@ def start(db, account, campaign_id: int):
 
 
 def pause(db, account, campaign_id: int):
-    """running → paused：停止批次调度，追踪链路继续。"""
+    """sending/running → paused：停止批次调度，追踪链路继续。"""
     c = _get_or_404(db, account, campaign_id)
-    if c.status != "running":
-        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅运行中状态可暂停")
+    if c.status not in ("sending", "running"):
+        raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅发送中/运行中状态可暂停")
     c.status = "paused"
     db.commit()
 
@@ -489,11 +492,19 @@ def pause(db, account, campaign_id: int):
 
 
 def resume(db, account, campaign_id: int):
-    """paused → running：恢复批次调度。"""
+    """paused → sending/running：恢复批次调度（有未投批次回发送中，否则直接回追踪中）。"""
     c = _get_or_404(db, account, campaign_id)
     if c.status != "paused":
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅暂停状态可恢复")
-    c.status = "running"
+    has_pending = db.scalar(
+        select(CampaignBatch.id)
+        .where(
+            CampaignBatch.campaign_id == campaign_id,
+            CampaignBatch.status.in_(("pending", "sending")),
+        )
+        .limit(1)
+    )
+    c.status = "sending" if has_pending else "running"
     db.commit()
 
     record_audit(

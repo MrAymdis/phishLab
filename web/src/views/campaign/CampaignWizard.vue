@@ -342,7 +342,7 @@
             </div>
           </div>
         </div>
-        <div class="form-row">
+        <div class="form-row cols-3">
           <div class="form-group">
             <label class="form-label">发送开始时间<span v-if="triggerForm.mode === 'schedule'" class="required">*</span></label>
             <el-date-picker
@@ -351,7 +351,9 @@
               value-format="YYYY-MM-DD HH:mm"
               placeholder="选择发送时间"
               class="form-input"
+              :disabled="triggerForm.mode === 'now'"
             />
+            <p class="form-hint">定时发送时生效</p>
           </div>
           <div class="form-group">
             <label class="form-label">演练结束时间</label>
@@ -359,13 +361,11 @@
               v-model="triggerForm.end_time"
               type="datetime"
               value-format="YYYY-MM-DD HH:mm"
-              placeholder="留空：投递后自动追踪 7 天"
+              placeholder="选择结束时间"
               class="form-input"
             />
-            <p class="form-hint">追踪期截止后演练自动结束；留空按投递后 7 天</p>
+            <p class="form-hint">留空按投递后 7 天</p>
           </div>
-        </div>
-        <div class="form-row">
           <div class="form-group">
             <label class="form-label">分批次策略</label>
             <el-select v-model="triggerForm.batch" class="form-input">
@@ -373,9 +373,8 @@
               <el-option label="分 5 批间隔 15 分钟" value="5-15" />
               <el-option label="不分批，统一发送" value="none" />
             </el-select>
-            <p class="form-hint">分批次可防拥堵、防网关识别</p>
+            <p class="form-hint">防拥堵、防网关识别</p>
           </div>
-          <div class="form-group"></div>
         </div>
         <div class="form-group">
           <label class="form-label">高级防识别设置</label>
@@ -965,6 +964,7 @@ async function submit() {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  &.cols-3 { grid-template-columns: repeat(3, 1fr); }
 }
 .form-hint {
   font-size: 11px;

@@ -7,7 +7,7 @@
 import logging
 from datetime import datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import exists, select, update
 
 from worker.celery_app import celery_app
 
@@ -195,6 +195,25 @@ def dispatch_due_batches():
                     .values(status="pending")
                 )
                 db.commit()
+        # 投递完毕的演练转 running（追踪期）：sending + 无 pending/sending 批次即视为
+        # 投递结束（done/failed 均结束——失败目标保留表内供处置）。幂等 UPDATE：
+        # 多派发器/并发下即使同轮执行也只一方命中 WHERE status=sending。
+        transferred = db.execute(
+            update(Campaign)
+            .where(
+                Campaign.status == "sending",
+                ~exists(
+                    select(CampaignBatch.id).where(
+                        CampaignBatch.campaign_id == Campaign.id,
+                        CampaignBatch.status.in_(("pending", "sending")),
+                    )
+                ),
+            )
+            .values(status="running")
+        )
+        db.commit()
+        if transferred.rowcount:
+            logger.info("campaign sending→running（投递完毕进入追踪期）: %d", transferred.rowcount)
         logger.info("dispatch due batches: %d", len(rows))
         return len(rows)
     finally:
@@ -260,7 +279,8 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
         batch.sent_count = sent
         batch.started_at = batch.started_at or datetime.now()
         batch.finished_at = datetime.now()
-        # 投递完成后演练保持 running（追踪期开始）；completed 由到期任务处理
+        # 批次完成；演练 sending→running（进入追踪期）由派发器扫描「无待投批次」时转换；
+        # completed 由到期任务处理
         db.commit()
         logger.info("deliver_batch campaign=%s batch=%s sent=%d failed=%d",
                     campaign_id, batch_no, sent, failed)

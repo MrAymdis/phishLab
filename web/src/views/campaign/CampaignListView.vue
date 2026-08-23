@@ -25,6 +25,7 @@
       <div class="toolbar">
         <el-radio-group v-model="statusFilter" size="small">
           <el-radio-button value="">全部<span class="filter-count">{{ statusCounts.all }}</span></el-radio-button>
+          <el-radio-button value="sending">发送中<span class="filter-count">{{ statusCounts.sending }}</span></el-radio-button>
           <el-radio-button value="running">进行中<span class="filter-count">{{ statusCounts.running }}</span></el-radio-button>
           <el-radio-button value="scheduled">待开始<span class="filter-count">{{ statusCounts.scheduled }}</span></el-radio-button>
           <el-radio-button value="completed">已完成<span class="filter-count">{{ statusCounts.completed }}</span></el-radio-button>
@@ -176,6 +177,7 @@ const statusCounts = computed(() => {
     statCards.value.find((c) => c.key === key)?.value ?? 0
   return {
     all: valueOf(''),
+    sending: valueOf('sending'),
     running: valueOf('running'),
     scheduled: valueOf('scheduled'),
     completed: valueOf('completed'),
@@ -240,6 +242,7 @@ function runningDays(row: CampaignRow): number {
 function statusSubText(row: CampaignRow): string {
   if (row.status === 'running') return `进行中 · 第${runningDays(row)}天`
   const sub: Record<string, string> = {
+    sending: '发送中 · 批次投递中',
     scheduled: '待开始 · 筹备中',
     paused: '已暂停 · 可恢复',
     completed: '已完成 · 可导出报表',
