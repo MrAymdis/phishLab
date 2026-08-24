@@ -245,8 +245,8 @@
             clearable
           />
           <el-button size="small" :icon="Iphone" disabled>生成二维码</el-button>
-          <el-button type="primary" size="small" :icon="Upload" disabled>上传附件</el-button>
-          <el-tag size="small" type="warning" effect="plain">附件/二维码管理二期开放，当前仅展示列表</el-tag>
+          <el-button type="primary" size="small" :icon="Upload" @click="openUploadDialog()">上传附件</el-button>
+          <el-tag size="small" type="info" effect="plain">支持 docx/xlsx/pdf/zip 文档附件，宏/EXE 载荷未开放</el-tag>
         </div>
 
         <!-- 数据表格 -->
@@ -311,12 +311,8 @@
                 </td>
                 <td class="ta-right">
                   <div class="card-actions table-actions">
-                    <el-button size="small" link disabled>下载</el-button>
-                    <el-button size="small" link disabled>编辑</el-button>
-                    <el-button size="small" link type="warning" disabled>
-                      {{ p.status === 'enabled' ? '禁用' : '启用' }}
-                    </el-button>
-                    <el-button size="small" link type="danger" disabled>删除</el-button>
+                    <el-button size="small" link @click="downloadPayload(p)">下载</el-button>
+                    <el-button size="small" link type="danger" @click="deletePayload(p)">删除</el-button>
                   </div>
                 </td>
               </tr>
@@ -664,37 +660,26 @@
       <el-form label-width="100px">
         <el-form-item label="文件" required>
           <el-upload
+            ref="uploadRef"
             drag
             action="#"
             :auto-upload="false"
             :limit="1"
             :on-change="onUploadChange"
+            :on-exceed="onUploadExceed"
             class="upload-drag"
           >
             <el-icon :size="32" color="var(--color-text-tertiary)"><UploadFilled /></el-icon>
             <div class="upload-text">点击或拖拽文件到此处上传</div>
             <template #tip>
-              <div class="form-hint">支持 .docx .xlsx .exe .lnk .zip 等，单文件 ≤ 20MB</div>
+              <div class="form-hint">支持 .docx .xlsx .pdf .zip 良性文档，单文件 ≤ 20MB；宏/EXE 载荷未开放</div>
             </template>
           </el-upload>
-        </el-form-item>
-        <el-form-item label="目标平台">
-          <el-checkbox-group v-model="uploadPlatforms" class="field-grid-3">
-            <el-checkbox value="Windows">Windows</el-checkbox>
-            <el-checkbox value="macOS">macOS</el-checkbox>
-            <el-checkbox value="Linux">Linux</el-checkbox>
-          </el-checkbox-group>
-        </el-form-item>
-        <el-form-item label="免杀处理">
-          <el-checkbox-group v-model="uploadEvasions" class="evasion-list">
-            <el-checkbox v-for="e in evasionOptions" :key="e" :value="e">{{ e }}</el-checkbox>
-          </el-checkbox-group>
-          <div class="form-hint">免杀选项仅用于授权演练场景，所有操作将写入审计日志</div>
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="uploadDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitUpload">上传并处理</el-button>
+        <el-button type="primary" @click="submitUpload">上传附件</el-button>
       </template>
     </el-dialog>
   </div>
@@ -703,10 +688,10 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { UploadFile } from 'element-plus'
+import type { UploadFile, UploadInstance } from 'element-plus'
 import { Plus, Search, Upload, Link, UploadFilled, Iphone, Picture } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
-import { templateApi } from '@/api'
+import { attachmentApi, templateApi } from '@/api'
 
 // ===== 类型定义 =====
 type TabName = 'email' | 'landing' | 'payload'
@@ -1303,7 +1288,9 @@ const SCENE_TO_CAT: Record<string, string> = { system: 'upgrade', prize: 'lotter
 const PAGE_TYPE_TO_VIEW: Record<string, string> = {
   mail_login: 'mail', oa_login: 'oa', pan_auth: 'pan',
 }
-const ATTACH_TYPE_TO_VIEW: Record<string, string> = { macro_doc: 'macro' }
+const ATTACH_TYPE_TO_VIEW: Record<string, string> = {
+  benign_doc: 'other', macro_doc: 'macro',
+}
 
 async function loadTemplates() {
   const [emails, landings, payloads] = await Promise.allSettled([
@@ -1343,21 +1330,28 @@ function evadeColor(rate: number): string {
   return 'var(--accent-orange)'
 }
 
-// 附件行操作
-function downloadPayload(row: PayloadItem) {
-  ElMessage.info(`正在下载「${row.name}」`)
+// 附件行操作（下载留审计；删除被演练引用时后端拒绝）
+async function downloadPayload(row: PayloadItem) {
+  try {
+    await attachmentApi.download(row.id)
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
-function editPayload(row: PayloadItem) {
-  ElMessage.info(`正在编辑「${row.name}」配置`)
-}
-function togglePayload(row: PayloadItem) {
-  row.status = row.status === 'enabled' ? 'disabled' : 'enabled'
-  ElMessage.success(`「${row.name}」已${row.status === 'enabled' ? '启用' : '禁用'}`)
-}
-function deletePayload(row: PayloadItem) {
-  ElMessageBox.confirm(`确认删除「${row.name}」？`, '提示', { type: 'warning' })
-    .then(() => ElMessage.success('附件已删除'))
-    .catch(() => { /* 用户取消 */ })
+async function deletePayload(row: PayloadItem) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除附件「${row.name}」？已被演练引用时将被拒绝。`,
+      '删除附件', { type: 'warning' },
+    )
+  } catch { return /* 用户取消 */ }
+  try {
+    await attachmentApi.remove(row.id)
+    ElMessage.success('附件已删除')
+    await loadTemplates()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出（含引用保护错误）
+  }
 }
 
 // 二维码弹窗
@@ -1386,18 +1380,51 @@ function submitQr() {
   ElMessage.success('二维码已保存到附件库')
 }
 
-// 上传附件弹窗
+// 上传附件弹窗（一期良性文档；扩展名/大小前置校验，后端仍会二次拦截）
 const uploadDialogVisible = ref(false)
-const uploadPlatforms = ref<string[]>(['Windows'])
-const uploadEvasions = ref<string[]>(['代码混淆加密', '多态外壳包裹'])
-const evasionOptions = ['代码混淆加密', '多态外壳包裹', '反沙箱检测', '反虚拟机检测']
+const uploadRef = ref<UploadInstance>()
+const uploadFile = ref<File | null>(null)
+
+const ALLOWED_ATTACH_EXTS = ['docx', 'xlsx', 'pdf', 'zip']
+const MAX_ATTACH_MB = 20
+
+function openUploadDialog() {
+  uploadFile.value = null
+  uploadDialogVisible.value = true
+}
 
 function onUploadChange(file: UploadFile) {
-  ElMessage.info(`已选择文件：${file.name}`)
+  const raw = file.raw
+  if (!raw) { uploadRef.value?.clearFiles(); return }
+  const ext = (raw.name.split('.').pop() || '').toLowerCase()
+  if (!ALLOWED_ATTACH_EXTS.includes(ext)) {
+    ElMessage.warning('仅支持 docx/xlsx/pdf/zip 文档附件（宏/EXE 载荷未开放）')
+    uploadRef.value?.clearFiles()
+    return
+  }
+  if (raw.size > MAX_ATTACH_MB * 1024 * 1024) {
+    ElMessage.warning(`附件大小超出限制（≤${MAX_ATTACH_MB}MB）`)
+    uploadRef.value?.clearFiles()
+    return
+  }
+  uploadFile.value = raw
 }
-function submitUpload() {
-  uploadDialogVisible.value = false
-  ElMessage.success('附件已上传，免杀处理中，预计 1 分钟后完成')
+
+function onUploadExceed() {
+  ElMessage.warning('仅支持上传一个文件')
+  uploadRef.value?.clearFiles()
+}
+
+async function submitUpload() {
+  if (!uploadFile.value) { ElMessage.warning('请先选择文件'); return }
+  try {
+    await attachmentApi.upload(uploadFile.value)
+    ElMessage.success(`附件「${uploadFile.value.name}」已上传`)
+    uploadDialogVisible.value = false
+    await loadTemplates()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 </script>
 

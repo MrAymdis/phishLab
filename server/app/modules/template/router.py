@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -124,6 +125,28 @@ def clone(payload: CloneRequest, account=Depends(get_current_account), db: Sessi
 @attachments.get("", summary="附件载荷列表")
 def list_attachments(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.list_attachments(db, account))
+
+
+@attachments.post("/upload", summary="上传附件载荷（一期良性文档）")
+async def upload_attachment(file: UploadFile = File(...), platform: str = "",
+                            account=Depends(get_current_account), db: Session = Depends(get_db)):
+    content = await file.read()
+    pid = service.upload_attachment(db, account, file.filename or "附件", content, platform)
+    return resp.ok({"id": pid})
+
+
+@attachments.get("/{pid}/download", summary="下载附件载荷（审计留痕）")
+def download_attachment(pid: int, request: Request,
+                        account=Depends(get_current_account), db: Session = Depends(get_db)):
+    path, name = service.download_attachment(
+        db, account, pid, ip=request.client.host if request.client else "")
+    return FileResponse(path, filename=name)
+
+
+@attachments.delete("/{pid}", summary="删除附件载荷（审计留痕）")
+def delete_attachment(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.delete_attachment(db, account, pid)
+    return resp.ok(None)
 
 
 @qr_assets.get("", summary="二维码资产列表")

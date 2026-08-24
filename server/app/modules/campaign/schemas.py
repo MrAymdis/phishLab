@@ -26,6 +26,7 @@ class CampaignCreate(BaseModel):
     pixel_degrade: bool = False
     training_policy: Literal["redirect", "popup", "none", "url"] = "none"
     training_redirect_url: str | None = Field(None, max_length=512, description="url 模式跳转目标")
+    attachment_ids: list[int] = Field(default_factory=list, description="附件载荷（直发模式）")
     course_ids: list[int] = Field(default_factory=list)
     force_training_rules: list[dict] = Field(default_factory=list)
     auth_confirmed: bool = Field(description="授权确认勾选，必须为 true 才可提交")

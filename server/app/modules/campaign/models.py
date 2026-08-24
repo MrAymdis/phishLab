@@ -75,8 +75,28 @@ class CampaignTarget(Base, TimestampMixin):
     submit_at: Mapped[datetime | None] = mapped_column(DateTime)
     report_flag: Mapped[int] = mapped_column(Integer, default=0)
     report_at: Mapped[datetime | None] = mapped_column(DateTime)
+    attach_run_count: Mapped[int] = mapped_column(Integer, default=0)
+    first_attach_run_at: Mapped[datetime | None] = mapped_column(DateTime)
+    last_attach_run_at: Mapped[datetime | None] = mapped_column(DateTime)
+    attach_variant_path: Mapped[str | None] = mapped_column(
+        String(512), comment="附件变体文件路径（溯源留痕）"
+    )
+    attach_variant_hash: Mapped[str | None] = mapped_column(String(64), comment="附件变体 sha256")
     fingerprint_id: Mapped[int | None] = mapped_column(BigInteger)
     training_assignment_id: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class CampaignAttachment(Base):
+    """演练↔附件载荷关联（一期直发模式 deliver_mode=inline）。"""
+
+    __tablename__ = "campaign_attachment"
+    __table_args__ = (UniqueConstraint("campaign_id", "payload_id", name="uk_campaign_payload"),)
+
+    id: Mapped[int] = pk()
+    campaign_id: Mapped[int] = mapped_column(BigInteger, index=True)
+    payload_id: Mapped[int] = mapped_column(BigInteger)
+    deliver_mode: Mapped[str] = mapped_column(String(8), default="inline", comment="inline/link")
+    sort: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class CampaignBatch(Base, TimestampMixin):
@@ -104,6 +124,7 @@ class CampaignStat(Base):
     click_cnt: Mapped[int] = mapped_column(Integer, default=0)
     submit_cnt: Mapped[int] = mapped_column(Integer, default=0)
     report_cnt: Mapped[int] = mapped_column(Integer, default=0)
+    attach_cnt: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
     )

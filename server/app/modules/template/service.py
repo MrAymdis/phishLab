@@ -1,20 +1,25 @@
 """素材模板服务：邮件模板、落地页、附件载荷、二维码。"""
 import ast
+import hashlib
 import re
 import secrets
+import uuid
 from datetime import datetime
 from html import escape as _html_escape
+from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
 from sqlalchemy import func, select
 
 from app.core.audit import record_audit
+from app.core.config import settings
 from app.core.deps import apply_data_scope, get_scoped_or_404
 from app.core.errors import BizError, ErrorCode
-from app.modules.campaign.models import Campaign, CampaignTarget
+from app.modules.campaign.models import Campaign, CampaignAttachment, CampaignTarget
 
 from .models import (
+    AttachmentDownloadLog,
     AttachmentPayload,
     EmailTemplate,
     LandingFormField,
@@ -45,11 +50,16 @@ _PAGE_TYPE_LABELS = {
 }
 
 _ATTACH_TYPE_LABELS = {
+    "benign_doc": "文档附件",
     "macro_doc": "宏文档",
     "exe": "可执行文件",
     "qr": "二维码",
     "other": "其他",
 }
+
+# 一期良性文档白名单；宏/EXE 载荷默认关闭（License 门控，红线 6）
+_ALLOWED_PAYLOAD_EXTS = {".docx", ".xlsx", ".pdf", ".zip"}
+_MAX_PAYLOAD_MB = 20
 
 _VAR_RE = re.compile(r"\{\{\.\w+\}\}")
 
@@ -1324,6 +1334,79 @@ def list_attachments(db, account) -> list[dict]:
             }
         )
     return result
+
+
+def upload_attachment(db, account, filename: str, content: bytes, platform: str = "") -> int:
+    """上传附件载荷（一期仅良性文档；宏/EXE 未开放直接拒绝）。
+
+    存储沿用平台本地 static 目录模式（MinIO 业务接入后迁移文件桶即可，file_path 保持相对路径）。
+    """
+    ext = Path(filename or "").suffix.lower()
+    if ext not in _ALLOWED_PAYLOAD_EXTS:
+        raise BizError(
+            ErrorCode.PARAM_INVALID,
+            f"附件类型 {ext or '未知'} 未开放（一期仅 docx/xlsx/pdf/zip；宏/EXE 载荷默认关闭需 License 授权）",
+        )
+    if not content or len(content) > _MAX_PAYLOAD_MB * 1024 * 1024:
+        raise BizError(ErrorCode.PARAM_INVALID, f"附件大小超出限制（≤{_MAX_PAYLOAD_MB}MB）")
+    file_hash = hashlib.sha256(content).hexdigest()
+    rel_path = Path("uploads/payloads") / f"{uuid.uuid4().hex}{ext}"
+    abs_path = Path(settings.static_dir) / rel_path
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
+    abs_path.write_bytes(content)
+    p = AttachmentPayload(
+        name=filename,
+        file_type="benign_doc",
+        file_path=str(rel_path),
+        file_hash=file_hash,
+        file_size=len(content),
+        created_by=account.id,
+        platform=platform or "",
+        status="enabled",
+        icon="📄",
+    )
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    record_audit(
+        db, account=account, module="template", action="upload_attachment",
+        target_type="attachment_payload", target_id=str(p.id),
+        detail={"name": filename, "size": len(content), "hash": file_hash},
+    )
+    return p.id
+
+
+def download_attachment(db, account, payload_id: int, ip: str = "") -> tuple[str, str]:
+    """附件下载（管理端审计留痕）；返回 (绝对路径, 原始文件名)。"""
+    p = get_scoped_or_404(db, account, AttachmentPayload, payload_id,
+                          self_owner_col=AttachmentPayload.created_by, allow_null_owner=True)
+    abs_path = Path(settings.static_dir) / (p.file_path or "")
+    if not abs_path.is_file():
+        raise BizError(ErrorCode.NOT_FOUND, "附件文件不存在（存储文件缺失）")
+    db.add(AttachmentDownloadLog(payload_id=p.id, account_id=account.id,
+                                 action="download", ip=ip or None))
+    db.commit()
+    return str(abs_path), p.name or Path(p.file_path or "").name
+
+
+def delete_attachment(db, account, payload_id: int) -> None:
+    """删除附件载荷：已被演练引用时拒绝；文件与库记录一并清理，全程审计。"""
+    p = get_scoped_or_404(db, account, AttachmentPayload, payload_id,
+                          self_owner_col=AttachmentPayload.created_by, allow_null_owner=True)
+    used = db.scalar(select(func.count(CampaignAttachment.id))
+                     .where(CampaignAttachment.payload_id == payload_id)) or 0
+    if used:
+        raise BizError(ErrorCode.BIZ_CONFLICT, f"附件已被 {used} 个演练引用，无法删除")
+    abs_path = Path(settings.static_dir) / (p.file_path or "")
+    db.delete(p)
+    db.commit()
+    if abs_path.is_file():
+        abs_path.unlink(missing_ok=True)
+    record_audit(
+        db, account=account, module="template", action="delete_attachment",
+        target_type="attachment_payload", target_id=str(payload_id),
+        detail={"name": p.name},
+    )
 
 
 def list_qr_assets(db, account) -> list[dict]:

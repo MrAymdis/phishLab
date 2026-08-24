@@ -1,5 +1,5 @@
 /** API 模块索引：与后端 router 一一对应（后端路由为契约源）。 */
-import { download, get, post, put, del } from './http'
+import { del, download, downloadFile, get, post, put } from './http'
 
 // ---- 认证 / 个人中心 ----
 export const authApi = {
@@ -143,6 +143,34 @@ export const templateApi = {
   deleteLandingPage: (id: number) => del(`/api/v1/landing-pages/${id}`),
   payloads: () => get('/api/v1/attachments'),
   qrAssets: () => get('/api/v1/qr-assets'),
+}
+
+// ---- 附件载荷（素材模板域） ----
+export interface AttachmentPayloadItem {
+  id: number
+  name: string
+  type: string
+  typeText: string
+  size: string
+  platform: string
+  evade: number
+  used: number
+  status: 'enabled' | 'disabled'
+  icon: string
+  created_at?: string
+}
+export const attachmentApi = {
+  list: () => get<AttachmentPayloadItem[]>('/api/v1/attachments'),
+  /** 上传附件载荷（一期良性文档 docx/xlsx/pdf/zip，≤20MB；宏/EXE 后端拒绝） */
+  upload: (file: File) => {
+    const fd = new FormData()
+    fd.append('file', file)
+    return post<{ id: number }>('/api/v1/attachments/upload', fd)
+  },
+  /** 下载附件载荷（后端写审计留痕 AttachmentDownloadLog） */
+  download: (id: number) => downloadFile(`/api/v1/attachments/${id}/download`),
+  /** 删除附件载荷（被演练引用时后端拒绝） */
+  remove: (id: number) => del(`/api/v1/attachments/${id}`),
 }
 
 // ---- 发送配置 ----

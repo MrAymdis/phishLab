@@ -74,6 +74,20 @@ def pixel_png(token: str, request: Request):
                     headers={"Cache-Control": "no-store"})
 
 
+@app.get("/pa/{token}.png")
+def attach_beacon(token: str, request: Request):
+    """附件溯源 beacon：docx 内嵌外链图加载时记录 attach_run 事件。
+
+    与 /px（邮件打开像素，记 open）区分——渲染器对附件 beacon 拼 /pa/ 专用
+    端点（见 campaign/render.py），使"运行附件"成为独立事件维度（设计文档 4.6）。
+    """
+    from app.modules.tracking.stream import pixel_png_bytes
+
+    _emit(token, "attach_run", request)
+    return Response(content=pixel_png_bytes(), media_type="image/png",
+                    headers={"Cache-Control": "no-store"})
+
+
 @app.get("/t/{token}")
 def redirect(token: str, request: Request):
     """链接点击跳转：token → 演练落地页 slug（只读查库）→ 记 click 事件 → 302。

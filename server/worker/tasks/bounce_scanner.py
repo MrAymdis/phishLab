@@ -240,9 +240,8 @@ def _mark_bounced(db, recipients: list[str], reason: str) -> int:
     同时原子回减 campaign_stat.delivered_cnt（投递时 sent 已累加，退信纠正后
     冗余计数保持与"实时 sent 数"一致，列表页/详情页口径统一）。
     """
-    from sqlalchemy.dialects.mysql import insert
-
-    from app.modules.campaign.models import CampaignStat, CampaignTarget
+    from app.db.stat_upsert import stat_inc
+    from app.modules.campaign.models import CampaignTarget
     from app.modules.org.models import EmpUser
     from app.modules.tracking.stream import push_event
 
@@ -260,9 +259,7 @@ def _mark_bounced(db, recipients: list[str], reason: str) -> int:
             t.send_status = "bounced"
             t.fail_reason = f"退信：{reason}"[:500]
             # 原子回减投递成功计数（纠正目标数）
-            stmt = insert(CampaignStat).values(campaign_id=t.campaign_id, delivered_cnt=0)
-            db.execute(stmt.on_duplicate_key_update(
-                delivered_cnt=func.greatest(CampaignStat.delivered_cnt - 1, 0)))
+            stat_inc(db, t.campaign_id, delivered_cnt=-1)
             try:
                 push_event(token=t.token, event_type="bounce",
                            ip="", ua="", detail={"reason": reason})

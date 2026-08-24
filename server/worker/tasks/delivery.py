@@ -9,16 +9,18 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import exists, select, update
 
+from app.db.stat_upsert import stat_inc
 from worker.celery_app import celery_app
 
 logger = logging.getLogger("phishlab.delivery")
 
 
 def _load_campaign_assets(db, campaign, target_ids: list[int]) -> dict:
-    """批次共享实体一次加载：模板/落地页/域名/通道/伪装发件人 + 批次内员工与部门。"""
+    """批次共享实体一次加载：模板/落地页/域名/通道/伪装发件人 + 批次内员工与部门 + 附件载荷。"""
+    from app.modules.campaign.models import CampaignAttachment
     from app.modules.channel.models import PhishDomain, SendChannel, SenderProfile
     from app.modules.org.models import EmpDept, EmpUser
-    from app.modules.template.models import EmailTemplate, LandingPage
+    from app.modules.template.models import AttachmentPayload, EmailTemplate, LandingPage
 
     tpl = db.get(EmailTemplate, campaign.template_id) if campaign.template_id else None
     lp = db.get(LandingPage, campaign.landing_page_id) if campaign.landing_page_id else None
@@ -30,8 +32,15 @@ def _load_campaign_assets(db, campaign, target_ids: list[int]) -> dict:
     dept_ids = {u.dept_id for u in users.values() if u.dept_id}
     depts = {d.id: d for d in db.scalars(
         select(EmpDept).where(EmpDept.id.in_(dept_ids))).all()} if dept_ids else {}
+    # 附件载荷（campaign_attachment → payload）批次共享，避免每封重复查询
+    payloads = db.execute(
+        select(CampaignAttachment, AttachmentPayload)
+        .join(AttachmentPayload, AttachmentPayload.id == CampaignAttachment.payload_id)
+        .where(CampaignAttachment.campaign_id == campaign.id)
+        .order_by(CampaignAttachment.sort, CampaignAttachment.id)
+    ).all()
     return {"tpl": tpl, "lp": lp, "domain": domain, "ch": ch, "sp": sp,
-            "users": users, "depts": depts}
+            "users": users, "depts": depts, "payloads": payloads}
 
 
 def _check_recipient_domain(email: str, cache: dict[str, str | None]) -> str | None:
@@ -103,7 +112,7 @@ def _deliver_target(db, t, campaign, assets: dict) -> bool:
         t.fail_reason = f"目标员工不存在（user_id={t.user_id}）"
         db.commit()
         return False
-    rendered = render_campaign_email(db, campaign, user, t.token, assets=assets)
+    rendered = render_campaign_email(db, campaign, user, t.token, assets=assets, target=t)
     to = rendered["to"] or user.email
     subject = rendered["subject"]
     html = rendered["html"]
@@ -142,11 +151,7 @@ def _deliver_target(db, t, campaign, assets: dict) -> bool:
     t.sent_at = datetime.now() if ok else None
     if ok:
         # 原子累加：并发批次投递下避免读-改-写竞态（lost update）
-        from sqlalchemy.dialects.mysql import insert
-
-        stmt = insert(CampaignStat).values(campaign_id=campaign.id, delivered_cnt=1)
-        db.execute(stmt.on_duplicate_key_update(
-            delivered_cnt=CampaignStat.delivered_cnt + 1))
+        stat_inc(db, campaign.id, delivered_cnt=1)
     db.commit()
     logger.info("投递完成 target=%s ok=%s", t.id, ok)
     return ok

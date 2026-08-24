@@ -180,6 +180,24 @@
             </div>
           </div>
         </div>
+        <div class="form-group">
+          <label class="form-label">邮件附件<span v-if="attachPayloads.length" class="badge badge-info" style="margin-left:8px;">已选 {{ selectedAttachmentIds.length }} 个</span></label>
+          <p class="form-hint" style="margin-bottom:8px;">可选附加良性文档（docx/xlsx/pdf/zip）。收件人打开附件时，若模板开启附件追踪将注入溯源信标（无需宏，设备级证据）。</p>
+          <div class="field-box">
+            <label v-for="p in attachPayloads" :key="p.id" class="field-item">
+              <el-checkbox
+                :model-value="selectedAttachmentIds.includes(p.id)"
+                @change="onAttachmentCheck(p.id, $event)"
+              />
+              <span>{{ p.icon || '📄' }} {{ p.name }}（{{ p.size }}）</span>
+              <el-tag v-if="p.used" size="small" effect="plain" style="margin-left:auto">已用 {{ p.used }} 次</el-tag>
+            </label>
+            <p v-if="!attachPayloads.length" class="form-hint">附件库为空，可先在「素材模板 → 附件与载荷」上传</p>
+          </div>
+          <p v-if="selectedTemplate && !selectedTemplate.track_attach" class="form-hint">
+            ⚠️ 当前模板「{{ selectedTemplate.subject }}」未开启附件追踪：附件将直发，但不注入溯源信标（可在素材模板编辑中开启追踪）
+          </p>
+        </div>
         <div class="form-row">
           <div class="form-group">
             <label class="form-label">伪装发件人<span class="required">*</span></label>
@@ -492,7 +510,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElLink } from 'element-plus'
 import type { ElTree, UploadFile } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
-import { campaignApi, orgApi, templateApi, channelApi, trainingApi } from '@/api'
+import { attachmentApi, campaignApi, orgApi, templateApi, channelApi, trainingApi } from '@/api'
 
 const router = useRouter()
 const step = ref(0)
@@ -631,7 +649,21 @@ const landingBgPalette = [
   'linear-gradient(135deg,#0D948822,#378ADD22)',
 ]
 
-const templates = ref<{ id: number; subject: string; scene: string; color: string; icon: string; sender?: string }[]>([])
+const templates = ref<{ id: number; subject: string; scene: string; color: string; icon: string; sender?: string; track_attach?: boolean }[]>([])
+/** 附件库载荷（用于演练直发附件选择；beacon 注入与否取决于模板 track_attach） */
+const attachPayloads = ref<{ id: number; name: string; size: string; typeText: string; icon?: string; used: number }[]>([])
+const selectedAttachmentIds = ref<number[]>([])
+
+function onAttachmentCheck(id: number, checked: boolean | string | number) {
+  const on = checked === true
+  selectedAttachmentIds.value = on
+    ? [...selectedAttachmentIds.value.filter((x) => x !== id), id]
+    : selectedAttachmentIds.value.filter((x) => x !== id)
+}
+
+const selectedTemplate = computed(() =>
+  templates.value.find((t) => t.id === tplForm.template_id),
+)
 const landingPages = ref<{ id: number; name: string; tag: string; label: string; bg: string }[]>([])
 const spoofDomains = ref<{ id: number; domain: string; spf: string; dkim: string; dmarc: string }[]>([])
 const senderProfiles = ref<{ id: number; name: string; display_name: string; from_addr: string }[]>([])
@@ -647,7 +679,7 @@ const tplForm = reactive({
 async function loadWizardAssets() {
   try {
     const list = (await templateApi.emailTemplates()) as {
-      id: number; subject: string; catText: string; cat: string; sender?: string
+      id: number; subject: string; catText: string; cat: string; sender?: string; track_attach?: boolean
     }[]
     if (Array.isArray(list) && list.length) {
       templates.value = list.map((t, i) => ({
@@ -657,6 +689,7 @@ async function loadWizardAssets() {
         color: templateColors[i % templateColors.length],
         icon: sceneIconMap[t.cat] || 'mail',
         sender: t.sender,
+        track_attach: t.track_attach,
       }))
       const first = templates.value[0]
       if (!tplForm.template_id && first) {
@@ -667,6 +700,10 @@ async function loadWizardAssets() {
   } catch {
     ElMessage.warning('邮件模板加载失败，请稍后在「素材模板」页确认模板状态')
   }
+  try {
+    const list = (await attachmentApi.list()) as typeof attachPayloads.value
+    if (Array.isArray(list)) attachPayloads.value = list
+  } catch { /* 附件库加载失败不阻断 */ }
   try {
     const list = (await templateApi.landingPages()) as {
       id: number; name: string; typeText: string
@@ -785,6 +822,15 @@ const summaryRows = computed(() => [
   { key: '目标人数', val: `${targetCount.value.toLocaleString()} 人` },
   { key: '邮件模板', val: templates.value.find(t => t.id === tplForm.template_id)?.subject || '-' },
   { key: '落地页', val: landingPages.value.find(p => p.id === landingForm.page_id)?.name || '-' },
+  {
+    key: '邮件附件',
+    val: selectedAttachmentIds.value.length
+      ? `${selectedAttachmentIds.value.length} 个（${selectedAttachmentIds.value
+          .map((id) => attachPayloads.value.find((p) => p.id === id)?.name)
+          .filter(Boolean)
+          .join('、')}）`
+      : '无',
+  },
   { key: '发送配置', val: sendChannels.value.find((ch) => ch.id === sendChannelId.value)?.name || '-' },
   {
     key: '演练时间范围',
@@ -863,6 +909,7 @@ async function submit() {
         emails: csvEmails.value,
       },
       template_id: tplForm.template_id,
+      attachment_ids: selectedAttachmentIds.value,
       landing_page_id: landingForm.page_id,
       channel_id: sendChannelId.value || null,
       domain_id: selectedDomain.value?.id || null,
