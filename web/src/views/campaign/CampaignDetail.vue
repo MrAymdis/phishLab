@@ -20,6 +20,12 @@
       <el-col :span="10">
         <div class="card card-blue">
           <div class="card-title">转化漏斗</div>
+          <div v-if="attachments.length" class="attach-tags">
+            <span class="attach-tag-title">演练附件：</span>
+            <el-tag v-for="a in attachments" :key="a.id" size="small" effect="plain">
+              {{ a.icon || '📄' }} {{ a.name }}（{{ a.size }}）
+            </el-tag>
+          </div>
           <FunnelChart :items="funnel" />
         </div>
       </el-col>
@@ -88,6 +94,7 @@ const campaignStatus = ref('draft')
 type Accent = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal'
 const metrics = ref<{ label: string; value: string | number; sub?: string; accent: Accent }[]>([])
 const funnel = ref<{ name: string; value: number; rate?: string }[]>([])
+const attachments = ref<{ id: number; payload_id: number; name: string; file_type: string; size: string; icon?: string; deliver_mode: string }[]>([])
 const alerts = ref<{ msg: string; time: string; advice: string }[]>([])
 const timeline = ref<TimelineEvent[]>([])
 const deliveryFailures = ref<{ id: number; name: string; email: string; status: string; reason: string; time: string }[]>([])
@@ -98,6 +105,7 @@ interface CampaignDetailData {
   name: string
   type: string
   status: string
+  attachments?: { id: number; payload_id: number; name: string; file_type: string; size: string; icon?: string; deliver_mode: string }[]
 }
 interface CampaignDashData {
   metrics: { label: string; value: string | number; suffix?: string; accent: string }[]
@@ -162,6 +170,7 @@ async function load() {
     const dt = detail as CampaignDetailData | null
     campaignName.value = dt?.name || `演练 #${id}`
     campaignStatus.value = dt?.status || 'draft'
+    attachments.value = dt?.attachments ?? []
 
     applyDash(dash as CampaignDashData | null)
     applyTimeline(((tl as { list?: TimelineDataItem[] } | null)?.list ?? []) as TimelineDataItem[])
@@ -282,6 +291,17 @@ onUnmounted(() => {
 </script>
 
 <style scoped lang="scss">
+.attach-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.attach-tag-title {
+  font-size: 11px;
+  color: var(--color-text-tertiary);
+}
 .alert-row {
   display: flex;
   gap: 10px;

@@ -56,11 +56,14 @@ def recalc(user_id: int | None = None) -> int:
                 elif event_type == "report":
                     report += n
                     dims[4] = min(100, dims[4] + 10 * n)
+                elif event_type == "attach_run":
+                    dims[3] = min(100, dims[3] + 10 * n)
 
             # 综合评分：行为次数直接计分（五维仅作展示）
             counts = _behavior_counts(db, u.id)
             total = _total_from_behavior(
-                base, counts["open_n"], counts["click_n"], counts["submit_n"], counts["report_n"],
+                base, counts["open_n"], counts["click_n"],
+                counts["submit_n"], counts["report_n"], counts["attach_n"],
             )
             profile = db.get(EmpRiskProfile, u.id)
             if profile is None:

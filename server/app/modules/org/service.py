@@ -23,7 +23,7 @@ _DIM_DEFS = [
     ("email_recognize", "邮件识别"),
     ("link_click", "链接点击"),
     ("pwd_submit", "密码提交"),
-    ("attach_run", "附件下载"),
+    ("attach_run", "附件运行"),
     ("report_awareness", "举报意识"),
 ]
 # 轨迹事件 → (时间轴样式, 文案)
@@ -31,6 +31,7 @@ _EVENT_STYLE = {
     "submit": ("danger", "中招 · 提交数据"),
     "open": ("warning", "打开了邮件"),
     "click": ("primary", "点击了链接"),
+    "attach_run": ("danger", "中招 · 运行了附件"),
     "report": ("success", "主动举报"),
 }
 _FMT = "%Y-%m-%d %H:%M:%S"
@@ -48,12 +49,15 @@ def _risk_level_of(score: int) -> int:
 
 
 def _total_from_behavior(initial_risk: int, open_n: int, click_n: int,
-                         submit_n: int, report_n: int) -> int:
-    """综合评分 = 初始风险值 + 打开×2 + 点击×3 + 提交×10 − 举报×15。
+                         submit_n: int, report_n: int, attach_n: int = 0) -> int:
+    """综合评分 = 初始风险值 + 打开×2 + 点击×3 + 提交×10 + 附件运行×10 − 举报×15。
 
+    附件运行与提交密码同级视为「中招」（高危行为）——运行来路不明的文档等同
+    点击钓鱼链接进入凭据提交环节，二者都是演练核心处置事件。
     无行为时综合分 = 初始风险值；行为次数直接累计拉开差距；结果钳制 0-100。
     """
-    total = initial_risk + open_n * 2 + click_n * 3 + submit_n * 10 - report_n * 15
+    total = (initial_risk + open_n * 2 + click_n * 3
+             + submit_n * 10 + attach_n * 10 - report_n * 15)
     return max(0, min(100, round(total)))
 
 
@@ -70,6 +74,7 @@ def _behavior_counts(db: Session, user_id: int) -> dict:
         "click_n": counts.get("click", 0),
         "submit_n": counts.get("submit", 0),
         "report_n": counts.get("report", 0),
+        "attach_n": counts.get("attach_run", 0),
     }
 
 
@@ -360,7 +365,7 @@ def update_user(db: Session, account, user_id: int, payload: dict) -> dict:
         counts = _behavior_counts(db, user.id)
         profile.total_score = _total_from_behavior(
             user.initial_risk, counts["open_n"], counts["click_n"],
-            counts["submit_n"], counts["report_n"],
+            counts["submit_n"], counts["report_n"], counts["attach_n"],
         )
         profile.risk_level = _risk_level_of(profile.total_score)
     db.commit()

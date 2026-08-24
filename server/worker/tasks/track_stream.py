@@ -13,10 +13,10 @@ from datetime import datetime, timedelta
 
 import redis
 from sqlalchemy import func, select
-from sqlalchemy.dialects.mysql import insert
 
 from app.core.config import settings
 from app.db.session import SessionLocal
+from app.db.stat_upsert import stat_inc
 from app.modules.tracking.stream import ack, read_pending
 from worker.celery_app import celery_app
 
@@ -178,7 +178,7 @@ def consume():
             ))
 
             # 目标明细计数（事件次数）
-            first_open = first_click = first_submit = first_report = False
+            first_open = first_click = first_submit = first_report = first_attach = False
             if event_type == "open":
                 first_open = target.open_count == 0
                 target.open_count += 1
@@ -196,6 +196,11 @@ def consume():
                 first_report = target.report_flag == 0
                 target.report_flag = 1
                 target.report_at = target.report_at or ts
+            elif event_type == "attach_run":
+                first_attach = target.attach_run_count == 0
+                target.attach_run_count += 1
+                target.first_attach_run_at = target.first_attach_run_at or ts
+                target.last_attach_run_at = ts
 
             # 冗余计数：人数字径（仅首次行为计入；原子累加防并发消费 lost update）
             inc_col = None
@@ -207,21 +212,25 @@ def consume():
                 inc_col = "submit_cnt"
             elif event_type == "report" and first_report:
                 inc_col = "report_cnt"
+            elif event_type == "attach_run" and first_attach:
+                inc_col = "attach_cnt"
             if inc_col:
-                stmt = insert(CampaignStat).values(campaign_id=campaign.id, **{inc_col: 1})
-                db.execute(stmt.on_duplicate_key_update(
-                    **{inc_col: getattr(CampaignStat, inc_col) + 1}))
+                stat_inc(db, campaign.id, **{inc_col: 1})
 
-            # 提交事件 → 高危预警
-            if event_type == "submit" and user:
+            # 提交/运行附件事件 → 高危预警（附件运行与提交同级视为中招）
+            if event_type in ("submit", "attach_run") and user:
+                if event_type == "submit":
+                    alert_type, detail_txt = "pwd_submit", "在演练落地页提交了账号密码"
+                else:
+                    alert_type, detail_txt = "attach_run", "运行了演练附件文档"
                 db.add(CampaignAlert(
                     campaign_id=campaign.id,
-                    type="pwd_submit",
+                    type=alert_type,
                     level=3,
-                    message=f"{user.name}（{dept.name if dept else '-'}）在演练落地页提交了账号密码，属高危行为",
+                    message=f"{user.name}（{dept.name if dept else '-'}）{detail_txt}，属高危行为",
                     target_user_id=user.id,
                 ))
-                logger.info("high-risk submit campaign=%s user=%s", campaign.id, user.name)
+                logger.info("high-risk %s campaign=%s user=%s", event_type, campaign.id, user.name)
                 # Webhook 告警推送：高危中招（推送失败不影响落库，由外层统一回滚保护）
                 try:
                     from app.modules.integration.service import notify_webhooks
@@ -229,7 +238,7 @@ def consume():
                     notify_webhooks(db, "high_risk", {
                         "演练": campaign.name,
                         "员工": f"{user.name}（{dept.name if dept else '-'}）",
-                        "行为": "在落地页提交了账号密码",
+                        "行为": detail_txt,
                     })
                 except Exception:
                     pass
@@ -237,7 +246,14 @@ def consume():
             # 员工风险画像实时更新（每日全量重算由 risk_recalc 兜底）
             profile = profiles.get(target.user_id)
             if profile is None:
-                profile = EmpRiskProfile(user_id=target.user_id)
+                # 新建画像行：显式初始值（Python default 在 flush 前不生效，
+                # 直接做 dim+增量会撞 None+int）
+                profile = EmpRiskProfile(
+                    user_id=target.user_id, total_score=70,
+                    email_recognize=70, link_click=70, pwd_submit=70,
+                    attach_run=70, report_awareness=70,
+                    phish_count=0, report_count=0, risk_level=1,
+                )
                 db.add(profile)
                 profiles[target.user_id] = profile
             if event_type == "submit":
@@ -250,13 +266,16 @@ def consume():
             elif event_type == "report":
                 profile.report_count += 1
                 profile.report_awareness = min(100, profile.report_awareness + 10)
+            elif event_type == "attach_run":
+                profile.phish_count += 1  # 中招次数口径与提交合并（附件运行=中招）
+                profile.attach_run = min(100, profile.attach_run + 10)
             # 综合评分：行为次数直接计分（预加载计数 + 本批增量；原语义含当前事件）
             b = behavior[target.user_id]
-            if event_type in ("open", "click", "submit", "report"):
+            if event_type in ("open", "click", "submit", "report", "attach_run"):
                 b[event_type] += 1
             profile.total_score = _total_from_behavior(
                 user.initial_risk if user else 70,
-                b["open"], b["click"], b["submit"], b["report"],
+                b["open"], b["click"], b["submit"], b["report"], b["attach_run"],
             )
             profile.risk_level = _risk_level_of(profile.total_score)
 
@@ -272,7 +291,7 @@ def consume():
                 "action": _EVENT_CN.get(event_type, event_type),
                 "icon": _EVENT_ICON.get(event_type, "•"),
                 "ip": fields.get("ip") or "",
-                "danger": event_type == "submit",
+                "danger": event_type in ("submit", "attach_run"),
                 "good": event_type == "report",
             })
 

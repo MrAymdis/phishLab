@@ -62,7 +62,8 @@ def _agg_platform(db, since):
             func.sum(case((CampaignTarget.send_status.in_(("sent", "delivered")), 1), else_=0)),  # 送达
             func.sum(case((CampaignTarget.first_open_at.is_not(None), 1), else_=0)),  # 打开
             func.sum(case((CampaignTarget.first_click_at.is_not(None), 1), else_=0)),  # 点击
-            func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)),  # 提交
+            func.sum(case((or_(CampaignTarget.submit_flag == 1,
+                                CampaignTarget.attach_run_count > 0), 1), else_=0)),  # 中招（提交/附件运行）
             func.sum(case((CampaignTarget.report_flag == 1, 1), else_=0)),  # 举报
         )
         .where(sent)
@@ -97,6 +98,7 @@ def _campaign_stat_sums(db):
             func.coalesce(func.sum(CampaignStat.open_cnt), 0),
             func.coalesce(func.sum(CampaignStat.click_cnt), 0),
             func.coalesce(func.sum(CampaignStat.submit_cnt), 0),
+            func.coalesce(func.sum(CampaignStat.attach_cnt), 0),
             func.coalesce(func.sum(CampaignStat.report_cnt), 0),
         )
     ).one()
@@ -142,7 +144,8 @@ def overview_metrics(db, account, range_: str) -> dict:
     # 平台聚合：窗口 → 全量 → campaign_stat 回退
     campaign_cnt, target, delivered, open_cnt, click_cnt, submit, report = _agg_platform(db, since)
     if not (campaign_cnt or target or delivered):
-        delivered, open_cnt, click_cnt, submit, report = _campaign_stat_sums(db)
+        delivered, open_cnt, click_cnt, submit, _attach, report = _campaign_stat_sums(db)
+        submit += _attach  # 口径合并：中招 = 提交 + 附件运行（stat 冗余表无合并列，回退近似相加）
         target = int(db.scalar(select(func.coalesce(func.sum(Campaign.target_count), 0))) or 0)
 
     # 演练次数：窗口内有则取窗口内，否则取总量
@@ -189,7 +192,8 @@ def overview_metrics(db, account, range_: str) -> dict:
         select(EmpDept.name, func.count(CampaignTarget.id))
         .join(EmpUser, EmpUser.id == CampaignTarget.user_id)
         .join(EmpDept, EmpDept.id == EmpUser.dept_id, isouter=True)
-        .where(CampaignTarget.submit_flag == 1, CampaignTarget.sent_at >= since)
+        .where(or_(CampaignTarget.submit_flag == 1, CampaignTarget.attach_run_count > 0),
+               CampaignTarget.sent_at >= since)
         .group_by(EmpDept.name)
         .order_by(func.count(CampaignTarget.id).desc())
         .limit(5)
@@ -274,8 +278,9 @@ def overview_metrics(db, account, range_: str) -> dict:
         labels = [f"W{i + 1}" for i in range(n_buckets)]
     victims, bucket_target = [0] * n_buckets, [0] * n_buckets
     for (t,) in db.execute(
-        select(CampaignTarget.submit_at)
-        .where(CampaignTarget.submit_flag == 1, CampaignTarget.sent_at >= since)
+        select(func.coalesce(CampaignTarget.submit_at, CampaignTarget.first_attach_run_at))
+        .where(or_(CampaignTarget.submit_flag == 1, CampaignTarget.attach_run_count > 0),
+               CampaignTarget.sent_at >= since)
     ).all():
         _bucket_ts(victims, t, since, n_buckets, week_bucket)
     for (t,) in db.execute(
@@ -344,33 +349,36 @@ def campaign_report(db, account, campaign_id: int) -> dict:
         {"title": "综合得分", "value": round(100 - max(submit_rate * 2, 0)), "suffix": " 分", "accent": "purple"},
     ]
 
-    # 漏斗：逐级转化率（相对上一阶段）
+    # 漏斗：逐级转化率（相对上一阶段）；附件运行与输入数据同属中招（高危行为）
     sent = delivered or target
     funnel = [
         {"name": "发送成功", "value": sent, "rate": _pct(sent, target)},
         {"name": "已阅读", "value": open_cnt, "rate": _pct(open_cnt, target)},
         {"name": "已点击", "value": click_cnt, "rate": _pct(click_cnt, open_cnt)},
+        {"name": "附件运行", "value": attach_cnt, "rate": _pct(attach_cnt, open_cnt)},
         {"name": "输入数据", "value": submit_cnt, "rate": _pct(submit_cnt, click_cnt)},
         {"name": "已举报", "value": report_cnt, "rate": _pct(report_cnt, submit_cnt)},
-        {"name": "附件运行", "value": attach_cnt, "rate": _pct(attach_cnt, report_cnt)},
     ]
 
-    # 中招明细（提交过或点击过）
+    # 中招明细（提交/运行附件/点击过——附件运行与提交同级视为中招）
     victim_rows = db.execute(
         select(CampaignTarget, EmpUser.name, EmpUser.email, EmpDept.name)
         .join(EmpUser, EmpUser.id == CampaignTarget.user_id, isouter=True)
         .join(EmpDept, EmpDept.id == EmpUser.dept_id, isouter=True)
         .where(
             CampaignTarget.campaign_id == campaign_id,
-            or_(CampaignTarget.submit_flag == 1, CampaignTarget.click_count > 0),
+            or_(CampaignTarget.submit_flag == 1, CampaignTarget.attach_run_count > 0,
+                CampaignTarget.click_count > 0),
         )
-        .order_by(CampaignTarget.submit_at.desc(), CampaignTarget.first_click_at.desc())
+        .order_by(CampaignTarget.submit_at.desc(), CampaignTarget.first_attach_run_at.desc(),
+                  CampaignTarget.first_click_at.desc())
         .limit(100)
     ).all()
     victims = [
         {
             "name": name or "", "dept": dept or "", "email": email or "",
             "clicks": int(t.click_count or 0), "input_pwd": bool(t.submit_flag),
+            "run_attach": int(t.attach_run_count or 0) > 0,
             "first_open": t.first_open_at.strftime("%Y-%m-%d %H:%M") if t.first_open_at else "",
         }
         for t, name, email, dept in victim_rows
@@ -395,17 +403,19 @@ def campaign_report(db, account, campaign_id: int) -> dict:
         "submits": [series[d]["submit"] for d in days],
     }
 
-    # 部门对比明细（该演练内按部门聚合：投递/中招/举报）
+    # 部门对比明细（该演练内按部门聚合：投递/中招/举报；中招=提交+附件运行）
+    victim_c = func.sum(case((or_(CampaignTarget.submit_flag == 1,
+                                   CampaignTarget.attach_run_count > 0), 1), else_=0))
     dept_stmt = (
         select(EmpDept.name,
                func.sum(case((CampaignTarget.send_status.in_(_SENT_STATUS), 1), else_=0)),
-               func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)),
+               victim_c,
                func.sum(case((CampaignTarget.report_flag == 1, 1), else_=0)))
         .join(EmpUser, EmpUser.id == CampaignTarget.user_id)
         .join(EmpDept, EmpDept.id == EmpUser.dept_id, isouter=True)
         .where(CampaignTarget.campaign_id == campaign_id)
         .group_by(EmpDept.name)
-        .order_by(func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0)).desc())
+        .order_by(victim_c.desc())
     )
     dept_compare = [
         {"dept": name or "未知部门", "sent": int(s or 0), "victim": int(v or 0),
@@ -425,7 +435,8 @@ def department_report(db, account, range_: str) -> dict:
     days = _window_days(range_)
     since = (datetime.now() - timedelta(days=days)).date()
 
-    submit_c = func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0))
+    submit_c = func.sum(case((or_(CampaignTarget.submit_flag == 1,
+                                   CampaignTarget.attach_run_count > 0), 1), else_=0))  # 中招=提交+附件运行
     stmt = (
         select(
             EmpUser.dept_id,
@@ -487,7 +498,8 @@ def dept_persons_report(db, account, dept_id: int, range_: str) -> dict:
     days = _window_days(range_)
     since = (datetime.now() - timedelta(days=days)).date()
 
-    submit_c = func.sum(case((CampaignTarget.submit_flag == 1, 1), else_=0))
+    submit_c = func.sum(case((or_(CampaignTarget.submit_flag == 1,
+                                   CampaignTarget.attach_run_count > 0), 1), else_=0))  # 中招=提交+附件运行
     stmt = (
         select(EmpUser.id, EmpUser.name, EmpUser.emp_no, EmpUser.position, EmpDept.name,
                func.count(CampaignTarget.id), submit_c, EmpRiskProfile.risk_level)

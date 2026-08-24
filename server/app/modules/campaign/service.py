@@ -5,7 +5,7 @@
 import secrets
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 
 from app.core.audit import record_audit
 from app.core.deps import apply_data_scope, get_scoped_or_404
@@ -14,7 +14,7 @@ from app.modules.license.service import check_quota
 from app.modules.org.models import EmpDept, EmpUser, EmpUserTag
 from app.modules.tracking.models import TrackEvent
 
-from .models import Campaign, CampaignAlert, CampaignBatch, CampaignStat, CampaignTarget
+from .models import Campaign, CampaignAlert, CampaignAttachment, CampaignBatch, CampaignStat, CampaignTarget
 
 _DT_FMT = "%Y-%m-%d %H:%M:%S"
 
@@ -39,6 +39,7 @@ _ACTION_ICON = {
 # 预警类型 → 处置建议（campaign_alert.type）
 _ALERT_ADVICE = {
     "pwd_submit": "建议立即为该员工安排安全意识培训",
+    "attach_run": "建议立即安排安全培训，并排查该员工设备是否感染恶意程序",
     "exec_user": "建议排查该员工设备是否存在恶意程序",
     "dept_threshold": "该部门中招比例偏高，建议开展部门级专项培训",
     "fast_submit": "提交速度异常，疑似自动化脚本，建议复核事件真实性",
@@ -159,7 +160,8 @@ def list_campaigns(db, account, *, status=None, type=None, kw=None,
     running_targets = sum(c.target_count for c in scoped if c.status in _IN_PROGRESS)
     completed = [c for c in scoped if c.status == "completed"]
     victim_rates = [
-        (stats_map[c.id].submit_cnt if stats_map.get(c.id) else 0) / c.target_count * 100
+        ((stats_map[c.id].submit_cnt + stats_map[c.id].attach_cnt)
+         if stats_map.get(c.id) else 0) / c.target_count * 100
         for c in completed if c.target_count > 0
     ]
     avg_victim = (sum(victim_rates) / len(victim_rates)) if victim_rates else 0.0
@@ -197,8 +199,9 @@ def list_campaigns(db, account, *, status=None, type=None, kw=None,
     items = []
     for c in rows:
         s = stats_map.get(c.id)
-        delivered, opened, clicked, submitted = (
-            (s.delivered_cnt, s.open_cnt, s.click_cnt, s.submit_cnt) if s else (0, 0, 0, 0)
+        delivered, opened, clicked, submitted, attached = (
+            (s.delivered_cnt, s.open_cnt, s.click_cnt, s.submit_cnt, s.attach_cnt)
+            if s else (0, 0, 0, 0, 0)
         )
         target = c.target_count or 1
         start = c.started_at or c.schedule_at or c.created_at or datetime.now()
@@ -215,7 +218,7 @@ def list_campaigns(db, account, *, status=None, type=None, kw=None,
             "deliver_rate": round(delivered / target * 100),
             "open_rate": round(opened / target * 100),
             "click_rate": round(clicked / target * 100),
-            "victim_rate": round(submitted / target * 100),
+            "victim_rate": round((submitted + attached) / target * 100),
             "status": c.status,
         })
     return {"stats": stats, "list": items, "total": total, "page": page, "pageSize": page_size}
@@ -228,6 +231,49 @@ def _validate_time_range(schedule_type: str, schedule_at, ended_at):
     base = schedule_at if (schedule_type == "timed" and schedule_at) else datetime.now()
     if ended_at <= base:
         raise BizError(ErrorCode.PARAM_INVALID, "演练结束时间必须晚于发送开始时间")
+
+
+def _sync_campaign_attachments(db, campaign_id: int, attachment_ids: list[int]) -> None:
+    """演练↔附件载荷关联（先清后写，幂等）：载荷须存在且启用；used_count 冗余增减。"""
+    from app.modules.template.models import AttachmentPayload
+
+    old = [r[0] for r in db.execute(
+        select(CampaignAttachment.payload_id)
+        .where(CampaignAttachment.campaign_id == campaign_id)).all()]
+    new = list(dict.fromkeys(attachment_ids or []))  # 去重保序
+    if new:
+        payloads = {p.id: p for p in db.scalars(
+            select(AttachmentPayload).where(AttachmentPayload.id.in_(new))).all()}
+        for pid in new:
+            p = payloads.get(pid)
+            if p is None or p.status != "enabled":
+                raise BizError(ErrorCode.PARAM_INVALID, f"附件载荷 {pid} 不存在或未启用")
+    db.execute(CampaignAttachment.__table__.delete()
+               .where(CampaignAttachment.campaign_id == campaign_id))
+    for i, pid in enumerate(new):
+        db.add(CampaignAttachment(campaign_id=campaign_id, payload_id=pid,
+                                  deliver_mode="inline", sort=i))
+    for pid in set(old) - set(new):
+        db.execute(update(AttachmentPayload).where(AttachmentPayload.id == pid)
+                   .values(used_count=func.greatest(AttachmentPayload.used_count - 1, 0)))
+    for pid in set(new) - set(old):
+        db.execute(update(AttachmentPayload).where(AttachmentPayload.id == pid)
+                   .values(used_count=AttachmentPayload.used_count + 1))
+
+
+def _campaign_attachments(db, campaign_id: int) -> list[dict]:
+    """演练关联附件（详情/向导回显）。"""
+    from app.modules.template.models import AttachmentPayload
+
+    rows = db.execute(
+        select(CampaignAttachment, AttachmentPayload.name, AttachmentPayload.file_type)
+        .join(AttachmentPayload, AttachmentPayload.id == CampaignAttachment.payload_id)
+        .where(CampaignAttachment.campaign_id == campaign_id)
+        .order_by(CampaignAttachment.sort, CampaignAttachment.id)
+    ).all()
+    return [{"id": ca.id, "payload_id": ca.payload_id, "name": name,
+             "file_type": file_type, "deliver_mode": ca.deliver_mode}
+            for ca, name, file_type in rows]
 
 
 def create_campaign(db, account, payload) -> int:
@@ -273,6 +319,9 @@ def create_campaign(db, account, payload) -> int:
     db.add(campaign)
     db.flush()  # 取自增 id
     cid = campaign.id
+
+    # 附件载荷关联（直发模式）
+    _sync_campaign_attachments(db, cid, payload.attachment_ids or [])
 
     # 目标明细：唯一令牌贯穿像素/链接/落地页；按批次数轮转切批
     for i, uid in enumerate(user_ids):
@@ -327,6 +376,11 @@ def duplicate_campaign(db, account, campaign_id: int) -> int:
     )
     db.add(new)
     db.flush()
+    # 复制原演练的附件载荷关联
+    src_attach = [r[0] for r in db.execute(
+        select(CampaignAttachment.payload_id)
+        .where(CampaignAttachment.campaign_id == src.id)).all()]
+    _sync_campaign_attachments(db, new.id, src_attach)
     for i, uid in enumerate(user_ids):
         db.add(CampaignTarget(
             campaign_id=new.id,
@@ -375,6 +429,7 @@ def get_campaign(db, account, campaign_id: int):
         "started_at": _dt(c.started_at),
         "ended_at": _dt(c.ended_at),
         "created_at": _dt(c.created_at),
+        "attachments": _campaign_attachments(db, c.id),
     }
 
 
@@ -408,6 +463,8 @@ def update_draft(db, account, campaign_id: int, payload):
     c.course_ids = payload.course_ids or []
     c.force_training_rules = payload.force_training_rules or []
     c.auth_confirmed = int(payload.auth_confirmed)
+    # 附件载荷关联（先清后写，幂等）
+    _sync_campaign_attachments(db, campaign_id, payload.attachment_ids or [])
     db.commit()
 
     record_audit(
@@ -571,13 +628,27 @@ def dashboard(db, account, campaign_id: int) -> dict:
             CampaignTarget.click_count > 0,
         )
     ) or 0)
+    # 附件运行（打开附件）：人数口径，与 open/click 一致
+    attached = int(db.scalar(
+        select(func.count()).select_from(CampaignTarget).where(
+            CampaignTarget.campaign_id == campaign_id,
+            CampaignTarget.attach_run_count > 0,
+        )
+    ) or 0)
+    # 中招口径（去重人数）：提交数据 + 附件运行，同人双行为不重复计
+    victim_cnt = int(db.scalar(
+        select(func.count()).select_from(CampaignTarget).where(
+            CampaignTarget.campaign_id == campaign_id,
+            or_(CampaignTarget.submit_flag == 1, CampaignTarget.attach_run_count > 0),
+        )
+    ) or 0)
 
     metrics = [
         {"label": "投递总数", "value": target, "suffix": "", "accent": "blue"},
         {"label": "投递成功", "value": delivered, "suffix": "", "accent": "purple"},
         {"label": "已阅读", "value": opened, "suffix": "", "accent": "teal"},
         {"label": "已点击", "value": clicked, "suffix": "", "accent": "orange"},
-        {"label": "中招人数", "value": submitted, "suffix": "", "accent": "red"},
+        {"label": "中招人数", "value": victim_cnt, "suffix": "", "accent": "red"},
         {"label": "已举报", "value": reported, "suffix": "", "accent": "green"},
     ]
 
@@ -588,9 +659,9 @@ def dashboard(db, account, campaign_id: int) -> dict:
         {"name": "投递成功", "value": delivered, "rate": f"{delivered / target * 100:.1f}%"},
         {"name": "已阅读", "value": opened, "rate": f"{opened / base * 100:.1f}%"},
         {"name": "已点击", "value": clicked, "rate": f"{clicked / base * 100:.1f}%"},
+        {"name": "附件运行", "value": attached, "rate": f"{attached / base * 100:.1f}%"},
         {"name": "输入数据", "value": submitted, "rate": f"{submitted / base * 100:.1f}%"},
         {"name": "已举报", "value": reported, "rate": f"{reported / base * 100:.1f}%"},
-        {"name": "附件运行", "value": 0, "rate": "0%"},
     ]
 
     alert_rows = db.scalars(
@@ -690,7 +761,7 @@ def timeline(db, account, campaign_id: int, page: int, page_size: int):
             "browser": _parse_ua(ev.ua),
             "fingerprint": fp_map.get(ev.fingerprint_id, ""),
             "detail": ev.detail or {},
-            "danger": ev.event_type == "submit",
+            "danger": ev.event_type in ("submit", "attach_run"),
             "good": ev.event_type == "report",
         })
     return {"list": items, "total": total, "page": page, "pageSize": page_size}
