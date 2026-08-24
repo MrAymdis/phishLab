@@ -9,7 +9,8 @@ COPY server/pyproject.toml server/README.md server/
 RUN pip install --no-cache-dir ./server 2>/dev/null || pip install --no-cache-dir \
     fastapi "uvicorn[standard]" sqlalchemy alembic pymysql cryptography \
     pydantic pydantic-settings email-validator redis celery httpx sse-starlette \
-    pyjwt aiosmtplib dnspython exchangelib minio openpyxl python-multipart pytest
+    pyjwt aiosmtplib dnspython exchangelib minio openpyxl python-multipart pytest \
+    qrcode pillow
 
 # 再拷源码
 COPY server/ server/

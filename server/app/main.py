@@ -38,7 +38,7 @@ def create_app() -> FastAPI:
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # TODO(上线前)：收紧为前端域名白名单
+        allow_origins=settings.cors_origins,  # 生产在 .env 收紧为前端域名白名单（CORS_ORIGINS）
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],

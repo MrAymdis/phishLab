@@ -32,6 +32,7 @@ import app.modules.training.models  # noqa: E402,F401
 
 @pytest.fixture(scope="session", autouse=True)
 def _init_db():
+    Base.metadata.drop_all(engine)  # 复用临时文件库：先清空避免跨运行残留（如 emp_user.email 唯一冲突）
     Base.metadata.create_all(engine)
     db = SessionLocal()
     # 测试账号挂 super_admin 角色：无角色时 require_perm/apply_data_scope
