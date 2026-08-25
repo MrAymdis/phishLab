@@ -38,6 +38,9 @@ export function postSSE(opts: SseOptions): () => void {
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
+        // 归一化 \r\n → \n：sse-starlette（后端 EventSourceResponse）默认
+        // \r\n\r\n 事件分隔，只找 \n\n 会永远匹配不到、帧全部滞留
+        buffer = buffer.replace(/\r\n/g, '\n')
 
         // SSE 事件以空行分隔
         let sep: number

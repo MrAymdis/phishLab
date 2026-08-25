@@ -28,7 +28,7 @@
                 <div class="msg msg-user" v-for="(m, i) in messages" :key="i" :class="m.role">
                   <div class="msg-avatar" v-if="m.role === 'assistant'">AI</div>
                   <div class="msg-bubble">
-                    <div v-html="m.content" />
+                    <div v-html="renderMarkdown(m.content)" />
                   </div>
                   <div class="msg-avatar user" v-if="m.role === 'user'">我</div>
                 </div>
@@ -406,6 +406,7 @@ import { Plus, MagicStick, Refresh, Star, Promotion } from '@element-plus/icons-
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { aiApi, type AiProviderItem } from '@/api'
 import { postSSE } from '@/composables/useSSE'
+import { renderMarkdown } from '@/utils/markdown'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 import BaseChart from '@/components/base/BaseChart.vue'
@@ -447,22 +448,23 @@ function sendMessage() {
   if (!text || streaming.value) return
   messages.value.push({ role: 'user', content: text })
   inputMsg.value = ''
-  const answer = { role: 'assistant' as const, content: '' }
-  messages.value.push(answer)
+  messages.value.push({ role: 'assistant', content: '' })
+  const aiIdx = messages.value.length - 1
   streaming.value = true
 
   abort = postSSE({
     url: '/api/v1/ai/chat/stream',
     body: { session_id: sessionId.value, message: text, page_context: {} },
     onFrame: (frame) => {
+      // 经数组索引访问代理对象再修改，直接持有原始引用不会触发响应式渲染
       if (frame.type === 'token' && frame.content) {
-        answer.content += frame.content
+        messages.value[aiIdx].content += frame.content
       } else if (frame.type === 'error') {
-        answer.content += `\n\n> ${frame.message || '生成失败，请重试'}`
+        messages.value[aiIdx].content += `\n\n> ${frame.message || '生成失败，请重试'}`
       }
     },
     onError: (err) => {
-      answer.content = `生成失败：${err.message}`
+      messages.value[aiIdx].content = `生成失败：${err.message}`
       streaming.value = false
     },
     onClose: () => {
