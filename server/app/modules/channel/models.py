@@ -71,7 +71,8 @@ class PhishDomain(Base, TimestampMixin):
     purpose: Mapped[str | None] = mapped_column(String(255))
     spf_status: Mapped[str] = mapped_column(String(8), default="unknown", comment="ok/fail/unknown")
     dkim_status: Mapped[str] = mapped_column(String(8), default="unknown")
-    dmarc_status: Mapped[str] = mapped_column(String(8), default="unknown")
+    dmarc_status: Mapped[str] = mapped_column(String(16), default="unknown",
+                                              comment="p= 值 reject/quarantine/none，无记录 fail，查询失败 unknown")
     mx_status: Mapped[str] = mapped_column(String(8), default="unknown")
     deliver_score: Mapped[int] = mapped_column(Integer, default=0, comment="送达评分0-100")
     repair_tips: Mapped[str | None] = mapped_column(Text)

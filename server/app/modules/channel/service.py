@@ -1,4 +1,5 @@
 """发送配置服务：通道连通性探测、演练域名 DNS 巡检、伪装发件人。"""
+import re
 import socket
 import time
 from datetime import datetime
@@ -595,7 +596,7 @@ def list_domains(db, account) -> list[dict]:
             "domain": d.domain,
             "spf": _STATUS_TEXT.get(d.spf_status, "WARN"),
             "dkim": _STATUS_TEXT.get(d.dkim_status, "WARN"),
-            "dmarc": _STATUS_TEXT.get(d.dmarc_status, "WARN"),
+            "dmarc": _dmarc_display(d.dmarc_status),
             "score": d.deliver_score,
             "last_check": d.last_check_at.strftime("%Y-%m-%d %H:%M") if d.last_check_at else "",
         }
@@ -650,17 +651,48 @@ def _record_exists(name: str, rdtype: str) -> bool:
         return False
 
 
+_DMARC_TEXT = {
+    "reject": "reject（拒收）",
+    "quarantine": "quarantine（垃圾箱）",
+    "none": "p=none（不拦截）",
+    "fail": "FAIL（无记录）",
+    "unknown": "WARN（查询失败）",
+}
+
+
+def _dmarc_display(status: str | None) -> str:
+    """DMARC 状态展示：新格式按 p= 值文案，旧数据（ok/fail）兼容映射。"""
+    if status in _DMARC_TEXT:
+        return _DMARC_TEXT[status]
+    return _STATUS_TEXT.get(status, "WARN")
+
+
+def _dmarc_p_for_inspect(domain: str) -> str:
+    """巡检用 DMARC p 值：返回 reject/quarantine/none；无记录返回 fail；DNS 故障返回 unknown（不抛异常）。
+
+    与 From 伪装校验共用 _query_dmarc_p 的解析逻辑，仅把基础设施失败降级为 unknown 展示。
+    """
+    try:
+        p = _query_dmarc_p(domain)
+    except BizError:
+        return "unknown"
+    return p or "fail"
+
+
 def check_dns(db, account, domain_id: int) -> dict:
-    """DNS 巡检 SPF/DKIM/DMARC/MX，各 25 分计入送达评分；解析失败回退库内缓存。"""
+    """DNS 巡检 SPF/DKIM/DMARC/MX，各 25 分计入送达评分；解析失败回退库内缓存。
+
+    dmarc_status 存 p= 值（reject/quarantine/none），"有无记录"不再能混淆 p=none 与 p=reject。
+    """
     d = db.get(PhishDomain, domain_id)
     if d is None:
         raise BizError(ErrorCode.NOT_FOUND)
     try:
         spf = "ok" if _record_exists(d.domain, "TXT") else "fail"
         dkim = "ok" if _record_exists(f"{d.dkim_selector}._domainkey.{d.domain}", "TXT") else "fail"
-        dmarc = "ok" if _record_exists(f"_dmarc.{d.domain}", "TXT") else "fail"
+        dmarc = _dmarc_p_for_inspect(d.domain)
         mx = "ok" if _record_exists(d.domain, "MX") else "fail"
-        score = sum(25 for s in (spf, dkim, dmarc, mx) if s == "ok")
+        score = sum(25 for s in (spf, dkim, mx) if s == "ok") + (25 if dmarc in ("reject", "quarantine", "none") else 0)
         d.spf_status, d.dkim_status, d.dmarc_status, d.mx_status = spf, dkim, dmarc, mx
         d.deliver_score = score
         d.last_check_at = datetime.now()
@@ -676,7 +708,7 @@ def check_dns(db, account, domain_id: int) -> dict:
         "domain": d.domain,
         "spf": _STATUS_TEXT.get(d.spf_status, "WARN"),
         "dkim": _STATUS_TEXT.get(d.dkim_status, "WARN"),
-        "dmarc": _STATUS_TEXT.get(d.dmarc_status, "WARN"),
+        "dmarc": _dmarc_display(d.dmarc_status),
         "mx": _STATUS_TEXT.get(d.mx_status, "WARN"),
         "score": d.deliver_score,
         "tips": tips,
@@ -726,13 +758,123 @@ def list_sender_profiles(db, account) -> list[dict]:
     ]
 
 
+# 公共邮箱域：发信时强制 From 地址 == 发送账号（QQ/163 等不允许 From 与账号不一致），
+# 此类通道下的 From 伪装地址属于无效数据，写入即拒绝、不留存
+_PUBLIC_MAIL_DOMAINS = {
+    "qq.com", "foxmail.com", "163.com", "126.com", "139.com",
+    "sina.com", "gmail.com", "outlook.com", "hotmail.com",
+}
+
+
+def _resolve_profile_smtp_channel(db, channel_id: int | None) -> SendChannel | None:
+    """解析伪装发件人实际生效的 SMTP 通道：指定通道 → 默认 SMTP 通道（与 test_sender_profile 口径一致）。"""
+    if channel_id:
+        ch = db.get(SendChannel, channel_id)
+        if ch is None or ch.type != "smtp" or ch.status == "disabled":
+            return None
+        return ch
+    return db.scalar(
+        select(SendChannel)
+        .where(SendChannel.type == "smtp", SendChannel.status != "disabled")
+        .order_by(SendChannel.is_default.desc(), SendChannel.id.desc())
+        .limit(1)
+    )
+
+
+def _validate_profile_from_addr(ch: SendChannel | None, from_addr: str | None) -> None:
+    """校验 From 伪装地址在发送/投递层面是否真实生效，不生效则拒绝保存。
+
+    两层校验：
+    1. 发送服务器层：公共邮箱通道（QQ/163 等）强制 From == 发送账号，跨账号伪装必被改写 → 拒绝；
+    2. 投递有效性层：被冒充 From 域 DMARC p=reject/quarantine 时收件方会拒收/进垃圾箱，
+       From 伪装投递不生效 → 拒绝；DMARC 记录查询失败同样拒绝（保守口径）。
+    与发送账号同域的别名地址（如 notify@company.com → hr@company.com）经通道认证后
+    SPF/DKIM 对齐、DMARC 自然通过，跳过 DMARC 校验；from_addr 留空（仅显示名伪装）放行。
+    """
+    if not from_addr:
+        return
+    from_addr = from_addr.strip()
+    acct = (ch.smtp_username or "").strip() if ch and ch.type == "smtp" else ""
+    # 1. 发送服务器层：公共邮箱通道强制 From == 发送账号
+    acct_domain = acct.split("@")[-1].lower() if "@" in acct else ""
+    if acct_domain in _PUBLIC_MAIL_DOMAINS and from_addr != acct:
+        raise BizError(
+            ErrorCode.PARAM_INVALID,
+            "该通道为公共邮箱（QQ/163/Gmail/Outlook 等），发信时 From 会被强制改写为发送账号，"
+            "此 From 伪装地址无效；请改用公司域/自建 SMTP 通道，或留空 From 仅保留显示名伪装",
+        )
+    # 2. 投递有效性层：跨域 From 才查 DMARC（同域别名跳过）
+    from_domain = from_addr.rsplit("@", 1)[-1].lower() if "@" in from_addr else ""
+    if from_domain and from_domain != acct_domain:
+        _reject_if_dmarc_enforced(from_addr)
+
+
+def _reject_if_dmarc_enforced(from_addr: str) -> None:
+    """被冒充 From 域 DMARC 强制（p=reject/quarantine）时 From 伪装投递不生效：拒绝保存。"""
+    domain = from_addr.rsplit("@", 1)[-1].strip().lower()
+    if not domain:
+        return
+    candidates = [domain]
+    labels = domain.split(".")
+    if len(labels) > 2:
+        candidates.append(".".join(labels[-2:]))  # RFC 7489 §6.6.3：精确域无记录时查组织域
+    for cand in candidates:
+        policy = _query_dmarc_p(cand)
+        if policy:  # 查到策略（无论强制与否）即停止；None = 无记录继续查组织域
+            break
+    if policy in ("reject", "quarantine"):
+        raise BizError(
+            ErrorCode.PARAM_INVALID,
+            f"被冒充 From 域 {domain} 配置了 DMARC 强制策略（p={policy}），伪装 From 邮件会被收件方"
+            "拒收/进垃圾箱，From 伪装不生效；请改用无 DMARC 强制的域、与发送账号同域的地址，"
+            "或留空 From 仅保留显示名伪装",
+        )
+
+
+def _query_dmarc_p(domain: str) -> str | None:
+    """查询 _dmarc.<domain> TXT 记录的 p 值（reject/quarantine/none）；无记录返回 None。
+
+    DNS 基础设施失败（无可用 nameserver/超时/网络错误/其他解析异常）按保守口径
+    抛业务异常拒绝保存——无法确认 From 伪装是否生效时宁可不保存。
+    """
+    try:
+        answers = dns.resolver.resolve(f"_dmarc.{domain}", "TXT", lifetime=5)
+    except dns.resolver.NXDOMAIN:
+        return None  # 域无 DMARC 记录 = 无强制策略
+    except dns.resolver.NoNameservers:
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       f"无法查询 {domain} 的 DMARC 记录（无可用 DNS 服务器），无法确认 From 伪装"
+                       "是否生效，已拒绝保存")
+    except dns.exception.Timeout:
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       f"查询 {domain} 的 DMARC 记录超时，无法确认 From 伪装是否生效，已拒绝保存；请稍后重试")
+    except dns.resolver.NoAnswer:
+        return None  # 有记录但无 TXT，视为无策略
+    except OSError as err:
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       f"查询 {domain} 的 DMARC 记录失败（{err}），无法确认 From 伪装是否生效，已拒绝保存")
+    except dns.exception.DNSException as err:
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       f"查询 {domain} 的 DMARC 记录异常（{err}），无法确认 From 伪装是否生效，已拒绝保存")
+    for rdata in answers:
+        text = b"".join(rdata.strings).decode("utf-8", "ignore").lower()
+        if "v=dmarc1" in text:
+            m = re.search(r"\bp=([a-z]+)", text)
+            if m:
+                return m.group(1)
+    return None
+
+
 def create_sender_profile(db, account, payload: dict) -> int:
+    channel_id = payload.get("channel_id")
+    from_addr = payload.get("from_addr")
+    _validate_profile_from_addr(_resolve_profile_smtp_channel(db, channel_id), from_addr)
     p = SenderProfile(
         name=payload["name"],
         channel_type=payload.get("channel_type") or "mail",
-        channel_id=payload.get("channel_id"),
+        channel_id=channel_id,
         display_name=payload.get("display_name"),
-        from_addr=payload.get("from_addr"),
+        from_addr=from_addr,
         reply_to=payload.get("reply_to"),
         sms_number=payload.get("sms_number"),
         sms_sign=payload.get("sms_sign"),
@@ -753,11 +895,14 @@ def update_sender_profile(db, account, pid: int, payload: dict) -> int:
     p = db.get(SenderProfile, pid)
     if p is None:
         raise BizError(ErrorCode.NOT_FOUND, "伪装发件人不存在")
+    channel_id = payload.get("channel_id")
+    from_addr = payload.get("from_addr")
+    _validate_profile_from_addr(_resolve_profile_smtp_channel(db, channel_id), from_addr)
     p.name = payload["name"]
     p.channel_type = payload.get("channel_type") or "mail"
-    p.channel_id = payload.get("channel_id")
+    p.channel_id = channel_id
     p.display_name = payload.get("display_name")
-    p.from_addr = payload.get("from_addr")
+    p.from_addr = from_addr
     p.reply_to = payload.get("reply_to")
     p.sms_number = payload.get("sms_number")
     p.sms_sign = payload.get("sms_sign")
@@ -786,13 +931,6 @@ def delete_sender_profile(db, account, pid: int) -> None:
         db, account=account, module="channel", action="delete_sender_profile",
         target_type="sender_profile", target_id=pid,
     )
-
-
-# 公共邮箱域：强制 From 地址 == 发送账号（QQ/163 等不允许 From 与账号不一致）
-_PUBLIC_MAIL_DOMAINS = {
-    "qq.com", "foxmail.com", "163.com", "126.com", "139.com",
-    "sina.com", "gmail.com", "outlook.com", "hotmail.com",
-}
 
 
 def test_sender_profile(db, account, pid: int, to: str) -> dict:
