@@ -22,7 +22,7 @@ defineProps<{ title: string; parents?: string[] }>()
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px 0;
+  padding: 14px 16px 12px;
 }
 .page-title {
   margin: 0;
