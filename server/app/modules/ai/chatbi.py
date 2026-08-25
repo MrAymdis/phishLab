@@ -341,16 +341,118 @@ def _execute_readonly(sql: str) -> tuple[list[str], list[list]]:
     return cols, rows
 
 
+# ---------- LLM 生成路径（红线 5 守卫不变，规则引擎兜底） ----------
+
+_CHATBI_SCHEMA_HINT = """可查询的表（仅限以下，禁止任何其他表）：
+- campaign(id,name,status,created_at) 演练
+- campaign_target(campaign_id,user_id,batch_no,send_status,sent_at,submit_flag,attach_run_count,first_open_at,first_click_at,report_flag) 演练目标明细
+- track_event(id,user_id,event_type,created_at) 追踪事件（event_type: open/click/submit/attach_run/report/bounce）
+- emp_user(id,name,email,dept_id,status) 员工
+- emp_dept(id,parent_id,name) 部门
+- emp_risk_profile(user_id,total_score,risk_level,phish_count) 员工风险画像
+- mail_report(id,reporter_user_id,classification,created_at) 邮件举报
+- campaign_stat / stat_daily / training_assignment / course
+
+口径：中招 = submit_flag=1 OR attach_run_count>0。
+约束：只输出一条 SELECT 语句，不得包含其他语句；表名仅限上述；必须带 LIMIT（≤200）；
+时间筛选按给定的时间窗起点用 >= '起点时间' 表达；聚合用 COUNT/SUM/GROUP BY 即可。"""
+
+_CHATBI_SYSTEM = (
+    "你是 PhishLab 钓鱼演练平台的报表问数 SQL 生成器。根据用户问题生成单条只读 SELECT 查询。"
+    "只输出 SQL 本身（可用 ```sql 代码块包裹），不要解释、不要补注释。"
+    "严禁生成任何非 SELECT 语句（禁 INSERT/UPDATE/DELETE/DROP/ALTER/INTO）。"
+)
+
+
+def _extract_sql_text(text: str) -> str | None:
+    """从 LLM 输出提取 SQL：优先 ```sql 代码块，否则取首个 SELECT 到结尾。"""
+    m = re.search(r"```(?:sql)?\s*(SELECT.*?)```", text, re.S) or re.search(r"```\s*(SELECT.*?)```", text, re.S)
+    if m:
+        return m.group(1).strip()
+    idx = text.upper().find("SELECT")
+    return text[idx:].strip() if idx >= 0 else None
+
+
+def _finalize_sql(sql: str, since: datetime) -> str:
+    """时间窗字面量内联 + 方言转换（LLM 与规则引擎共用）。
+
+    since 为本服务解析的 datetime，非用户输入，内联无注入面；
+    不依赖绑定参数可避免 sqlglot 方言参数输出与 DBAPI 占位风格不匹配。
+    """
+    sel = sqlglot.parse_one(sql, read="mysql")
+    for p in sel.find_all(exp.Placeholder):  # sqlglot 30 命名参数解析为 Placeholder
+        if p.name == "since":
+            p.replace(exp.Literal.string(since.strftime("%Y-%m-%d %H:%M:%S")))
+    sql = sel.sql(dialect="mysql")
+    write_dialect = engine.dialect.name
+    if write_dialect != "mysql":
+        sql = sqlglot.transpile(sql, read="mysql", write=write_dialect)[0]
+    return sql
+
+
+async def _ask_via_llm(db: Session, account, question: str, since: datetime) -> dict | None:
+    """LLM 生成 SQL 并走完整安全管线（校验/注入/只读执行/用量）。
+
+    任何环节失败（无 Provider / 输出非法 / 校验拒绝）返回 None，由调用方兜底规则引擎，
+    保证问数能力不因 LLM 降级而失效。
+    """
+    from .llm import get_client, get_provider, record_usage
+
+    provider = get_provider(db)
+    if provider is None:
+        return None
+    client = get_client(db, provider)
+    result = await client.chat(
+        [{"role": "user", "content":
+          f"用户问题：{question}\n当前时间：{datetime.now():%Y-%m-%d %H:%M}\n"
+          f"时间窗起点（近30天/近N天/本月/上月按此推算）：{since:%Y-%m-%d %H:%M:%S}\n"
+          f"{_CHATBI_SCHEMA_HINT}"}],
+        system_prompt=provider.system_prompt or _CHATBI_SYSTEM,
+        temperature=0.1, max_tokens=800,
+    )
+    raw = _extract_sql_text(result.get("content") or "")
+    if not raw:
+        return None
+    sql = _validate_sql(raw)  # 与规则引擎同一守卫：表白名单/单SELECT/禁INTO/强制LIMIT
+    sql = _inject_scope(db, account, sql)
+    sql = _finalize_sql(sql, since)
+    cols, rows = _execute_readonly(sql)
+    record_usage(db, provider, result.get("tokens_in"), result.get("tokens_out"))
+    return {"title": "AI 问数", "sql": sql, "columns": cols,
+            "rows": rows[:_MAX_ROWS], "total": len(rows)}
+
+
 # ---------- 主入口 ----------
 
 
-def ask_question(db: Session, account, question: str) -> dict:
-    """ChatBI 问数：意图匹配 → 生成/校验 → 权限注入 → 只读执行 → 审计。"""
+async def ask_question(db: Session, account, question: str) -> dict:
+    """ChatBI 问数：LLM 生成优先（同一安全管线），失败/未配置兜底规则引擎。
+
+    管线：意图 → SQL（LLM 或模板）→ sqlglot 校验 → 权限注入 → 只读执行 → 审计。
+    """
     question = (question or "").strip()
     if not question:
         raise BizError(ErrorCode.PARAM_INVALID, "请输入要查询的问题")
     if len(question) > 200:
         raise BizError(ErrorCode.PARAM_INVALID, "问题过长（≤200 字）")
+
+    since = _parse_window(question)
+
+    # LLM 路径：任何异常降级规则引擎，不阻断问数
+    llm_result = None
+    try:
+        llm_result = await _ask_via_llm(db, account, question, since)
+    except BizError as exc:
+        logger.warning("chatbi llm path failed: %s", exc.message)
+    except Exception:
+        logger.exception("chatbi llm path unexpected failure")
+
+    if llm_result is not None:
+        record_audit(db, account=account, module="ai", action="chatbi_ask",
+                     target_type="chatbi", detail={"question": question, "sql": llm_result["sql"],
+                                                   "rows": llm_result["total"], "llm": True})
+        logger.info("chatbi ask(llm) account=%s rows=%d", account.id, llm_result["total"])
+        return {"question": question, **llm_result}
 
     matched = _match_template(question)
     if matched is None:
@@ -368,23 +470,12 @@ def ask_question(db: Session, account, question: str) -> dict:
         logger.exception("chatbi sql guard failed")
         raise BizError(ErrorCode.PARAM_INVALID, "问数校验失败，已拒绝执行") from exc
 
-    # 时间窗参数字面量内联（since 为本服务解析的 datetime，非用户输入，无注入面；
-    # 不依赖绑定参数可避免 sqlglot 方言参数输出与 DBAPI 占位风格不匹配）
-    since = _parse_window(question)
-    sel = sqlglot.parse_one(sql, read="mysql")
-    for p in sel.find_all(exp.Placeholder):  # sqlglot 30 命名参数解析为 Placeholder
-        if p.name == "since":
-            p.replace(exp.Literal.string(since.strftime("%Y-%m-%d %H:%M:%S")))
-    sql = sel.sql(dialect="mysql")
-    # 目标方言转换（MySQL → SQLite 等测试环境）
-    write_dialect = engine.dialect.name
-    if write_dialect != "mysql":
-        sql = sqlglot.transpile(sql, read="mysql", write=write_dialect)[0]
+    sql = _finalize_sql(sql, since)
     cols, rows = _execute_readonly(sql)
 
     record_audit(db, account=account, module="ai", action="chatbi_ask",
                  target_type="chatbi", detail={"question": question, "sql": sql,
-                                               "rows": len(rows)})
+                                               "rows": len(rows), "llm": False})
     logger.info("chatbi ask account=%s rows=%d", account.id, len(rows))
     return {
         "question": question,

@@ -305,10 +305,45 @@ export interface ChatbiResult {
   total: number
 }
 
+export interface AiProviderItem {
+  id: number
+  name: string
+  type: string
+  endpoint: string | null
+  model: string | null
+  /** Key 掩码回显（红线 2：明文 Key 仅服务端可解密） */
+  api_key_masked: string
+  temperature: number
+  max_tokens: number
+  system_prompt: string | null
+  enabled: boolean
+  /** false = 仅本地模型可调用（数据不外发） */
+  data_outbound: boolean
+  /** 近 7 天用量聚合 */
+  usage_7d: { calls: number; tokens_in: number; tokens_out: number }
+}
+
+export interface AiProviderTestResult {
+  ok: boolean
+  latency_ms: number
+  reply?: string
+  tokens_in?: number | null
+  tokens_out?: number | null
+}
+
 export const aiApi = {
   chatbi: (question: string) =>
     post<ChatbiResult>('/api/v1/ai/chatbi', { question }),
   sessions: () => get('/api/v1/ai/sessions'),
+  providers: () => get<AiProviderItem[]>('/api/v1/ai/providers'),
+  createProvider: (payload: Record<string, unknown>) =>
+    post<{ id: number; api_key_masked: string }>('/api/v1/ai/providers', payload),
+  /** api_key 留空 = 不更换 Key */
+  updateProvider: (id: number, payload: Record<string, unknown>) =>
+    put<{ id: number; api_key_masked: string }>(`/api/v1/ai/providers/${id}`, payload),
+  deleteProvider: (id: number) => del(`/api/v1/ai/providers/${id}`),
+  testProvider: (id: number) =>
+    post<AiProviderTestResult>(`/api/v1/ai/providers/${id}/test`),
   drafts: (status?: string) => get('/api/v1/ai/drafts', { status } as never),
   approveDraft: (id: number) => post(`/api/v1/ai/drafts/${id}/approve`),
   discardDraft: (id: number) => post(`/api/v1/ai/drafts/${id}/discard`),

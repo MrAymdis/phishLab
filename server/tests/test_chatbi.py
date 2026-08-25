@@ -72,7 +72,8 @@ def _account(db, uid):
     return db.get(SysAccount, uid)
 
 
-def test_validate_rejects_unsafe_sql():
+@pytest.mark.asyncio
+async def test_validate_rejects_unsafe_sql():
     for bad in ("DROP TABLE campaign", "SELECT * FROM users",
                 "SELECT * FROM campaign; DROP TABLE campaign",
                 "INSERT INTO campaign VALUES (1)"):
@@ -83,50 +84,56 @@ def test_validate_rejects_unsafe_sql():
     assert "LIMIT 200" in chatbi._validate_sql("SELECT id FROM campaign LIMIT 99999")
 
 
-def test_super_admin_full_data_no_injection(seeded_db):
+@pytest.mark.asyncio
+async def test_super_admin_full_data_no_injection(seeded_db):
     db = seeded_db
     acct = _account(db, _BASE + 1)
-    result = chatbi.ask_question(db, acct, "各部门中招对比")
+    result = await chatbi.ask_question(db, acct, "各部门中招对比")
     assert result["title"] == "部门中招对比"
     rows = {r[0]: r[2] for r in result["rows"]}  # dept -> victim
     assert rows == {"财务部": 2, "技术部": 0}  # 张三 submit + 王五 attach_run
     assert "dept_id IN" not in result["sql"] and "user_id IN" not in result["sql"]
 
 
-def test_dept_scope_injected(seeded_db):
+@pytest.mark.asyncio
+async def test_dept_scope_injected(seeded_db):
     db = seeded_db
     acct = _account(db, _BASE + 2)  # 财务部（scope 3）
-    result = chatbi.ask_question(db, acct, "各部门中招对比")
+    result = await chatbi.ask_question(db, acct, "各部门中招对比")
     # 注入后只返回本部门，SQL 中带部门条件
     rows = [r[0] for r in result["rows"]]
     assert rows == ["财务部"]
     assert "dept_id IN" in result["sql"] or "user_id IN (SELECT id FROM emp_user WHERE dept_id IN" in result["sql"]
 
 
-def test_self_only_scope_injected(seeded_db):
+@pytest.mark.asyncio
+async def test_self_only_scope_injected(seeded_db):
     db = seeded_db
     acct = _account(db, _BASE + 3)  # 仅本人（张三）
-    result = chatbi.ask_question(db, acct, "中招次数最多的员工 TOP10")
+    result = await chatbi.ask_question(db, acct, "中招次数最多的员工 TOP10")
     assert result["rows"] == [["张三", "财务部", 1]]  # 仅张三的 submit，无王五 attach_run
     assert f"user_id = {_BASE + 1}" in result["sql"]
 
 
-def test_no_role_fail_closed(seeded_db):
+@pytest.mark.asyncio
+async def test_no_role_fail_closed(seeded_db):
     db = seeded_db
     with pytest.raises(BizError) as exc:
-        chatbi.ask_question(db, _account(db, _BASE + 4), "各部门中招对比")
+        await chatbi.ask_question(db, _account(db, _BASE + 4), "各部门中招对比")
     assert exc.value.code == 40302  # PERM_DENIED
 
 
-def test_unsupported_question_rejected(seeded_db):
+@pytest.mark.asyncio
+async def test_unsupported_question_rejected(seeded_db):
     db = seeded_db
     with pytest.raises(BizError):
-        chatbi.ask_question(db, _account(db, _BASE + 1), "今天天气如何")
+        await chatbi.ask_question(db, _account(db, _BASE + 1), "今天天气如何")
 
 
-def test_audit_logged(seeded_db):
+@pytest.mark.asyncio
+async def test_audit_logged(seeded_db):
     db = seeded_db
-    chatbi.ask_question(db, _account(db, _BASE + 1), "近7天中招趋势")
+    await chatbi.ask_question(db, _account(db, _BASE + 1), "近7天中招趋势")
     audit = db.scalar(
         select(AuditLog).where(AuditLog.account_id == _BASE + 1, AuditLog.action == "chatbi_ask")
         .order_by(AuditLog.id.desc())

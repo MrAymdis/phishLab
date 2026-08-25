@@ -38,11 +38,55 @@ class ChatbiRequest(BaseModel):
     question: str
 
 
+class ProviderPayload(BaseModel):
+    name: str
+    type: str  # openai/claude/wenxin/tongyi/local
+    endpoint: str | None = None
+    api_key: str | None = None  # 更新时留空 = 不更换 Key
+    model: str | None = None
+    temperature: float = 0.7
+    max_tokens: int = 2048
+    system_prompt: str | None = None
+    enabled: bool = True
+    data_outbound: bool = True  # False = 仅本地模型可调用
+
+
+@ai.get("/providers", summary="LLM Provider 列表（Key 掩码回显）",
+        dependencies=[Depends(require_perm("ai:manage"))])
+def list_providers(account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.list_providers(db))
+
+
+@ai.post("/providers", summary="创建 LLM Provider（API Key AES-GCM 加密入库）",
+         dependencies=[Depends(require_perm("ai:manage"))])
+def create_provider(req: ProviderPayload, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.create_provider(db, account, req.model_dump()))
+
+
+@ai.put("/providers/{pid}", summary="更新 Provider（api_key 留空不更换）",
+        dependencies=[Depends(require_perm("ai:manage"))])
+def update_provider(pid: int, req: ProviderPayload, account=Depends(get_current_account),
+                    db: Session = Depends(get_db)):
+    return resp.ok(service.update_provider(db, account, pid, req.model_dump()))
+
+
+@ai.delete("/providers/{pid}", summary="删除 Provider",
+           dependencies=[Depends(require_perm("ai:manage"))])
+def delete_provider(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.delete_provider(db, account, pid))
+
+
+@ai.post("/providers/{pid}/test", summary="连通性测试（最小 chat 请求）",
+         dependencies=[Depends(require_perm("ai:manage"))])
+async def test_provider(pid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(await service.test_provider(db, pid))
+
+
 @ai.post("/chatbi", summary="ChatBI 问数（红线 5：只读 + 表白名单 + 校验 + 权限注入 + 审计）")
-def chatbi(req: ChatbiRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+async def chatbi(req: ChatbiRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
     from . import chatbi as chatbi_svc
 
-    return resp.ok(chatbi_svc.ask_question(db, account, req.question))
+    return resp.ok(await chatbi_svc.ask_question(db, account, req.question))
 
 
 @ai.get("/sessions", summary="会话列表")
@@ -57,13 +101,13 @@ async def chat_stream(req: ChatRequest, account=Depends(get_current_account), db
 
 
 @ai.post("/templates/generate", summary="AI 模板生成（进草稿审核）")
-def gen_template(req: GenerateTemplateRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok({"draft_id": service.generate_template(db, account, req.model_dump())})
+async def gen_template(req: GenerateTemplateRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"draft_id": await service.generate_template(db, account, req.model_dump())})
 
 
 @ai.post("/analysis/generate", summary="智能分析报告（进草稿审核）")
-def gen_analysis(req: AnalysisRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok({"draft_id": service.generate_analysis(db, account, req.kind, req.target)})
+async def gen_analysis(req: AnalysisRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"draft_id": await service.generate_analysis(db, account, req.kind, req.target)})
 
 
 @ai.get("/drafts", summary="AI 草稿列表")

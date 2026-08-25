@@ -256,46 +256,54 @@
           <el-row :gutter="12">
             <el-col :span="12">
               <div class="card card-blue">
-                <div class="card-title">模型选择</div>
-                <el-radio-group v-model="cfg.model" style="display: flex; flex-direction: column; gap: 8px">
-                  <el-radio value="gpt4o">GPT-4o <el-tag size="small" type="success">推荐</el-tag></el-radio>
-                  <el-radio value="claude35">Claude 3.5 Sonnet</el-radio>
-                  <el-radio value="ernie">文心一言</el-radio>
-                  <el-radio value="qwen">通义千问</el-radio>
-                  <el-radio value="local">本地模型 (Ollama / vLLM)</el-radio>
-                </el-radio-group>
-                <el-divider />
-                <el-form label-width="100px" size="small">
-                  <el-form-item label="API端点">
-                    <el-input v-model="cfg.endpoint" placeholder="https://api.openai.com/v1" />
-                  </el-form-item>
-                  <el-form-item label="API Key">
-                    <el-input v-model="cfg.apiKey" :type="showKey ? 'text' : 'password'" placeholder="sk-...">
-                      <template #append>
-                        <el-button @click="showKey = !showKey">{{ showKey ? '隐藏' : '显示' }}</el-button>
-                      </template>
-                    </el-input>
-                  </el-form-item>
-                </el-form>
+                <div class="card-title">
+                  LLM Provider
+                  <el-button type="primary" size="small" @click="openCreate">新增 Provider</el-button>
+                </div>
+                <div v-if="providers.length" class="prov-list">
+                  <div v-for="p in providers" :key="p.id" class="prov-row" :class="{ active: p.id === selectedId }"
+                       @click="selectProvider(p)">
+                    <div class="prov-head">
+                      <span class="prov-name">{{ p.name }}</span>
+                      <el-tag size="small" :type="p.enabled ? 'success' : 'info'">{{ typeLabel(p.type) }}</el-tag>
+                      <span class="prov-model">{{ p.model || '—' }}</span>
+                    </div>
+                    <div class="prov-meta">
+                      <span class="prov-key">{{ p.api_key_masked || '未配置 Key' }}</span>
+                      <span class="prov-usage">{{ p.usage_7d.calls }} 次 / 7天</span>
+                    </div>
+                    <div class="prov-ops" @click.stop>
+                      <el-button link size="small" :loading="testingId === p.id" @click="testProvider(p)">测试</el-button>
+                      <el-button link size="small" @click="openEdit(p)">编辑</el-button>
+                      <el-button link size="small" type="danger" @click="removeProvider(p)">删除</el-button>
+                    </div>
+                  </div>
+                </div>
+                <el-empty v-else description="暂无 Provider，请先新增" :image-size="64" />
+                <div class="prov-hint">AI 对话 / 模板生成 / 智能分析 / ChatBI 共用同一 Provider；无可用 Provider 时自动降级本地实现。</div>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="card card-green">
-                <div class="card-title">参数调节</div>
-                <el-form label-width="110px" size="small">
-                  <el-form-item label="温度 Temperature">
-                    <el-slider v-model="cfg.temperature" :min="0" :max="2" :step="0.1" show-input />
-                  </el-form-item>
-                  <el-form-item label="最大 Token">
-                    <el-input-number v-model="cfg.maxTokens" :min="128" :max="32768" :step="128" style="width: 100%" />
-                  </el-form-item>
-                  <el-form-item label="Top-P">
-                    <el-slider v-model="cfg.topP" :min="0" :max="1" :step="0.05" show-input />
-                  </el-form-item>
-                  <el-form-item label="系统提示词">
-                    <el-input v-model="cfg.systemPrompt" type="textarea" :rows="4" placeholder="You are a helpful security assistant..." />
-                  </el-form-item>
-                </el-form>
+                <div class="card-title">
+                  参数调节
+                  <el-button type="primary" size="small" :disabled="!selectedProvider" @click="saveParams">保存参数</el-button>
+                </div>
+                <template v-if="selectedProvider">
+                  <el-form label-width="110px" size="small">
+                    <el-form-item label="温度 Temperature">
+                      <el-slider v-model="paramForm.temperature" :min="0" :max="2" :step="0.1" show-input />
+                    </el-form-item>
+                    <el-form-item label="最大 Token">
+                      <el-input-number v-model="paramForm.maxTokens" :min="1" :max="16384" :step="128" style="width: 100%" />
+                    </el-form-item>
+                    <el-form-item label="系统提示词">
+                      <el-input v-model="paramForm.systemPrompt" type="textarea" :rows="5"
+                                placeholder="You are a helpful security assistant..." />
+                    </el-form-item>
+                  </el-form>
+                </template>
+                <el-empty v-else description="请先选择左侧 Provider" :image-size="64" />
               </div>
             </el-col>
           </el-row>
@@ -306,83 +314,68 @@
                 <div class="card-title">数据安全</div>
                 <div class="toggle-row">
                   <div>
-                    <div class="toggle-title">脱敏处理</div>
-                    <div class="toggle-desc">发送前自动脱敏姓名、邮箱、手机等PII字段</div>
+                    <div class="toggle-title">启用 Provider</div>
+                    <div class="toggle-desc">停用后 AI 功能自动降级本地实现</div>
                   </div>
-                  <el-switch v-model="cfg.maskPII" />
+                  <el-switch :model-value="!!selectedProvider?.enabled" :disabled="!selectedProvider"
+                             @change="toggleEnabled" />
                 </div>
                 <div class="toggle-row">
                   <div>
                     <div class="toggle-title">数据不外发模式</div>
-                    <div class="toggle-desc">仅使用本地模型，禁止任何外部API调用</div>
+                    <div class="toggle-desc">仅允许本地模型，云端 Provider 将被禁止调用（红线：敏感数据不外发）</div>
                   </div>
-                  <el-switch v-model="cfg.localOnly" />
+                  <el-switch :model-value="localOnly" :disabled="!selectedProvider" @change="toggleLocalOnly" />
                 </div>
-                <div class="toggle-row">
-                  <div>
-                    <div class="toggle-title">对话记录保存</div>
-                    <div class="toggle-desc">保存对话历史便于审计追溯</div>
-                  </div>
-                  <el-switch v-model="cfg.saveHistory" />
-                </div>
-                <el-form label-width="110px" size="small" style="margin-top: 12px">
-                  <el-form-item label="保存期限">
-                    <el-select v-model="cfg.historyDays" style="width: 200px">
-                      <el-option :value="7" label="7 天" />
-                      <el-option :value="30" label="30 天" />
-                      <el-option :value="90" label="90 天" />
-                      <el-option :value="365" label="365 天" />
-                    </el-select>
-                  </el-form-item>
-                </el-form>
               </div>
             </el-col>
             <el-col :span="12">
               <div class="card card-purple">
-                <div class="card-title">功能开关</div>
-                <div class="toggle-row">
-                  <div>
-                    <div class="toggle-title">AI对话</div>
-                    <div class="toggle-desc">全局启用自然语言对话助手</div>
-                  </div>
-                  <el-switch v-model="cfg.featChat" />
-                </div>
-                <div class="toggle-row">
-                  <div>
-                    <div class="toggle-title">AI模板生成</div>
-                    <div class="toggle-desc">自动生成钓鱼演练邮件/短信模板</div>
-                  </div>
-                  <el-switch v-model="cfg.featTmpl" />
-                </div>
-                <div class="toggle-row">
-                  <div>
-                    <div class="toggle-title">智能分析</div>
-                    <div class="toggle-desc">AI自动生成演练分析报告和洞察</div>
-                  </div>
-                  <el-switch v-model="cfg.featReport" />
-                </div>
-                <div class="toggle-row">
-                  <div>
-                    <div class="toggle-title">自动培训推荐</div>
-                    <div class="toggle-desc">基于薄弱点推荐个性化培训课程</div>
-                  </div>
-                  <el-switch v-model="cfg.featTrain" />
-                </div>
+                <div class="card-title">使用统计（近 7 天）</div>
+                <el-row :gutter="12">
+                  <el-col :span="6" v-for="s in usageStats" :key="s.title">
+                    <StatCard :title="s.title" :value="s.value" :suffix="s.suffix" :accent="s.accent" />
+                  </el-col>
+                </el-row>
               </div>
             </el-col>
           </el-row>
 
-          <div class="card card-teal" style="margin-top: 12px">
-            <div class="card-title">
-              使用统计
-              <el-button type="primary" size="small">保存配置</el-button>
-            </div>
-            <el-row :gutter="12">
-              <el-col :span="6" v-for="s in usageStats" :key="s.title">
-                <StatCard :title="s.title" :value="s.value" :suffix="s.suffix" :accent="s.accent" />
-              </el-col>
-            </el-row>
-          </div>
+          <!-- 新增 / 编辑 Provider 对话框 -->
+          <el-dialog v-model="dialogVisible" :title="editingId ? '编辑 Provider' : '新增 Provider'" width="520px">
+            <el-form label-width="110px" size="small">
+              <el-form-item label="名称" required>
+                <el-input v-model="providerForm.name" placeholder="如：OpenAI 主账号" maxlength="64" />
+              </el-form-item>
+              <el-form-item label="类型" required>
+                <el-select v-model="providerForm.type" style="width: 100%">
+                  <el-option v-for="t in PROVIDER_TYPES" :key="t.value" :value="t.value" :label="t.label"
+                             :disabled="t.value === 'wenxin'" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="API端点">
+                <el-input v-model="providerForm.endpoint" placeholder="https://api.openai.com/v1" />
+              </el-form-item>
+              <el-form-item :label="providerForm.type === 'local' ? 'API Key（可空）' : 'API Key'">
+                <el-input v-model="providerForm.apiKey" :type="showKey ? 'text' : 'password'"
+                          :placeholder="editingId ? '留空表示不更换' : 'sk-...'">
+                  <template #append>
+                    <el-button @click="showKey = !showKey">{{ showKey ? '隐藏' : '显示' }}</el-button>
+                  </template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="模型">
+                <el-input v-model="providerForm.model" placeholder="如 gpt-4o-mini / deepseek-chat" />
+              </el-form-item>
+              <el-form-item label="启用">
+                <el-switch v-model="providerForm.enabled" />
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button size="small" @click="dialogVisible = false">取消</el-button>
+              <el-button type="primary" size="small" :loading="saving" @click="submitProvider">保存</el-button>
+            </template>
+          </el-dialog>
         </el-tab-pane>
       </el-tabs>
     </div>
@@ -410,8 +403,8 @@
 import { ref, computed, reactive, onMounted } from 'vue'
 import type { EChartsOption } from 'echarts'
 import { Plus, MagicStick, Refresh, Star, Promotion } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { aiApi } from '@/api'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { aiApi, type AiProviderItem } from '@/api'
 import { postSSE } from '@/composables/useSSE'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
@@ -606,22 +599,167 @@ const deptChart: EChartsOption = {
 }
 
 const showKey = ref(false)
-const cfg = reactive({
-  model: 'gpt4o',
-  endpoint: 'https://api.openai.com/v1',
-  apiKey: 'sk-************************************************',
-  temperature: 0.7, maxTokens: 4096, topP: 0.95,
-  systemPrompt: 'You are a professional cybersecurity assistant specialized in phishing simulation and security awareness training for enterprises.',
-  maskPII: true, localOnly: false, saveHistory: true, historyDays: 90,
-  featChat: true, featTmpl: true, featReport: true, featTrain: true,
+
+const PROVIDER_TYPES = [
+  { value: 'openai', label: 'OpenAI 兼容（OpenAI / DeepSeek / One-API）' },
+  { value: 'claude', label: 'Claude (Anthropic)' },
+  { value: 'tongyi', label: '通义千问' },
+  { value: 'local', label: '本地模型 (Ollama / vLLM)' },
+  { value: 'wenxin', label: '文心一言（暂未接入）' },
+]
+const TYPE_LABELS: Record<string, string> = {
+  openai: 'OpenAI', claude: 'Claude', tongyi: '通义千问',
+  wenxin: '文心一言', local: '本地',
+}
+
+const providers = ref<AiProviderItem[]>([])
+const selectedId = ref<number | null>(null)
+const selectedProvider = computed(() => providers.value.find(p => p.id === selectedId.value) ?? null)
+const testingId = ref<number | null>(null)
+const saving = ref(false)
+const dialogVisible = ref(false)
+const editingId = ref<number | null>(null)
+const providerForm = reactive({
+  name: '', type: 'openai', endpoint: '', apiKey: '', model: '', enabled: true,
+})
+const paramForm = reactive({ temperature: 0.7, maxTokens: 2048, systemPrompt: '' })
+
+/** 数据不外发 = data_outbound 取反（后端：false 时仅本地模型可调用） */
+const localOnly = computed(() => selectedProvider.value ? !selectedProvider.value.data_outbound : false)
+
+const usageStats = computed(() => {
+  const s = providers.value.reduce((acc, p) => {
+    acc.calls += p.usage_7d?.calls || 0
+    acc.tokens_in += p.usage_7d?.tokens_in || 0
+    acc.tokens_out += p.usage_7d?.tokens_out || 0
+    acc.enabled += p.enabled ? 1 : 0
+    return acc
+  }, { calls: 0, tokens_in: 0, tokens_out: 0, enabled: 0 })
+  const fmt = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n.toLocaleString()
+  return [
+    { title: '调用次数', value: s.calls.toLocaleString(), suffix: ' 次', accent: 'blue' as Accent },
+    { title: 'Token 消耗', value: fmt(s.tokens_in + s.tokens_out), suffix: '', accent: 'orange' as Accent },
+    { title: '输入 Token', value: fmt(s.tokens_in), suffix: '', accent: 'green' as Accent },
+    { title: '启用 Provider', value: `${s.enabled}/${providers.value.length}`, suffix: '', accent: 'purple' as Accent },
+  ]
 })
 
-const usageStats: { title: string; value: string | number; suffix: string; accent: Accent }[] = [
-  { title: '总调用次数', value: '12,486', suffix: ' 次', accent: 'blue' },
-  { title: '本月调用', value: '3,258', suffix: ' 次', accent: 'green' },
-  { title: 'Token消耗', value: '8.4M', suffix: '', accent: 'orange' },
-  { title: '费用预估', value: '¥2,186', suffix: '', accent: 'purple' },
-]
+function typeLabel(t: string) { return TYPE_LABELS[t] || t }
+
+async function loadProviders() {
+  try {
+    const data = await aiApi.providers()
+    providers.value = data
+    if (!selectedId.value || !data.some(p => p.id === selectedId.value)) {
+      selectedId.value = data[0]?.id ?? null
+    }
+    applyParams()
+  } catch {
+    ElMessage.warning('Provider 列表加载失败，请检查 ai:manage 权限')
+  }
+}
+
+function selectProvider(p: AiProviderItem) {
+  selectedId.value = p.id
+  applyParams()
+}
+
+function applyParams() {
+  const p = selectedProvider.value
+  if (p) {
+    paramForm.temperature = p.temperature
+    paramForm.maxTokens = p.max_tokens
+    paramForm.systemPrompt = p.system_prompt ?? ''
+  }
+}
+
+function saveParams() {
+  const p = selectedProvider.value
+  if (!p) return
+  aiApi.updateProvider(p.id, {
+    temperature: paramForm.temperature,
+    max_tokens: paramForm.maxTokens,
+    system_prompt: paramForm.systemPrompt,
+  })
+    .then(() => { ElMessage.success(`「${p.name}」参数已保存`); loadProviders() })
+    .catch((e) => ElMessage.error(e?.message || '保存失败'))
+}
+
+function toggleEnabled(v: boolean) {
+  const p = selectedProvider.value
+  if (!p) return
+  aiApi.updateProvider(p.id, { enabled: v })
+    .then(() => ElMessage.success(v ? '已启用' : '已停用'))
+    .catch((e) => ElMessage.error(e?.message || '操作失败'))
+    .finally(loadProviders)
+}
+
+function toggleLocalOnly(v: boolean) {
+  const p = selectedProvider.value
+  if (!p) return
+  aiApi.updateProvider(p.id, { data_outbound: !v })
+    .then(() => ElMessage.success(v ? '已开启不外发模式' : '已允许外发'))
+    .catch((e) => ElMessage.error(e?.message || '操作失败'))
+    .finally(loadProviders)
+}
+
+function openCreate() {
+  editingId.value = null
+  Object.assign(providerForm, { name: '', type: 'openai', endpoint: '', apiKey: '', model: '', enabled: true })
+  dialogVisible.value = true
+}
+
+function openEdit(p: AiProviderItem) {
+  editingId.value = p.id
+  Object.assign(providerForm, {
+    name: p.name, type: p.type, endpoint: p.endpoint ?? '', apiKey: '',
+    model: p.model ?? '', enabled: p.enabled,
+  })
+  dialogVisible.value = true
+}
+
+function submitProvider() {
+  const payload: Record<string, unknown> = {
+    name: providerForm.name.trim(),
+    type: providerForm.type,
+    endpoint: providerForm.endpoint.trim() || null,
+    model: providerForm.model.trim() || null,
+    enabled: providerForm.enabled,
+  }
+  if (providerForm.apiKey.trim()) payload.api_key = providerForm.apiKey.trim()
+  if (!payload.name) { ElMessage.warning('请填写 Provider 名称'); return }
+  saving.value = true
+  const call = editingId.value
+    ? aiApi.updateProvider(editingId.value, payload)
+    : aiApi.createProvider(payload)
+  call.then(() => {
+    ElMessage.success(editingId.value ? 'Provider 已更新' : 'Provider 已创建')
+    dialogVisible.value = false
+    loadProviders()
+  }).catch((e) => ElMessage.error(e?.message || '保存失败'))
+    .finally(() => { saving.value = false })
+}
+
+function testProvider(p: AiProviderItem) {
+  testingId.value = p.id
+  aiApi.testProvider(p.id)
+    .then((r) => {
+      if (r.ok) {
+        ElMessage.success(`连通正常：延迟 ${r.latency_ms}ms${r.reply ? `，回复「${r.reply}」` : ''}`)
+      } else {
+        ElMessage.error('连通失败')
+      }
+    })
+    .catch((e) => ElMessage.error(e?.message || '连通失败'))
+    .finally(() => { testingId.value = null })
+}
+
+function removeProvider(p: AiProviderItem) {
+  ElMessageBox.confirm(`删除 Provider「${p.name}」？该操作不可恢复。`, '删除确认', { type: 'warning' })
+    .then(() => aiApi.deleteProvider(p.id))
+    .then(() => { ElMessage.success('已删除'); loadProviders() })
+    .catch((e) => { if (e !== 'cancel') ElMessage.error(e?.message || '删除失败') })
+}
 
 onMounted(() => {
   // 历史会话
@@ -633,6 +771,8 @@ onMounted(() => {
     .catch(() => ElMessage.warning('接口数据加载失败，已展示演示数据'))
   // AI 生成草稿（待审核列表）
   loadDrafts()
+  // LLM Provider 列表
+  loadProviders()
 })
 </script>
 
@@ -773,6 +913,30 @@ onMounted(() => {
 }
 .toggle-title { font-size: 13px; font-weight: 500; }
 .toggle-desc { font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
+
+.prov-list { display: flex; flex-direction: column; gap: 8px; }
+.prov-row {
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+  &.active { border-color: var(--color-border-info); background: var(--color-background-info); }
+}
+.prov-head { display: flex; align-items: center; gap: 8px; }
+.prov-name { font-size: 13px; font-weight: 600; }
+.prov-model { font-size: 12px; color: var(--color-text-tertiary); }
+.prov-meta {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 6px; font-size: 12px;
+}
+.prov-key { color: var(--color-text-secondary); font-family: monospace; }
+.prov-usage { color: var(--color-text-tertiary); }
+.prov-ops { margin-top: 6px; display: flex; justify-content: flex-end; gap: 2px; }
+.prov-hint {
+  margin-top: 10px; font-size: 11px; color: var(--color-text-tertiary);
+  line-height: 1.6;
+}
 
 .dialog-preview { font-size: 13px; }
 .dp-row { padding: 4px 0; }
