@@ -34,6 +34,17 @@ class AnalysisRequest(BaseModel):
     target: dict = {}
 
 
+class ChatbiRequest(BaseModel):
+    question: str
+
+
+@ai.post("/chatbi", summary="ChatBI 问数（红线 5：只读 + 表白名单 + 校验 + 权限注入 + 审计）")
+def chatbi(req: ChatbiRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    from . import chatbi as chatbi_svc
+
+    return resp.ok(chatbi_svc.ask_question(db, account, req.question))
+
+
 @ai.get("/sessions", summary="会话列表")
 def sessions(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.list_sessions(db, account))

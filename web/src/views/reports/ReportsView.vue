@@ -4,9 +4,10 @@
       <template #actions>
         <el-button size="small" :icon="Refresh">刷新数据</el-button>
         <div class="chatbi-input">
-          <el-input v-model="chatbiQuery" size="small" placeholder="自然语言问数，如:上月财务部中招率" style="width: 320px">
+          <el-input v-model="chatbiQuery" size="small" placeholder="自然语言问数，如:上月财务部中招率" style="width: 320px"
+            @keyup.enter="askChatbi">
             <template #append>
-              <el-button type="primary" :icon="Promotion">发送</el-button>
+              <el-button type="primary" :icon="Promotion" :loading="chatbiLoading" @click="askChatbi">发送</el-button>
             </template>
           </el-input>
         </div>
@@ -14,6 +15,22 @@
         <el-button size="small" :icon="DocumentCopy" :loading="exporting" @click="doExport('excel')">导出 Excel</el-button>
       </template>
     </PageHeader>
+
+    <el-dialog v-model="chatbiVisible" :title="chatbiResult?.title || '问数结果'" width="720px" append-to-body>
+      <template v-if="chatbiResult">
+        <el-alert type="info" :closable="false" show-icon style="margin-bottom: 8px"
+          :title="`「${chatbiResult.question}」 共 ${chatbiResult.total} 行（只读查询，SQL 已留审计）`" />
+        <el-table :data="chatbiRows" size="small" max-height="360" border>
+          <el-table-column v-for="c in chatbiResult.columns" :key="c" :prop="c" :label="c" min-width="110" />
+          <template #empty>无数据</template>
+        </el-table>
+        <el-collapse style="margin-top: 8px">
+          <el-collapse-item title="查看执行 SQL" name="sql">
+            <pre class="chatbi-sql">{{ chatbiResult.sql }}</pre>
+          </el-collapse-item>
+        </el-collapse>
+      </template>
+    </el-dialog>
 
     <el-tabs v-model="activeTab" style="margin: 8px 16px 0">
       <el-tab-pane label="演练报表" name="drill">
@@ -416,10 +433,39 @@ import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 import BaseChart from '@/components/base/BaseChart.vue'
 import FunnelChart from '@/components/business/FunnelChart.vue'
-import { analyticsApi, campaignApi, orgApi } from '@/api'
+import { analyticsApi, campaignApi, orgApi, aiApi, type ChatbiResult } from '@/api'
 
 const activeTab = ref('drill')
 const chatbiQuery = ref('')
+const chatbiLoading = ref(false)
+const chatbiVisible = ref(false)
+const chatbiResult = shallowRef<ChatbiResult | null>(null)
+
+/** 行数据转对象数组（动态列渲染 el-table） */
+const chatbiRows = computed(() => {
+  const r = chatbiResult.value
+  if (!r) return []
+  return r.rows.map((row) => {
+    const obj: Record<string, unknown> = {}
+    r.columns.forEach((c, i) => { obj[c] = row[i] })
+    return obj
+  })
+})
+
+/** ChatBI 问数：只读查询 + 数据权限注入 + 审计（红线 5） */
+async function askChatbi() {
+  const q = chatbiQuery.value.trim()
+  if (!q) { ElMessage.warning('请输入要查询的问题'); return }
+  chatbiLoading.value = true
+  try {
+    chatbiResult.value = await aiApi.chatbi(q)
+    chatbiVisible.value = true
+  } catch {
+    /* 错误已由 http 层提示 */
+  } finally {
+    chatbiLoading.value = false
+  }
+}
 const deptRange = ref('month')
 const trendRange = ref('3m')
 const sceneCheck = ref<string[]>([])
@@ -804,6 +850,17 @@ onMounted(() => ensureTabLoaded(activeTab.value))
 </script>
 
 <style scoped lang="scss">
+.chatbi-sql {
+  margin: 0;
+  padding: 8px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
 .chatbi-input :deep(.el-input-group__append) {
   padding: 0;
   .el-button { border: none; }

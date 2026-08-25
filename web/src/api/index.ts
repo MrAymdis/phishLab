@@ -296,7 +296,18 @@ export const reportApi = {
 }
 
 // ---- AI ----
+export interface ChatbiResult {
+  question: string
+  title: string
+  sql: string
+  columns: string[]
+  rows: unknown[][]
+  total: number
+}
+
 export const aiApi = {
+  chatbi: (question: string) =>
+    post<ChatbiResult>('/api/v1/ai/chatbi', { question }),
   sessions: () => get('/api/v1/ai/sessions'),
   drafts: (status?: string) => get('/api/v1/ai/drafts', { status } as never),
   approveDraft: (id: number) => post(`/api/v1/ai/drafts/${id}/approve`),

@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     database_url: str = (
         "mysql+pymysql://phishlab:phishlab@127.0.0.1:3306/phishlab?charset=utf8mb4"
     )
+    # ChatBI 独立只读账号 DSN（红线 5：生产必须配置专用只读账号，
+    # 如 mysql+pymysql://phishlab_ro:xxx@127.0.0.1:3306/phishlab?charset=utf8mb4；
+    # 未配置时兜底主库连接 + 只读事务，仍无写能力）
+    chatbi_readonly_dsn: str = ""
     redis_url: str = "redis://127.0.0.1:6379/0"
 
     jwt_expire_minutes: int = 720

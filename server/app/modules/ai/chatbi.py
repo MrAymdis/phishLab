@@ -1,0 +1,396 @@
+"""ChatBI 自然语言问数（红线 5：禁止直接执行未经校验的 SQL）。
+
+安全管线：意图 → SQL 模板 → sqlglot 结构化校验（仅 SELECT / 表白名单 /
+禁 INTO / 强制 LIMIT）→ 数据权限注入（与 apply_data_scope 同口径改写）→
+只读连接执行（独立只读账号优先，未配置时主库只读事务兜底）→ 审计留痕。
+
+当前意图由本地规则引擎匹配（LLM Provider 适配层接入后走同一管线，
+规则层作为兜底）；所有结果查询只读，不产生任何写操作。
+"""
+import logging
+import re
+from datetime import datetime, timedelta
+
+import sqlglot
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+from sqlglot import exp
+
+from app.core.audit import record_audit
+from app.core.config import get_settings
+from app.core.errors import BizError, ErrorCode
+from app.db.session import engine
+
+logger = logging.getLogger("phishlab.chatbi")
+
+# 表白名单：ChatBI 可查询的表（LLM/规则生成的 SQL 只能引用这些表）
+_CHATBI_TABLES = {
+    "campaign": "演练活动",
+    "campaign_target": "演练目标明细（投递/打开/点击/中招/举报）",
+    "campaign_stat": "演练冗余统计",
+    "track_event": "追踪事件（打开/点击/提交/附件运行/退信）",
+    "emp_user": "员工档案",
+    "emp_dept": "部门",
+    "emp_risk_profile": "员工风险画像",
+    "stat_daily": "日报归档",
+    "training_assignment": "培训任务",
+    "course": "课程",
+    "mail_report": "邮件举报",
+}
+
+# 员工数据表：注入部门权限时的联表/子查询依据
+_EMP_TABLES = {"emp_user", "emp_risk_profile"}
+_USER_LINKED_TABLES = {"campaign_target", "track_event"}
+
+_MAX_ROWS = 200  # 单次查询结果上限（未指定 LIMIT 时补 100，超出封顶 200）
+_DEFAULT_LIMIT = 100
+
+_SENT_STATUS = "('sent', 'delivered', 'bounced', 'failed')"
+
+# ---------- 规则引擎：意图 → SQL 模板 ----------
+
+
+def _parse_window(question: str) -> datetime:
+    """从问题提取时间窗起点（近N天/本月/上月），默认近 30 天。"""
+    now = datetime.now()
+    m = re.search(r"近\s*(\d+)\s*天", question)
+    if m:
+        return now - timedelta(days=int(m.group(1)))
+    if "本月" in question:
+        return now.replace(day=1)
+    if "上月" in question:
+        first = now.replace(day=1)
+        return (first - timedelta(days=1)).replace(day=1)
+    return now - timedelta(days=30)
+
+
+_TEMPLATES: list[tuple[re.Pattern, str, str]] = [
+    # (正则, 标题, SQL 模板；:since 为时间窗参数，权限由注入层追加)
+    # 举报类先匹配（"举报…部门"与部门正则存在重叠，优先级高的在前）
+    (re.compile(r"举报.*(部门|排行|统计)"),
+     "举报最多的部门",
+     """SELECT d.name AS dept, COUNT(m.id) AS reports
+       FROM mail_report m
+       JOIN emp_user u ON u.id = m.reporter_user_id
+       LEFT JOIN emp_dept d ON d.id = u.dept_id
+      WHERE m.created_at >= :since
+      GROUP BY d.name
+      ORDER BY reports DESC"""),
+    (re.compile(r"部门.*(中招|对比)|中招.*部门"),
+     "部门中招对比",
+     """SELECT d.name AS dept,
+            COUNT(t.id) AS sent,
+            SUM(CASE WHEN t.submit_flag = 1 OR t.attach_run_count > 0 THEN 1 ELSE 0 END) AS victim
+       FROM campaign_target t
+       JOIN emp_user u ON u.id = t.user_id
+       JOIN emp_dept d ON d.id = u.dept_id
+      WHERE t.send_status IN {sent_status}
+        AND t.sent_at >= :since
+      GROUP BY d.name
+      ORDER BY victim DESC""".replace("{sent_status}", _SENT_STATUS)),
+    (re.compile(r"中招.*(趋势|走势)|趋势.*中招"),
+     "中招率趋势（按天）",
+     """SELECT DATE(t.sent_at) AS day,
+            COUNT(t.id) AS sent,
+            SUM(CASE WHEN t.submit_flag = 1 OR t.attach_run_count > 0 THEN 1 ELSE 0 END) AS victim
+       FROM campaign_target t
+      WHERE t.send_status IN {sent_status}
+        AND t.sent_at >= :since
+      GROUP BY DATE(t.sent_at)
+      ORDER BY day""".replace("{sent_status}", _SENT_STATUS)),
+    (re.compile(r"(谁|员工).*(中招|最多)|中招.*(排行|最多)"),
+     "中招次数最多的员工 TOP10",
+     """SELECT u.name AS name, d.name AS dept, COUNT(*) AS victim_count
+       FROM campaign_target t
+       JOIN emp_user u ON u.id = t.user_id
+       LEFT JOIN emp_dept d ON d.id = u.dept_id
+      WHERE (t.submit_flag = 1 OR t.attach_run_count > 0)
+        AND t.sent_at >= :since
+      GROUP BY u.id, u.name, d.name
+      ORDER BY victim_count DESC
+      LIMIT 10"""),
+    (re.compile(r"高危.*(人员|员工|top)|风险.*最高"),
+     "高危人员（风险等级 3）",
+     """SELECT u.name AS name, d.name AS dept,
+            p.total_score AS score, p.risk_level AS risk
+       FROM emp_risk_profile p
+       JOIN emp_user u ON u.id = p.user_id
+       LEFT JOIN emp_dept d ON d.id = u.dept_id
+      WHERE p.risk_level >= 3
+      ORDER BY p.total_score DESC
+      LIMIT 20"""),
+    (re.compile(r"演练.*(中招|打开|点击|统计)|各场.*演练"),
+     "各演练核心指标",
+     """SELECT c.id AS id, c.name AS name, c.status AS status,
+            COUNT(t.id) AS sent,
+            SUM(CASE WHEN t.first_open_at IS NOT NULL THEN 1 ELSE 0 END) AS opened,
+            SUM(CASE WHEN t.submit_flag = 1 OR t.attach_run_count > 0 THEN 1 ELSE 0 END) AS victim
+       FROM campaign c
+       LEFT JOIN campaign_target t ON t.campaign_id = c.id
+      GROUP BY c.id, c.name, c.status
+      ORDER BY c.id DESC
+      LIMIT 20"""),
+]
+
+
+def _match_template(question: str) -> tuple[str, str] | None:
+    for pattern, title, sql in _TEMPLATES:
+        if pattern.search(question):
+            return title, sql
+    return None
+
+
+# ---------- sqlglot 结构化校验 ----------
+
+
+def _validate_sql(sql: str) -> str:
+    """校验并规范化 SQL：必须单条 SELECT、表 ∈ 白名单、禁 INTO、强制 LIMIT。
+
+    返回规范化后的 SQL；任何不合法输入直接抛 BizError（fail-closed）。
+    """
+    try:
+        exprs = [e for e in sqlglot.parse(sql, read="mysql") if e is not None]
+    except Exception as exc:
+        raise BizError(ErrorCode.PARAM_INVALID, f"SQL 解析失败，拒绝执行：{exc}") from exc
+    if len(exprs) != 1 or not isinstance(exprs[0], exp.Select):
+        raise BizError(ErrorCode.PARAM_INVALID, "仅支持单条 SELECT 查询")
+    sel = exprs[0]
+
+    # 表白名单：扫描语句内所有表（含 JOIN/子查询），逐一校验
+    for table in sel.find_all(sqlglot.exp.Table):
+        name = table.name.lower()
+        if name not in _CHATBI_TABLES:
+            raise BizError(ErrorCode.PARAM_INVALID,
+                           f"表 {name} 不在 ChatBI 表白名单内，拒绝执行")
+    if sel.args.get("into"):
+        raise BizError(ErrorCode.PARAM_INVALID, "禁止 INTO 写入语句")
+
+    # 强制 LIMIT：未指定补默认值，超出封顶
+    limit = sel.args.get("limit")
+    if limit is None:
+        sel = sel.limit(_DEFAULT_LIMIT)
+    else:
+        try:
+            n = int(str(limit.expression.this))
+            if n > _MAX_ROWS:
+                sel = sel.limit(_MAX_ROWS)
+        except (AttributeError, TypeError, ValueError):
+            raise BizError(ErrorCode.PARAM_INVALID, "LIMIT 必须为数字")
+    return sel.sql(dialect="mysql")
+
+
+# ---------- 数据权限注入（与 apply_data_scope 同口径） ----------
+
+
+def _scope_of(db: Session, account) -> dict | None:
+    """计算账号数据范围：{"dept_ids": set[int], "self_only": bool}。
+
+    返回 None = 全量可见（无角色或超管/全量角色）；口径与 core.deps.apply_data_scope 一致：
+    scope 2 本部门及子级 / 3 本部门 / 4 仅本人 / 5 自定义部门。
+    """
+    from app.modules.org.models import EmpDept, EmpUser
+    from app.modules.rbac.models import SysAccountRole, SysRole, SysRoleDept
+
+    roles = db.scalars(
+        select(SysRole)
+        .join(SysAccountRole, SysAccountRole.role_id == SysRole.id)
+        .where(SysAccountRole.account_id == account.id)
+    ).all()
+    if not roles:
+        return {"dept_ids": set(), "self_only": False, "deny": True}  # 无角色：fail-closed
+    if any(r.code == "super_admin" or r.data_scope == 1 for r in roles):
+        return None
+
+    own_dept_id = None
+    if account.emp_user_id:
+        eu = db.get(EmpUser, account.emp_user_id)
+        own_dept_id = eu.dept_id if eu else None
+
+    dept_ids: set[int] = set()
+    self_only = False
+    for r in roles:
+        if r.data_scope == 4:
+            self_only = True
+        elif r.data_scope in (2, 3) and own_dept_id:
+            dept_ids.add(own_dept_id)
+            if r.data_scope == 2:
+                own = db.get(EmpDept, own_dept_id)
+                if own:
+                    dept_ids.update(
+                        d.id for d in db.scalars(
+                            select(EmpDept).where(EmpDept.path.like(f"{own.path.rstrip('/')}/%"))
+                        ).all()
+                    )
+        elif r.data_scope == 5:
+            dept_ids.update(
+                did for did in db.scalars(
+                    select(SysRoleDept.dept_id).where(SysRoleDept.role_id == r.id)
+                ).all()
+            )
+    if not dept_ids and not self_only:
+        return {"dept_ids": set(), "self_only": False, "deny": True}  # 有角色但条件无法落地
+    return {"dept_ids": dept_ids, "self_only": self_only, "deny": False}
+
+
+def _inject_scope(db: Session, account, sql: str) -> str:
+    """按账号数据范围改写 SQL：员工/事件表追加部门或本人条件。
+
+    口径与 core.deps.apply_data_scope 一致：部门与本人条件并存时按 OR 合并，
+    有角色但条件无法落地时 fail-closed 拒绝。
+
+    - emp_user（别名 u）→ u.dept_id IN (...)，仅本人 → u.id = <本人>
+    - emp_risk_profile（无 dept_id 列，别名 p）→ p.user_id IN (SELECT id FROM emp_user WHERE dept_id IN (...))
+    - campaign_target / track_event（别名 t）→ t.user_id IN (同子查询)
+    - 无员工/事件表（campaign 聚合等）→ 不注入
+    """
+    scope = _scope_of(db, account)
+    if scope is None:
+        return sql  # 全量可见
+    if scope.get("deny"):
+        raise BizError(ErrorCode.PERM_DENIED, "当前账号无数据查询权限")
+
+    dept_ids = sorted(scope["dept_ids"])
+    self_only = scope["self_only"]
+    if not dept_ids and not self_only:
+        return sql
+    dept_in = f"({', '.join(str(d) for d in dept_ids)})" if dept_ids else None
+    own_uid = account.emp_user_id or -1
+
+    def _user_cond(alias: str) -> str | None:
+        """事件/画像表按别名追加：部门子查询或仅本人。"""
+        if dept_ids:
+            return f"{alias}.user_id IN (SELECT id FROM emp_user WHERE dept_id IN {dept_in})"
+        if self_only:
+            return f"{alias}.user_id = {own_uid}"
+        return None
+
+    try:
+        sel = sqlglot.parse_one(sql, read="mysql")
+    except Exception as exc:
+        raise BizError(ErrorCode.PARAM_INVALID, "SQL 校验失败") from exc
+    tables = {t.name.lower(): t.alias_or_name for t in sel.find_all(sqlglot.exp.Table)}
+
+    conds: list[str] = []
+    if "emp_user" in tables:
+        if dept_ids:
+            conds.append(f"{tables['emp_user']}.dept_id IN {dept_in}")
+        if self_only:
+            conds.append(f"{tables['emp_user']}.id = {own_uid}")
+    if "emp_risk_profile" in tables:
+        c = _user_cond(tables["emp_risk_profile"])
+        if c:
+            conds.append(c)
+    for name in ("campaign_target", "track_event"):
+        if name in tables:
+            c = _user_cond(tables[name])
+            if c:
+                conds.append(c)
+
+    if not conds:
+        return sql
+    cond = exp.or_(*conds) if len(conds) > 1 else exp.condition(conds[0])
+    if sel.args.get("where"):
+        cond = exp.and_(sel.args["where"].this, cond)
+    return sel.where(cond).sql(dialect="mysql")
+
+
+# ---------- 只读执行 ----------
+
+_readonly_engine = None
+
+
+def _get_readonly_engine():
+    """独立只读账号引擎（生产配置 chatbi_readonly_dsn）；未配置返回 None 用主库只读事务。"""
+    global _readonly_engine
+    if _readonly_engine is None:
+        dsn = get_settings().chatbi_readonly_dsn
+        if dsn:
+            _readonly_engine = create_engine(dsn, pool_pre_ping=True)
+    return _readonly_engine
+
+
+def _execute_readonly(sql: str) -> tuple[list[str], list[list]]:
+    """只读执行：独立只读账号优先（chatbi_readonly_dsn）；未配置时主库只读事务兜底。
+
+    MySQL：走 raw DBAPI 连接——`SET SESSION TRANSACTION READ ONLY` 必须在无活动
+    事务时执行（事务中设置报 1568），而 SQLAlchemy autobegin 会在首条语句前开事务，
+    故绕过 ORM 层。SQLite（测试环境）无只读事务语句，直接执行。
+    """
+    eng = _get_readonly_engine() or engine
+    if eng.dialect.name == "sqlite":
+        with eng.connect() as conn:
+            result = conn.exec_driver_sql(sql)
+            cols = list(result.keys())
+            rows = [list(r) for r in result.fetchall()]
+            conn.commit()  # 结束读事务再归还连接：测试单连接池下避免读锁残留
+            return cols, rows
+    raw = eng.raw_connection()
+    try:
+        cur = raw.cursor()
+        # 事务级只读（而非 SET SESSION）：事务结束自动恢复读写，不污染连接池
+        # 复用（会话级 READ ONLY 残留会导致池内后续写报 1792）
+        cur.execute("START TRANSACTION READ ONLY")
+        try:
+            cur.execute(sql)
+            cols = [d[0] for d in cur.description] if cur.description else []
+            rows = [list(r) for r in cur.fetchall()]
+        finally:
+            cur.execute("COMMIT")  # 结束只读事务，连接归还池
+    finally:
+        raw.close()
+    return cols, rows
+
+
+# ---------- 主入口 ----------
+
+
+def ask_question(db: Session, account, question: str) -> dict:
+    """ChatBI 问数：意图匹配 → 生成/校验 → 权限注入 → 只读执行 → 审计。"""
+    question = (question or "").strip()
+    if not question:
+        raise BizError(ErrorCode.PARAM_INVALID, "请输入要查询的问题")
+    if len(question) > 200:
+        raise BizError(ErrorCode.PARAM_INVALID, "问题过长（≤200 字）")
+
+    matched = _match_template(question)
+    if matched is None:
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       "暂不支持该问法，可尝试：各部门中招率、近7天中招趋势、"
+                       "中招最多的员工、高危人员、各演练统计、举报最多的部门")
+    title, raw_sql = matched
+
+    try:
+        sql = _validate_sql(raw_sql)
+        sql = _inject_scope(db, account, sql)
+    except BizError:
+        raise
+    except Exception as exc:  # 注入层意外失败 fail-closed，不执行
+        logger.exception("chatbi sql guard failed")
+        raise BizError(ErrorCode.PARAM_INVALID, "问数校验失败，已拒绝执行") from exc
+
+    # 时间窗参数字面量内联（since 为本服务解析的 datetime，非用户输入，无注入面；
+    # 不依赖绑定参数可避免 sqlglot 方言参数输出与 DBAPI 占位风格不匹配）
+    since = _parse_window(question)
+    sel = sqlglot.parse_one(sql, read="mysql")
+    for p in sel.find_all(exp.Placeholder):  # sqlglot 30 命名参数解析为 Placeholder
+        if p.name == "since":
+            p.replace(exp.Literal.string(since.strftime("%Y-%m-%d %H:%M:%S")))
+    sql = sel.sql(dialect="mysql")
+    # 目标方言转换（MySQL → SQLite 等测试环境）
+    write_dialect = engine.dialect.name
+    if write_dialect != "mysql":
+        sql = sqlglot.transpile(sql, read="mysql", write=write_dialect)[0]
+    cols, rows = _execute_readonly(sql)
+
+    record_audit(db, account=account, module="ai", action="chatbi_ask",
+                 target_type="chatbi", detail={"question": question, "sql": sql,
+                                               "rows": len(rows)})
+    logger.info("chatbi ask account=%s rows=%d", account.id, len(rows))
+    return {
+        "question": question,
+        "title": title,
+        "sql": sql,
+        "columns": cols,
+        "rows": rows[: _MAX_ROWS],
+        "total": len(rows),
+    }
