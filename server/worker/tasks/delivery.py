@@ -3,8 +3,12 @@
 管线详见《架构设计方案》§3.2。
 千人规模优化：批次共享实体（模板/落地页/域名/通道/发件人/员工/部门）一次加载，
 每封渲染不再重复查询（7N 查询 → ~7 次）。
+反垃圾对抗（发送行为随机化）：批次内打乱投递顺序 + 逐封随机间隔，
+打破"按名单顺序瞬时连发"的规律行为指纹，降低被网关行为分析误判为群发的概率。
 """
 import logging
+import random
+import time
 from datetime import datetime, timedelta
 
 from sqlalchemy import exists, select, update
@@ -13,6 +17,10 @@ from app.db.stat_upsert import stat_inc
 from worker.celery_app import celery_app
 
 logger = logging.getLogger("phishlab.delivery")
+
+# 逐封发送间隔随机抖动区间（秒）。SMTP 会话本身有网络往返，此间隔用于
+# 打散"批次内瞬时连发"模式；上限 3s 避免大批次线性拖长任务时间。
+_SEND_JITTER_SEC = (0.5, 3.0)
 
 
 def _load_campaign_assets(db, campaign, target_ids: list[int]) -> dict:
@@ -256,6 +264,11 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
                 CampaignTarget.send_status == "pending",
             )
         ).all()
+        # 反垃圾对抗：打乱投递顺序——目标默认按主键（名单导入顺序）排列，
+        # 同一名单每场演练都是同一规律序列，易被行为分析识别为批量群发。
+        # 仅影响发送顺序，不改变批次归属/幂等键（batch_no 不变，重试按
+        # send_status=pending 过滤，已发目标不会重复投递）。
+        random.shuffle(targets)
 
         # 批次共享实体预加载（千人规模：7N 查询 → ~7 次）
         assets = _load_campaign_assets(db, campaign, [t.user_id for t in targets])
@@ -263,7 +276,9 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
         assets["mx_cache"] = {}
 
         sent = failed = 0
-        for t in targets:
+        for idx, t in enumerate(targets):
+            if idx > 0:
+                time.sleep(random.uniform(*_SEND_JITTER_SEC))
             try:
                 ok = _deliver_target(db, t, campaign, assets)
             except Exception as e:
