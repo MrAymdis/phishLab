@@ -1,13 +1,19 @@
 """License 服务：激活/校验/配额前置检查。
 
 所有资源创建入口（演练/员工/发送）前必须调用 check_quota。
-离线 .lic 的 RSA 签名校验 TODO(三期)：当前与在线激活码同构解析。
+离线 .lic：RSA-SHA256 签名验签 + license_no 防重放（红线：伪造/重放即拒绝）。
 """
+import base64
+import json
 from datetime import datetime, timedelta
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import padding
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.errors import BizError, ErrorCode
 
 from .models import LicenseInfo, LicenseUsage
@@ -89,30 +95,96 @@ def _usage(db: Session) -> dict:
 
 def activate_online(db: Session, license_key: str) -> dict:
     parsed = _parse_key(license_key)
-    expire_at = datetime.now() + timedelta(days=30 * parsed["months"])
+    _apply_license(db, license_key=license_key, edition=parsed["edition"],
+                   months=parsed["months"], customer=None, mode="online")
+    return get_status(db)
+
+
+def _canonical_json(payload: dict) -> str:
+    """签名规范形式：按键排序 + 紧凑分隔，保证签发端/验签端一致。"""
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def _load_public_key():
+    pem = (settings.license_public_key or "").strip()
+    if not pem:
+        raise BizError(ErrorCode.PERM_DENIED,
+                       "离线激活未配置 RSA 公钥（LICENSE_PUBLIC_KEY），拒绝激活")
+    try:
+        return serialization.load_pem_public_key(pem.encode("utf-8"))
+    except Exception:
+        raise BizError(ErrorCode.PERM_DENIED, "LICENSE_PUBLIC_KEY 不是合法 PEM 公钥")
+
+
+def _verify_offline(data: dict) -> dict:
+    """.lic 验签 + 字段校验，通过返回归一化 payload（fail-closed）。"""
+    payload = {k: data.get(k) for k in ("license_no", "customer", "edition", "months", "issued_at")}
+    if not payload["license_no"] or not payload["customer"]:
+        raise BizError(ErrorCode.PARAM_INVALID, ".lic 字段缺失（license_no/customer）")
+    if payload["edition"] not in _PREFIX_EDITION.values():
+        raise BizError(ErrorCode.PARAM_INVALID, ".lic edition 非法（trial/standard/flagship）")
+    try:
+        payload["months"] = int(payload["months"])
+        if not 1 <= payload["months"] <= 36:
+            raise ValueError
+    except (TypeError, ValueError):
+        raise BizError(ErrorCode.PARAM_INVALID, ".lic months 需在 1-36 之间")
+    if not payload["issued_at"]:
+        raise BizError(ErrorCode.PARAM_INVALID, ".lic 缺少 issued_at")
+    try:
+        signature = base64.b64decode(data.get("signature") or "", validate=True)
+    except Exception:
+        raise BizError(ErrorCode.PARAM_INVALID, ".lic 签名编码不正确")
+    pub = _load_public_key()
+    try:
+        pub.verify(signature, _canonical_json(payload).encode("utf-8"),
+                   padding.PKCS1v15(), hashes.SHA256())
+    except (InvalidSignature, ValueError):
+        raise BizError(ErrorCode.PARAM_INVALID, ".lic 签名校验失败，文件可能被篡改")
+    return payload
+
+
+def _apply_license(db: Session, *, license_key: str, edition: str, months: int,
+                   customer: str, mode: str, signature: str | None = None) -> None:
+    """激活写库（在线/离线共用）：配额按版本映射，到期 = 激活日 + 月数*30 天。"""
+    expire_at = datetime.now() + timedelta(days=30 * months)
     lic = _get_license(db)
     if lic is None:
         lic = LicenseInfo(license_key=license_key)
         db.add(lic)
     lic.license_key = license_key
-    lic.edition = parsed["edition"]
-    lic.customer_name = lic.customer_name or "演示客户"
-    lic.user_quota = _QUOTA_BY_EDITION[parsed["edition"]]["user"]
-    lic.mail_quota = _QUOTA_BY_EDITION[parsed["edition"]]["mail"]
-    lic.sms_quota = _QUOTA_BY_EDITION[parsed["edition"]]["sms"]
-    lic.campaign_quota = _QUOTA_BY_EDITION[parsed["edition"]]["campaign"]
-    lic.activate_mode = "online"
+    lic.edition = edition
+    lic.customer_name = customer or lic.customer_name or "演示客户"
+    lic.user_quota = _QUOTA_BY_EDITION[edition]["user"]
+    lic.mail_quota = _QUOTA_BY_EDITION[edition]["mail"]
+    lic.sms_quota = _QUOTA_BY_EDITION[edition]["sms"]
+    lic.campaign_quota = _QUOTA_BY_EDITION[edition]["campaign"]
+    lic.activate_mode = mode
+    lic.signature = signature
     lic.activated_at = datetime.now()
     lic.expire_at = expire_at
     lic.status = "active"
     db.commit()
-    return get_status(db)
 
 
 def activate_offline(db: Session, lic_bytes: bytes) -> dict:
-    """离线 .lic：TODO(三期) RSA 签名校验；当前与在线码同构解析。"""
-    text = lic_bytes.decode("utf-8", errors="ignore").strip()
-    return activate_online(db, text)
+    """离线 .lic：RSA-SHA256 验签 → 防重放（license_no 唯一）→ 激活。"""
+    try:
+        data = json.loads(lic_bytes.decode("utf-8", errors="ignore").strip())
+        if not isinstance(data, dict):
+            raise ValueError
+    except (ValueError, json.JSONDecodeError):
+        raise BizError(ErrorCode.PARAM_INVALID, ".lic 不是合法 JSON")
+    payload = _verify_offline(data)
+    # 防重放：同一 license_no 已激活（在线/离线共用 key 维度）则拒绝
+    exist = db.scalar(select(LicenseInfo).where(LicenseInfo.license_key == payload["license_no"]))
+    if exist is not None:
+        raise BizError(ErrorCode.BIZ_CONFLICT,
+                       f"授权文件 {payload['license_no']} 已激活（防重放），如需升级请使用新授权文件")
+    _apply_license(db, license_key=payload["license_no"], edition=payload["edition"],
+                   months=payload["months"], customer=payload["customer"],
+                   mode="offline", signature=data["signature"])
+    return get_status(db)
 
 
 def check_quota(db: Session, resource: str, amount: int = 1) -> None:

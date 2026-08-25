@@ -59,7 +59,26 @@ _ATTACH_TYPE_LABELS = {
 
 # 一期良性文档白名单；宏/EXE 载荷默认关闭（License 门控，红线 6）
 _ALLOWED_PAYLOAD_EXTS = {".docx", ".xlsx", ".pdf", ".zip"}
+# 宏/EXE 载荷扩展名：红线 6 仅旗舰版授权后开放（payload_enabled 门控）
+_EXEC_PAYLOAD_EXTS = {".exe", ".msi", ".bat", ".scr", ".cmd"}
+_MACRO_PAYLOAD_EXTS = {".docm", ".xlsm", ".pptm", ".xlsb", ".dotm"}
 _MAX_PAYLOAD_MB = 20
+
+
+def payload_enabled(db) -> bool:
+    """宏/EXE 载荷功能开关（红线 6 默认关闭）：仅旗舰版授权且未过期开放。
+
+    与其他功能不同，不享受"无 license 放行"的开发便利——高危载荷必须显式授权。
+    与 license 模块 EDITION_FEATURES["flagship"]["payload"] 保持一致。
+    """
+    from app.modules.license.models import LicenseInfo
+
+    lic = db.scalar(select(LicenseInfo).order_by(LicenseInfo.id.desc()))
+    if lic is None or lic.status != "active":
+        return False
+    if lic.expire_at and lic.expire_at < datetime.now():
+        return False
+    return lic.edition == "flagship"
 
 _VAR_RE = re.compile(r"\{\{\.\w+\}\}")
 
@@ -1337,15 +1356,27 @@ def list_attachments(db, account) -> list[dict]:
 
 
 def upload_attachment(db, account, filename: str, content: bytes, platform: str = "") -> int:
-    """上传附件载荷（一期仅良性文档；宏/EXE 未开放直接拒绝）。
+    """上传附件载荷：良性文档白名单；宏/EXE 需旗舰授权（红线 6 默认关闭）。
 
+    授权开启后按扩展名归类 file_type（macro_doc/exe），上传动作留审计。
     存储沿用平台本地 static 目录模式（MinIO 业务接入后迁移文件桶即可，file_path 保持相对路径）。
     """
     ext = Path(filename or "").suffix.lower()
-    if ext not in _ALLOWED_PAYLOAD_EXTS:
+    if ext in _EXEC_PAYLOAD_EXTS:
+        risk_type = "exe"
+    elif ext in _MACRO_PAYLOAD_EXTS:
+        risk_type = "macro_doc"
+    else:
+        risk_type = None
+    if risk_type and not payload_enabled(db):
         raise BizError(
             ErrorCode.PARAM_INVALID,
-            f"附件类型 {ext or '未知'} 未开放（一期仅 docx/xlsx/pdf/zip；宏/EXE 载荷默认关闭需 License 授权）",
+            "宏/EXE 载荷默认关闭，需旗舰版授权（License 开通 payload 功能）",
+        )
+    if not risk_type and ext not in _ALLOWED_PAYLOAD_EXTS:
+        raise BizError(
+            ErrorCode.PARAM_INVALID,
+            f"附件类型 {ext or '未知'} 未开放（docx/xlsx/pdf/zip；宏/EXE 载荷需旗舰授权）",
         )
     if not content or len(content) > _MAX_PAYLOAD_MB * 1024 * 1024:
         raise BizError(ErrorCode.PARAM_INVALID, f"附件大小超出限制（≤{_MAX_PAYLOAD_MB}MB）")
@@ -1356,7 +1387,7 @@ def upload_attachment(db, account, filename: str, content: bytes, platform: str 
     abs_path.write_bytes(content)
     p = AttachmentPayload(
         name=filename,
-        file_type="benign_doc",
+        file_type=risk_type or "benign_doc",
         file_path=str(rel_path),
         file_hash=file_hash,
         file_size=len(content),
@@ -1367,6 +1398,12 @@ def upload_attachment(db, account, filename: str, content: bytes, platform: str 
     )
     db.add(p)
     db.commit()
+    if risk_type:  # 高危载荷上传留审计（红线 6）
+        record_audit(
+            db, account=account, module="template", action="upload_payload_risky",
+            target_type="attachment_payload", target_id=str(p.id),
+            detail={"name": filename, "file_type": risk_type},
+        )
     db.refresh(p)
     record_audit(
         db, account=account, module="template", action="upload_attachment",
@@ -1377,9 +1414,14 @@ def upload_attachment(db, account, filename: str, content: bytes, platform: str 
 
 
 def download_attachment(db, account, payload_id: int, ip: str = "") -> tuple[str, str]:
-    """附件下载（管理端审计留痕）；返回 (绝对路径, 原始文件名)。"""
+    """附件下载（管理端审计留痕）；返回 (绝对路径, 原始文件名)。
+
+    宏/EXE 载荷再次过授权门（下载=分发动作，红线 6），授权失效后禁止下载。
+    """
     p = get_scoped_or_404(db, account, AttachmentPayload, payload_id,
                           self_owner_col=AttachmentPayload.created_by, allow_null_owner=True)
+    if p.file_type in ("macro_doc", "exe") and not payload_enabled(db):
+        raise BizError(ErrorCode.PERM_DENIED, "宏/EXE 载荷未授权（旗舰版功能），禁止下载")
     abs_path = Path(settings.static_dir) / (p.file_path or "")
     if not abs_path.is_file():
         raise BizError(ErrorCode.NOT_FOUND, "附件文件不存在（存储文件缺失）")

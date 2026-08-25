@@ -39,6 +39,10 @@ class Settings(BaseSettings):
     # 平台静态资源目录（Logo 等上传文件，经 /static 挂载访问）
     static_dir: str = "static"
 
+    # 离线授权 .lic RSA 公钥（PEM 多行，配置进 .env 或环境变量；未配置时离线激活
+    # fail-closed 拒绝，防止伪造 .lic）
+    license_public_key: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

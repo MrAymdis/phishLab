@@ -58,7 +58,7 @@ def test_upload_rejects_macro_exe(_static_tmp):
     try:
         with pytest.raises(BizError) as ei:
             upload_attachment(db, account, "evil.exe", b"MZ\x90\x00", platform="")
-        assert "未开放" in ei.value.message  # 宏/EXE 载荷默认关闭（红线 6）
+        assert "默认关闭" in ei.value.message  # 宏/EXE 载荷默认关闭，需旗舰授权（红线 6）
         with pytest.raises(BizError):
             upload_attachment(db, account, "macro.docm", b"PK", platform="")
     finally:
