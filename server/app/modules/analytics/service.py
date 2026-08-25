@@ -167,7 +167,7 @@ def overview_metrics(db, account, range_: str) -> dict:
 
     core_metrics = [
         {"title": "演练次数", "value": campaign_cnt, "suffix": " 场", "accent": "blue"},
-        {"title": "演练人数", "value": f"{target:,}", "suffix": " 人", "accent": "teal"},
+        {"title": "演练人次", "value": f"{target:,}", "suffix": " 人次", "accent": "teal"},
         {"title": "平均中招率", "value": _fmt_rate(submit, target), "suffix": " %", "accent": "orange"},
         {"title": "平均举报率", "value": _fmt_rate(report, target), "suffix": " %", "accent": "green"},
         {"title": "培训通过率", "value": training_rate, "suffix": " %", "accent": "purple"},
@@ -339,25 +339,32 @@ def campaign_report(db, account, campaign_id: int) -> dict:
         .where(TrackEvent.campaign_id == campaign_id, TrackEvent.event_type == "attach_run")
     ) or 0)
 
-    submit_rate = _pct(submit_cnt, target)
+    # 中招口径全局合并（41bab24）：中招 = 提交 + 附件运行；漏斗保留逐级语义，
+    # 但指标卡与得分按合并口径，与中招明细/部门对比/预警一致
+    victim_cnt = submit_cnt + attach_cnt
+    submit_rate = _pct(victim_cnt, target)
     metrics = [
         {"title": "发送数", "value": target, "suffix": " 封", "sub": "目标规模", "accent": "blue"},
         {"title": "打开数", "value": open_cnt, "suffix": " 封", "sub": f"打开率 {_pct(open_cnt, target):.1f}%", "accent": "teal"},
         {"title": "点击数", "value": click_cnt, "suffix": " 次", "sub": f"点击率 {_pct(click_cnt, target):.1f}%", "accent": "orange"},
-        {"title": "中招数", "value": submit_cnt, "suffix": " 人", "sub": f"中招率 {submit_rate:.1f}%", "accent": "red"},
+        {"title": "中招数", "value": victim_cnt, "suffix": " 人", "sub": f"中招率 {submit_rate:.1f}%", "accent": "red"},
         {"title": "举报数", "value": report_cnt, "suffix": " 封", "sub": f"举报率 {_pct(report_cnt, target):.1f}%", "accent": "green"},
-        {"title": "综合得分", "value": round(100 - max(submit_rate * 2, 0)), "suffix": " 分", "accent": "purple"},
+        {"title": "综合得分", "value": round(max(0.0, 100 - submit_rate * 2)), "suffix": " 分", "accent": "purple"},
     ]
 
-    # 漏斗：逐级转化率（相对上一阶段）；附件运行与输入数据同属中招（高危行为）
+    # 漏斗：逐级转化率（相对上一阶段）；附件运行与输入数据同属中招（高危行为）。
+    # 1) 上一级计数为 0 而本级有值（客户端屏蔽图片导致 open 缺失）时 rate 置 None，
+    #    前端展示 "--" 而非误导性的 0.0%——不伪造"已阅读 0 却已点击 3"的转化率。
+    # 2) 转化率钳位到 100：open 记录缺失时 click/open 可虚高到 300%，超 100% 违背
+    #    漏斗语义（不可能比上一级转化得更多），按数据缺失处理。
     sent = delivered or target
     funnel = [
         {"name": "发送成功", "value": sent, "rate": _pct(sent, target)},
         {"name": "已阅读", "value": open_cnt, "rate": _pct(open_cnt, target)},
-        {"name": "已点击", "value": click_cnt, "rate": _pct(click_cnt, open_cnt)},
-        {"name": "附件运行", "value": attach_cnt, "rate": _pct(attach_cnt, open_cnt)},
-        {"name": "输入数据", "value": submit_cnt, "rate": _pct(submit_cnt, click_cnt)},
-        {"name": "已举报", "value": report_cnt, "rate": _pct(report_cnt, submit_cnt)},
+        {"name": "已点击", "value": click_cnt, "rate": min(_pct(click_cnt, open_cnt), 100.0) if open_cnt else None},
+        {"name": "附件运行", "value": attach_cnt, "rate": min(_pct(attach_cnt, open_cnt), 100.0) if open_cnt else None},
+        {"name": "输入数据", "value": submit_cnt, "rate": min(_pct(submit_cnt, click_cnt), 100.0) if click_cnt else None},
+        {"name": "已举报", "value": report_cnt, "rate": min(_pct(report_cnt, submit_cnt), 100.0) if submit_cnt else None},
     ]
 
     # 中招明细（提交/运行附件/点击过——附件运行与提交同级视为中招）
@@ -384,23 +391,24 @@ def campaign_report(db, account, campaign_id: int) -> dict:
         for t, name, email, dept in victim_rows
     ]
 
-    # 日趋势（track_event 按天聚合）
+    # 日趋势（track_event 按天聚合；submits 合并附件运行，与中招口径一致）
     date_col = func.date(TrackEvent.created_at)
     trend_rows = db.execute(
         select(TrackEvent.event_type, date_col, func.count())
-        .where(TrackEvent.campaign_id == campaign_id, TrackEvent.event_type.in_(("open", "click", "submit")))
+        .where(TrackEvent.campaign_id == campaign_id,
+               TrackEvent.event_type.in_(("open", "click", "submit", "attach_run")))
         .group_by(TrackEvent.event_type, date_col)
         .order_by(date_col)
     ).all()
     days = sorted({r[1] for r in trend_rows})
-    series = {d: {"open": 0, "click": 0, "submit": 0} for d in days}
+    series = {d: {"open": 0, "click": 0, "submit": 0, "attach_run": 0} for d in days}
     for et, d, n in trend_rows:
         series[d][et] = int(n or 0)
     daily_trend = {
         "labels": [f"D{i + 1}" for i in range(len(days))],
         "opens": [series[d]["open"] for d in days],
         "clicks": [series[d]["click"] for d in days],
-        "submits": [series[d]["submit"] for d in days],
+        "submits": [series[d]["submit"] + series[d]["attach_run"] for d in days],
     }
 
     # 部门对比明细（该演练内按部门聚合：投递/中招/举报；中招=提交+附件运行）
@@ -695,7 +703,9 @@ def _campaign_sections(data: dict, campaign: Campaign) -> list[_SECTION]:
         {
             "title": "转化漏斗",
             "headers": ["阶段", "数量", "转化率"],
-            "rows": [[f["name"], f["value"], f"{f['rate']:.1f}%"] for f in data["funnel"]],
+            "rows": [[f["name"], f["value"],
+                      f"{f['rate']:.1f}%" if isinstance(f.get("rate"), (int, float)) else "--"]
+                     for f in data["funnel"]],
         },
         {
             "title": "部门对比",
@@ -705,9 +715,10 @@ def _campaign_sections(data: dict, campaign: Campaign) -> list[_SECTION]:
         },
         {
             "title": "中招/点击明细",
-            "headers": ["姓名", "部门", "邮箱", "首次打开", "点击次数", "输入密码"],
+            "headers": ["姓名", "部门", "邮箱", "首次打开", "点击次数", "输入密码", "运行附件"],
             "rows": [[v["name"], v["dept"], v["email"], v["first_open"], v["clicks"],
-                      "是" if v["input_pwd"] else "否"] for v in data["victims"]],
+                      "是" if v["input_pwd"] else "否", "是" if v["run_attach"] else "否"]
+                     for v in data["victims"]],
         },
     ]
     return secs

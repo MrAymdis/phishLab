@@ -103,6 +103,12 @@
                     <el-tag v-else type="info" size="small">否</el-tag>
                   </template>
                 </el-table-column>
+                <el-table-column label="运行附件" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.run_attach" type="danger" size="small">是</el-tag>
+                    <el-tag v-else type="info" size="small">否</el-tag>
+                  </template>
+                </el-table-column>
                 <el-table-column label="风险等级" width="100" align="center">
                   <template #default="{ row }">
                     <el-tag v-if="row.risk === 'high'" type="danger" size="small">高危</el-tag>
@@ -347,7 +353,7 @@
           <el-col :span="12">
             <div class="card card-purple" style="height: 100%">
               <div class="card-title">历史行为轨迹</div>
-              <el-timeline style="margin-top: 4px">
+              <el-timeline class="behavior-timeline" style="margin-top: 4px">
                 <el-timeline-item
                   v-for="(e, idx) in timelineEvents"
                   :key="idx"
@@ -482,7 +488,7 @@ const dailyTrendChart = shallowRef<EChartsOption>({
 async function loadDrills() {
   try {
     const res = (await campaignApi.list({ page: 1, pageSize: 100 })) as { list: { id: number; name: string }[] }
-    drillOptions.value = (res?.list ?? []).map(c => ({ id: c.id, label: c.name }))
+    drillOptions.value = (res?.list ?? []).map(c => ({ id: c.id, label: `#${c.id} ${c.name}` }))
     if (drillOptions.value.length) {
       selectedDrill.value = selectedDrill.value ?? drillOptions.value[0].id
       loadDrillReport()
@@ -505,13 +511,14 @@ async function loadDrillReport() {
     drillScore.value = metrics[5]?.value ?? '--'
     drillFunnel.value = (data?.funnel ?? []).map((f: any) => ({
       ...f,
-      rate: typeof f.rate === 'number' ? `${f.rate}%` : f.rate,
+      // rate 为 null：上一级计数为 0（如客户端屏蔽图片导致打开缺失），显示 -- 而非 0.0%
+      rate: typeof f.rate === 'number' ? `${f.rate}%` : (f.rate ?? '--'),
     }))
     const victims: any[] = data?.victims ?? []
-    // 后端无 risk 字段，按行为推导：输入密码高危 / 点击 2 次以上中危
+    // 后端无 risk 字段，按行为推导：输入密码 / 运行附件均为高危中招，点击 2 次以上中危
     victimRows.value = victims.map((v: any) => ({
       ...v,
-      risk: v.input_pwd ? 'high' : v.clicks >= 2 ? 'mid' : 'low',
+      risk: v.input_pwd || v.run_attach ? 'high' : v.clicks >= 2 ? 'mid' : 'low',
     }))
     deptCompareRows.value = data?.deptCompare ?? []
     drillDeptCount.value = deptCompareRows.value.length
@@ -539,7 +546,8 @@ const deptPersonRows = ref<any[]>([])
 const deptBarChart = shallowRef<EChartsOption>({
   tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
   grid: { left: 90, right: 40, top: 20, bottom: 30 },
-  xAxis: { type: 'value', name: '中招率%', max: 40 },
+  // max 自适应数据：中招率可超 40%（如部门 56%），固定 40 会截断柱子
+  xAxis: { type: 'value', name: '中招率%', max: (v: any) => Math.max(40, Math.ceil((v.max || 0) * 1.1)) },
   yAxis: { type: 'category', data: [] },
   series: [{
     type: 'bar', barWidth: 22, data: [],
@@ -616,7 +624,8 @@ const trendChart = shallowRef<EChartsOption>({
   xAxis: { type: 'category', data: [] },
   yAxis: [
     { type: 'value', name: '次数' },
-    { type: 'value', name: '%', max: 40 },
+    // max 自适应：中招率超 40% 时不被截断
+    { type: 'value', name: '%', max: (v: any) => Math.max(40, Math.ceil((v.max || 0) * 1.1)) },
   ],
   series: [
     { name: '演练次数', type: 'bar', barWidth: 22, data: [], itemStyle: { color: '#378ADD' } },
@@ -848,6 +857,11 @@ onMounted(() => ensureTabLoaded(activeTab.value))
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+/* 历史行为轨迹时间轴：与并排雷达图等高，超出滚动 */
+.behavior-timeline {
+  max-height: 300px;
+  overflow-y: auto;
 }
 .summary-big {
   font-size: 30px;
