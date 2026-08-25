@@ -23,6 +23,7 @@ class ErrorCode:
     BIZ_CONFLICT = 41002
     SYSTEM_INITIALIZED = 41003
     LICENSE_EXCEEDED = 42901
+    RATE_LIMIT_EXCEEDED = 42902
     # 5xxx 集成
     INTEGRATION_ERROR = 50001
     # 9xxx AI
@@ -40,6 +41,7 @@ _DEFAULT_MSG = {
     ErrorCode.DATA_SCOPE_DENIED: "数据权限不足",
     ErrorCode.PERM_DENIED: "无操作权限",
     ErrorCode.LICENSE_EXCEEDED: "授权配额已用尽",
+    ErrorCode.RATE_LIMIT_EXCEEDED: "调用频率超限",
     ErrorCode.BIZ_CONFLICT: "业务状态冲突",
     ErrorCode.SYSTEM_INITIALIZED: "系统已初始化",
 }
@@ -51,6 +53,7 @@ _HTTP_STATUS = {
     ErrorCode.DATA_SCOPE_DENIED: 403,
     ErrorCode.PERM_DENIED: 403,
     ErrorCode.NOT_FOUND: 404,
+    ErrorCode.RATE_LIMIT_EXCEEDED: 429,
 }
 
 

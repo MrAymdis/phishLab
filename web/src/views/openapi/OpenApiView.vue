@@ -356,15 +356,15 @@ const trendChart: EChartsOption = {
 const appKw = ref('')
 const mockApps = [
   { id: 1, name: '内部OA系统', app_id: 'app_0a1b2c3d', secret: 'sk_live_8f3e2a9d7b1c5e8f', calls: 428600, status: 'enabled', created_at: '2026-04-12 10:21',
-    scopes: ['campaign:read', 'campaign:write', 'user:read', 'report:read'], color: '#378ADD', _show: false },
+    scopes: ['campaign', 'user', 'report'], color: '#378ADD', _show: false },
   { id: 2, name: 'HR招聘平台', app_id: 'app_9z8y7x6w', secret: 'sk_live_2d6c8f4a0e1b9c3d', calls: 152400, status: 'enabled', created_at: '2026-05-03 14:56',
-    scopes: ['user:read', 'user:write', 'template:read'], color: '#7f77dd', _show: false },
+    scopes: ['user', 'template'], color: '#7f77dd', _show: false },
   { id: 3, name: '数据中台BI', app_id: 'app_e5r6t7y8', secret: 'sk_live_5a9b3c7e2f8d1a4b', calls: 286500, status: 'enabled', created_at: '2026-03-20 09:12',
-    scopes: ['report:read', 'campaign:read', 'user:read'], color: '#1d9e75', _show: false },
+    scopes: ['report', 'campaign', 'user'], color: '#1d9e75', _show: false },
   { id: 4, name: '财务对接系统', app_id: 'app_u1i2o3p4', secret: 'sk_live_1c3e5b7d9a2f4c8e', calls: 102800, status: 'disabled', created_at: '2026-06-11 16:40',
-    scopes: ['user:read', 'campaign:read'], color: '#d85a30', _show: false },
+    scopes: ['user', 'campaign'], color: '#d85a30', _show: false },
   { id: 5, name: 'SOC安全运营', app_id: 'app_q0w9e8r7', secret: 'sk_live_9f2b6d8a1c4e7a3f', calls: 198700, status: 'enabled', created_at: '2026-02-28 11:05',
-    scopes: ['campaign:read', 'campaign:write', 'report:read', 'report:write', 'user:read', 'incident:write'], color: '#a32d2d', _show: false },
+    scopes: ['campaign', 'report', 'mail_report'], color: '#a32d2d', _show: false },
 ]
 const appColors = ['#378ADD', '#7f77dd', '#1d9e75', '#d85a30', '#a32d2d', '#0d9488']
 const apps = ref(mockApps.map(a => reactive(a)))
@@ -408,10 +408,12 @@ function toggleStatus(row: any) {
 const createAppVisible = ref(false)
 const newApp = reactive({ name: '', desc: '', scopes: [] as string[], ip_whitelist: '', callback_url: '', rate_limit: 1000 })
 const scopeGroups = [
-  { name: '演练管理', items: ['campaign:read', 'campaign:write', 'campaign:delete'] },
-  { name: '用户管理', items: ['user:read', 'user:write', 'user:delete'] },
-  { name: '模板管理', items: ['template:read', 'template:write'] },
-  { name: '数据报表', items: ['report:read', 'report:write'] },
+  { name: '演练管理', items: ['campaign'] },
+  { name: '数据报表', items: ['report'] },
+  { name: '用户管理', items: ['user'] },
+  { name: '模板管理', items: ['template'] },
+  { name: '举报管理', items: ['mail_report'] },
+  { name: '系统信息', items: ['system'] },
 ]
 async function submitApp() {
   if (!newApp.name) return ElMessage.warning('请填写应用名称')
@@ -420,7 +422,7 @@ async function submitApp() {
       name: newApp.name,
       description: newApp.desc,
       scopes: newApp.scopes,
-      ip_whitelist: newApp.ip_whitelist,
+      ip_whitelist: newApp.ip_whitelist.split('\n').map(s => s.trim()).filter(Boolean),
       callback_url: newApp.callback_url,
       rate_limit: newApp.rate_limit,
     })
