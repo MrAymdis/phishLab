@@ -1343,6 +1343,8 @@ function onSendDrill(emp: Employee) {
 /* 时间轴 */
 .behavior-timeline {
   padding-left: 8px;
+  max-height: 360px;
+  overflow-y: auto;
 }
 .ev-title {
   font-size: 12px;

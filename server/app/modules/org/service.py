@@ -545,16 +545,20 @@ def _dim_color(val: int) -> str:
 
 
 def _risk_history(db: Session, user_id: int) -> list[dict]:
-    """最近 8 条演练行为轨迹（track_event join campaign）。"""
+    """最近 20 条演练行为轨迹（track_event join campaign）。
+
+    含 attach_run——中招口径已合并"提交+附件运行"（phish_count 同口径），
+    时间轴漏附件运行会造成"中招 29 次但轨迹看不到"的假象。
+    """
     rows = db.execute(
         select(TrackEvent.event_type, TrackEvent.created_at, Campaign.name)
         .join(Campaign, Campaign.id == TrackEvent.campaign_id)
         .where(
             TrackEvent.user_id == user_id,
-            TrackEvent.event_type.in_(["submit", "open", "click", "report"]),
+            TrackEvent.event_type.in_(["submit", "open", "click", "report", "attach_run"]),
         )
         .order_by(TrackEvent.created_at.desc())
-        .limit(8)
+        .limit(20)
     ).all()
     history = []
     for event_type, created_at, campaign_name in rows:

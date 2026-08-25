@@ -57,6 +57,7 @@ def recalc(user_id: int | None = None) -> int:
                     report += n
                     dims[4] = min(100, dims[4] + 10 * n)
                 elif event_type == "attach_run":
+                    phish += n  # 中招次数口径与提交合并（附件运行=中招），与 track_stream 实时消费一致
                     dims[3] = min(100, dims[3] + 10 * n)
 
             # 综合评分：行为次数直接计分（五维仅作展示）
