@@ -2,12 +2,15 @@
 
 实现要点见《架构设计方案》§3.2：目标展开、批次调度、追踪事件、预警。
 """
+import logging
 import secrets
 from datetime import datetime, timedelta
 
 from sqlalchemy import func, or_, select, update
 
 from app.core.audit import record_audit
+
+logger = logging.getLogger("phishlab.campaign")
 from app.core.deps import apply_data_scope, get_scoped_or_404
 from app.core.errors import BizError, ErrorCode
 from app.modules.license.service import check_quota
@@ -930,16 +933,38 @@ def test_send(db, account, campaign_id: int, to: list[str]) -> dict:
 
 
 def delete_campaign(db, account, campaign_id: int) -> None:
-    """删除演练：草稿/待开始/已终止状态可删（进行中不可删，避免追踪事件孤儿；已完成保留报表不删）；关联数据级联删除。"""
+    """删除演练：草稿/待开始/已终止状态可删（进行中不可删，避免追踪事件孤儿；已完成保留报表不删）；关联数据级联删除。
+
+    追踪事件（TrackEvent）一并级联：档案"历史中招"（emp_risk_profile.phish_count
+    快照）与轨迹均以 track_event 为源，残留事件会造成"演练已删、档案仍有中招"的假象。
+    删除后对受影响员工重算画像，保证快照与剩余事件一致。
+    """
     c = _get_or_404(db, account, campaign_id)
     if c.status not in ("draft", "scheduled", "terminated"):
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始/已终止状态可删除演练")
+    affected = [
+        uid for (uid,) in db.execute(
+            select(TrackEvent.user_id).where(
+                TrackEvent.campaign_id == campaign_id,
+                TrackEvent.user_id.isnot(None),
+            ).distinct()
+        ).all()
+    ]
+    db.execute(TrackEvent.__table__.delete().where(TrackEvent.campaign_id == campaign_id))
     db.execute(CampaignTarget.__table__.delete().where(CampaignTarget.campaign_id == campaign_id))
     db.execute(CampaignBatch.__table__.delete().where(CampaignBatch.campaign_id == campaign_id))
     db.execute(CampaignStat.__table__.delete().where(CampaignStat.campaign_id == campaign_id))
     db.execute(CampaignAlert.__table__.delete().where(CampaignAlert.campaign_id == campaign_id))
     db.delete(c)
     db.commit()
+    # 受影响员工画像重算（与 track_stream/risk_recalc 同口径：中招=submit+attach_run）；
+    # 同步执行量小，失败降级只告警不阻断删除
+    for uid in affected:
+        try:
+            from worker.tasks.risk_recalc import recalc
+            recalc(uid)
+        except Exception:
+            logger.warning("recalc after campaign delete failed uid=%s cid=%s", uid, campaign_id)
     record_audit(
         db, account=account, module="campaign", action="delete_campaign",
         target_type="campaign", target_id=str(campaign_id),
