@@ -31,6 +31,48 @@ _DEFAULT_SYSTEM_PROMPT = (
     "AI 产出的模板/文案属于草稿，需人工确认后生效。"
 )
 
+# 数据查询意图词表：命中即经 ChatBI 只读查询真实演练指标注入上下文
+# （走红线 5 全链路守卫：只读账号 + 表白名单 + 结构化校验 + 数据权限注入 + 审计）
+_DRILL_QUERY_WORDS = (
+    "演练", "中招", "打开率", "点击率", "提交率", "上报", "举报", "投递",
+    "退信", "趋势", "部门", "风险画像", "风险等级", "员工", "统计", "效果",
+)
+_MAX_INJECT_ROWS = 12  # 注入上下文的表格行数上限，控制 token 体积
+# 意图 → ChatBI 稳定模板问法（原问题 LLM 自由生成失败时的兜底，模板问法不走 LLM 直查）
+_DRILL_FALLBACK_QUERIES = (
+    (re.compile(r"部门"), "各部门中招率"),
+    (re.compile(r"趋势|走势"), "近7天中招趋势"),
+    (re.compile(r"高危|风险"), "高危人员"),
+    (re.compile(r"举报"), "举报最多的部门"),
+    (re.compile(r"员工|最多|排行"), "中招最多的员工"),
+    (re.compile(r"演练|效果|统计|分析"), "各演练统计"),
+)
+
+
+def _wants_drill_data(message: str) -> bool:
+    """数据分析意图检测：命中任一数据性关键词即尝试注入（误触发由 ChatBI 兜底降级）。"""
+    return any(w in message for w in _DRILL_QUERY_WORDS)
+
+
+def _fallback_queries(message: str) -> list:
+    """按意图关键词映射 ChatBI 模板问法（去重保序）。"""
+    out = []
+    for pattern, q in _DRILL_FALLBACK_QUERIES:
+        if pattern.search(message) and q not in out:
+            out.append(q)
+    return out
+
+
+def _rows_to_markdown(columns: list, rows: list) -> str:
+    """查询结果转 markdown 表格，列多/行多截断控制注入体积。"""
+    out = ["| " + " | ".join(str(c) for c in columns) + " |",
+           "|" + "|".join("---" for _ in columns) + "|"]
+    for r in rows[:_MAX_INJECT_ROWS]:
+        out.append("| " + " | ".join(str(c) for c in r) + " |")
+    if len(rows) > _MAX_INJECT_ROWS:
+        out.append(f"\n（共 {len(rows)} 行，仅展示前 {_MAX_INJECT_ROWS} 行）")
+    return "\n".join(out)
+
 
 def _fmt_time(dt: datetime) -> str:
     seconds = max(int((datetime.now() - dt).total_seconds()), 0)
@@ -147,9 +189,32 @@ def chat_stream(db, account, payload: dict):
     async def llm_gen():
         full = ""
         tokens_in = tokens_out = None
+        # 数据意图注入：ChatBI 只读查询真实指标后作为上下文给 LLM（失败降级，不阻断对话）。
+        # 原问题优先（LLM 自由生成 SQL），失败按意图映射模板问法兜底，全失败则跳过注入。
+        ctx_messages = list(messages)
+        if _wants_drill_data(message):
+            try:
+                from . import chatbi as chatbi_svc
+                result = None
+                for q in [message, *_fallback_queries(message)]:
+                    try:
+                        result = await chatbi_svc.ask_question(db, account, q)
+                        if result.get("rows"):
+                            break
+                    except BizError:
+                        continue
+                if result and result.get("rows"):
+                    ctx_messages.append({
+                        "role": "assistant",
+                        "content": f"（以下为只读查询到的平台演练数据，回答用户时以真实数据为准，"
+                                   f"与问题无关可忽略）\n{_rows_to_markdown(result['columns'], result['rows'])}",
+                    })
+                    logger.info("chatbi inject session=%s rows=%d", session.id, result["total"])
+            except Exception:
+                logger.info("chatbi inject skipped（查询失败不阻断对话）", exc_info=True)
         try:
             async for frame in client.stream(
-                messages, system_prompt=system_prompt,
+                ctx_messages, system_prompt=system_prompt,
                 temperature=float(provider.temperature or 0.7),
                 max_tokens=provider.max_tokens or 2048,
             ):
