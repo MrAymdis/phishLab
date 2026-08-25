@@ -526,8 +526,8 @@
               <el-col :span="8">
                 <div class="activate-card">
                   <div class="act-title"><el-icon :size="16"><Link /></el-icon> 在线激活</div>
-                  <el-input v-model="actCode" placeholder="请输入激活码" style="margin-top: 10px" />
-                  <el-button type="primary" style="width: 100%; margin-top: 10px" :icon="Check">验证激活</el-button>
+                  <el-input v-model="actCode" placeholder="请输入激活码" style="margin-top: 10px" @keyup.enter="activateByCode" />
+                  <el-button type="primary" style="width: 100%; margin-top: 10px" :icon="Check" :loading="actLoading" @click="activateByCode">验证激活</el-button>
                 </div>
               </el-col>
               <el-col :span="8">
@@ -535,8 +535,11 @@
                   <div class="act-title"><el-icon :size="16"><UploadFilled /></el-icon> 离线激活</div>
                   <el-upload
                     action="#"
-                    :auto-upload="false"
                     :show-file-list="false"
+                    :http-request="importLicenseFile"
+                    :disabled="actUploading"
+                    :limit="1"
+                    accept=".lic,application/json"
                     style="margin-top: 10px"
                   >
                     <div class="upload-btn">
@@ -683,6 +686,72 @@ const dataScope = ref('dept')
 const sensitiveFields = ref(['phone', 'risk_detail'])
 const customDepts = ref<string[]>([])
 const actCode = ref('')
+const actLoading = ref(false)
+const actUploading = ref(false)
+
+// 授权状态加载：配额进度 + 版本卡片（上传/激活成功后重调）
+async function loadLicense() {
+  try {
+    const lic = (await systemApi.license()) as any
+    if (lic && typeof lic === 'object') {
+      const editionLabel: Record<string, string> = { trial: '试用版 Trial', standard: '标准版', flagship: '旗舰版' }
+      const stats = [...mockLicenseStats]
+      if (lic.edition) {
+        stats[0] = {
+          title: '授权状态', value: editionLabel[lic.edition] ?? lic.edition, accent: 'orange',
+          sub: `剩余 ${lic.remaining_days ?? '-'} 天 · 到期 ${lic.expire_at ?? '-'}`,
+        }
+      }
+      if (lic.expire_at) stats[1] = { title: '到期时间', value: lic.expire_at, accent: 'red', sub: '请提前 30 天完成续期' }
+      const userQ = lic.quotas?.user
+      if (userQ?.total) {
+        stats[2] = {
+          title: '用户配额', value: `活跃 ${userQ.used.toLocaleString()} / ${userQ.total.toLocaleString()}`, accent: 'blue',
+          progress: Math.round((userQ.used / userQ.total) * 100), used: String(userQ.used), total: String(userQ.total),
+        }
+      }
+      const mailQ = lic.quotas?.mail
+      if (mailQ?.total) {
+        stats[3] = {
+          title: '邮件发送量', value: `本月 ${mailQ.used.toLocaleString()} / ${mailQ.total.toLocaleString()}`, accent: 'green',
+          progress: Math.round((mailQ.used / mailQ.total) * 100), used: String(mailQ.used), total: String(mailQ.total),
+        }
+      }
+      licenseStats.value = stats
+    }
+    // 功能模块授权：按 features 动态解锁（后端为契约源，上传/激活后实时反映）
+    const feat = (lic.features ?? {}) as Record<string, boolean>
+    moduleRows.value = moduleRows.value.map(r =>
+      r.feature ? { ...r, enabled: !!feat[r.feature], locked: !feat[r.feature] } : r)
+  } catch { loadWarning() }
+}
+
+// 在线激活：提交激活码，成功后刷新授权状态
+async function activateByCode() {
+  const code = actCode.value.trim()
+  if (!code) { ElMessage.warning('请输入激活码'); return }
+  actLoading.value = true
+  try {
+    await systemApi.activateLicense(code)
+    ElMessage.success('激活成功')
+    actCode.value = ''
+    await loadLicense()
+  } finally {
+    actLoading.value = false
+  }
+}
+
+// 离线激活：上传 .lic 授权文件（后端验签 fail-closed，错误由拦截器统一提示）
+async function importLicenseFile(opt: { file: File }) {
+  actUploading.value = true
+  try {
+    await systemApi.importLicense(opt.file)
+    ElMessage.success('离线激活成功')
+    await loadLicense()
+  } finally {
+    actUploading.value = false
+  }
+}
 
 // 审计日志过滤
 const auditType = ref('all')
@@ -863,15 +932,16 @@ const mockLicenseStats: { title: string; value: string; accent: Accent; sub?: st
 ]
 const licenseStats = ref(mockLicenseStats)
 
-const moduleRows = [
-  { name: 'AI 智能生成模块', level: 'flagship', enabled: false, locked: true },
-  { name: 'API 开放平台', level: 'flagship', enabled: false, locked: true },
-  { name: '载荷管理（EXE/宏）', level: 'flagship', enabled: false, locked: true },
-  { name: '在线培训 LMS 模块', level: 'pro', enabled: true, locked: false },
-  { name: '短信钓鱼通道', level: 'pro', enabled: true, locked: false },
-  { name: '邮件钓鱼演练核心', level: 'all', enabled: true, locked: false },
-  { name: '报表与导出', level: 'all', enabled: true, locked: false },
-]
+// feature 键与后端 get_status.features 对应：有键的模块按授权动态解锁
+const moduleRows = ref([
+  { name: 'AI 智能生成模块', level: 'flagship', feature: 'ai', enabled: false, locked: true },
+  { name: 'API 开放平台', level: 'flagship', feature: 'openapi', enabled: false, locked: true },
+  { name: '载荷管理（EXE/宏）', level: 'flagship', feature: 'payload', enabled: false, locked: true },
+  { name: '在线培训 LMS 模块', level: 'pro', feature: '', enabled: true, locked: false },
+  { name: '短信钓鱼通道', level: 'pro', feature: '', enabled: true, locked: false },
+  { name: '邮件钓鱼演练核心', level: 'all', feature: '', enabled: true, locked: false },
+  { name: '报表与导出', level: 'all', feature: '', enabled: true, locked: false },
+])
 
 // ---- 接口数据加载（失败降级为演示数据）----
 const loadWarning = () => ElMessage.warning('接口数据加载失败，已展示演示数据')
@@ -1015,36 +1085,8 @@ onMounted(async () => {
     }
   } catch { loadWarning() }
 
-  // 授权信息
-  try {
-    const lic = (await systemApi.license()) as any
-    if (lic && typeof lic === 'object') {
-      const editionLabel: Record<string, string> = { trial: '试用版 Trial', standard: '标准版', flagship: '旗舰版' }
-      const stats = [...mockLicenseStats]
-      if (lic.edition) {
-        stats[0] = {
-          title: '授权状态', value: editionLabel[lic.edition] ?? lic.edition, accent: 'orange',
-          sub: `剩余 ${lic.remaining_days ?? '-'} 天 · 到期 ${lic.expire_at ?? '-'}`,
-        }
-      }
-      if (lic.expire_at) stats[1] = { title: '到期时间', value: lic.expire_at, accent: 'red', sub: '请提前 30 天完成续期' }
-      const userQ = lic.quotas?.user
-      if (userQ?.total) {
-        stats[2] = {
-          title: '用户配额', value: `活跃 ${userQ.used.toLocaleString()} / ${userQ.total.toLocaleString()}`, accent: 'blue',
-          progress: Math.round((userQ.used / userQ.total) * 100), used: String(userQ.used), total: String(userQ.total),
-        }
-      }
-      const mailQ = lic.quotas?.mail
-      if (mailQ?.total) {
-        stats[3] = {
-          title: '邮件发送量', value: `本月 ${mailQ.used.toLocaleString()} / ${mailQ.total.toLocaleString()}`, accent: 'green',
-          progress: Math.round((mailQ.used / mailQ.total) * 100), used: String(mailQ.used), total: String(mailQ.total),
-        }
-      }
-      licenseStats.value = stats
-    }
-  } catch { loadWarning() }
+  // 授权信息（复用 loadLicense，激活/上传成功后重调刷新）
+  await loadLicense()
 
   // Webhook 告警推送（onMounted 开头已由 loadWebhook() 加载，此处为重构前冗余代码，已删除）
 
