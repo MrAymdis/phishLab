@@ -143,28 +143,28 @@
           <div class="toolbar">
             <el-button type="primary" size="small" :icon="Plus" @click="openDomainDialog">新增域名</el-button>
           </div>
-          <el-table :data="domainRows" size="small" style="margin-top: 12px">
-            <el-table-column prop="domain" label="域名" min-width="220">
+          <el-table :data="domainRows" size="small" class="dns-table" style="margin-top: 12px">
+            <el-table-column prop="domain" label="域名" min-width="200">
               <template #default="{ row }">
                 <code>{{ row.domain }}</code>
               </template>
             </el-table-column>
-            <el-table-column label="SPF" width="90" align="center">
+            <el-table-column label="SPF" width="76" align="center">
               <template #default="{ row }">
                 <el-tag :type="dnsTagType(row.spf)" size="small" effect="dark">{{ row.spf }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="DKIM" width="90" align="center">
+            <el-table-column label="DKIM" width="76" align="center">
               <template #default="{ row }">
                 <el-tag :type="dnsTagType(row.dkim)" size="small" effect="dark">{{ row.dkim }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="DMARC" width="90" align="center">
+            <el-table-column label="DMARC" width="180" align="center">
               <template #default="{ row }">
                 <el-tag :type="dnsTagType(row.dmarc)" size="small" effect="dark">{{ row.dmarc }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column label="送达评分" width="180">
+            <el-table-column label="送达评分" width="170">
               <template #default="{ row }">
                 <el-progress
                   :percentage="row.score"
@@ -174,8 +174,8 @@
                 />
               </template>
             </el-table-column>
-            <el-table-column prop="last_check" label="最近检测" width="160" />
-            <el-table-column label="操作" width="220">
+            <el-table-column prop="last_check" label="最近检测" width="150" align="center" />
+            <el-table-column label="操作" width="220" align="center">
               <template #default="{ row }">
                 <el-button size="small" link type="primary" :loading="checkingDomainId === row.id" @click="checkDns(row)">立即检测</el-button>
                 <el-button size="small" link @click="showDnsGuide(row)">修复指引</el-button>
@@ -633,9 +633,11 @@ function scoreColor(score: number) {
   return '#f56c6c'
 }
 function dnsTagType(v: string) {
+  // SPF/DKIM：OK/WARN/FAIL；DMARC：reject（拒收）/quarantine（垃圾箱）/p=none（不拦截）/FAIL（无记录）/WARN（查询失败）
   if (v === 'OK') return 'success'
-  if (v === 'WARN') return 'warning'
-  return 'danger'
+  if (v.startsWith('WARN') || v.startsWith('quarantine')) return 'warning'
+  if (v.startsWith('p=none')) return 'info'
+  return 'danger' // FAIL / reject / 未知
 }
 
 const channels = ref<ChannelItem[]>([])
@@ -1331,6 +1333,12 @@ onMounted(() => {
 .ch-test-time {
   font-size: 11px;
   color: var(--color-text-tertiary);
+}
+.dns-table {
+  // 域名与DNS表格：单元格横向留白，标签/进度条不拥挤
+  :deep(.el-table__cell) {
+    padding: 8px 10px;
+  }
 }
 .score-legend {
   margin-top: 14px;

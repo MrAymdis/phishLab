@@ -381,6 +381,7 @@
           <el-col :span="12">
             <el-form-item label="发件人名称" required>
               <el-input v-model="emailForm.sender" placeholder="如：OA系统管理员" />
+              <div class="form-hint">演练发起时若选择了伪装发件人，发件身份以其配置为准，此处仅作默认值</div>
             </el-form-item>
           </el-col>
         </el-row>

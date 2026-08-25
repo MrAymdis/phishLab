@@ -198,51 +198,6 @@
             ⚠️ 当前模板「{{ selectedTemplate.subject }}」未开启附件追踪：附件将直发，但不注入溯源信标（可在素材模板编辑中开启追踪）
           </p>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">伪装发件人<span class="required">*</span></label>
-            <p class="form-hint" style="margin-bottom:8px;">收件端展示的发件人名称与邮箱；新建请前往「发送配置 → 伪装发件人」</p>
-            <div class="option-grid cols-2">
-              <div
-                class="option-card"
-                :class="{ selected: senderProfileId === null }"
-                @click="senderProfileId = null"
-              >
-                <div class="option-card-header">
-                  <div class="option-card-icon" style="background:#6B7280;">📧</div>
-                  <div class="option-card-title">不伪装发件人</div>
-                </div>
-                <p class="option-card-desc">使用通道发件账号（收件端显示真实发送账号）</p>
-              </div>
-              <div
-                v-for="sp in senderProfiles"
-                :key="sp.id"
-                class="option-card"
-                :class="{ selected: senderProfileId === sp.id }"
-                @click="senderProfileId = sp.id"
-              >
-                <div class="option-card-header">
-                  <div class="option-card-icon" style="background:#378ADD;">🎭</div>
-                  <div class="option-card-title">{{ sp.display_name || sp.name }}</div>
-                </div>
-                <p class="option-card-desc">{{ sp.from_addr || '未配置伪装邮箱' }}</p>
-              </div>
-            </div>
-            <p v-if="!senderProfiles.length" class="form-hint">暂无伪装发件人，可先「不伪装」或前往发送配置页创建</p>
-          </div>
-          <div class="form-group">
-            <label class="form-label">欺骗性域名<span class="required">*</span></label>
-            <el-select v-model="tplForm.spoof_domain" class="form-input">
-              <el-option
-                v-for="d in spoofDomains"
-                :key="d.id"
-                :label="d.domain"
-                :value="d.domain"
-              />
-            </el-select>
-            <p class="form-hint">{{ domainDnsHint }}</p>
-          </div>
-        </div>
       </template>
 
       <!-- Step 4：落地页 -->
@@ -304,26 +259,66 @@
                 <div>📦 每日上限：{{ ch.daily_limit.toLocaleString() }} 封</div>
                 <div>📊 送达评分：{{ ch.score }} 分 · 最近测试：{{ ch.last_test }}</div>
                 <div class="dns-badges" v-if="selectedDomain">
-                  <span class="badge" :class="selectedDomain.spf === 'OK' ? 'badge-success' : 'badge-warning'">SPF {{ selectedDomain.spf === 'OK' ? '✓' : '✗' }}</span>
-                  <span class="badge" :class="selectedDomain.dkim === 'OK' ? 'badge-success' : 'badge-warning'">DKIM {{ selectedDomain.dkim === 'OK' ? '✓' : '✗' }}</span>
-                  <span class="badge" :class="selectedDomain.dmarc === 'OK' ? 'badge-success' : 'badge-warning'">DMARC {{ selectedDomain.dmarc === 'OK' ? '✓' : '✗' }}</span>
+                  <span class="badge" :class="dnsOk(selectedDomain.spf) ? 'badge-success' : 'badge-warning'">SPF {{ dnsOk(selectedDomain.spf) ? '✓' : '✗' }}</span>
+                  <span class="badge" :class="dnsOk(selectedDomain.dkim) ? 'badge-success' : 'badge-warning'">DKIM {{ dnsOk(selectedDomain.dkim) ? '✓' : '✗' }}</span>
+                  <span class="badge" :class="dnsOk(selectedDomain.dmarc) ? 'badge-success' : 'badge-warning'">DMARC {{ dnsOk(selectedDomain.dmarc) ? '✓' : '✗' }}</span>
                 </div>
               </div>
             </div>
           </div>
           <p v-if="!sendChannels.length" class="form-hint">暂无可用的 SMTP 通道，请先在「发送配置」页添加</p>
         </div>
-        <div class="form-group">
-          <label class="form-label">送达率预估</label>
-          <div class="deliver-box">
-            <div class="deliver-ring">
-              <div class="deliver-ring-inner">{{ selectedChannel?.score ?? 0 }}</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">伪装发件人<span class="required">*</span></label>
+            <p class="form-hint" style="margin-bottom:8px;">收件端展示的发件人名称与邮箱；新建请前往「发送配置 → 伪装发件人」</p>
+            <div class="option-grid cols-2">
+              <div
+                class="option-card"
+                :class="{ selected: senderProfileId === null }"
+                @click="senderProfileId = null"
+              >
+                <div class="option-card-header">
+                  <div class="option-card-icon" style="background:#6B7280;">📧</div>
+                  <div class="option-card-title">不伪装发件人</div>
+                </div>
+                <p class="option-card-desc">使用通道发件账号（收件端显示真实发送账号）</p>
+              </div>
+              <div
+                v-for="sp in senderProfiles"
+                :key="sp.id"
+                class="option-card"
+                :class="{ selected: senderProfileId === sp.id }"
+                @click="senderProfileId = sp.id"
+              >
+                <div class="option-card-header">
+                  <div class="option-card-icon" style="background:#378ADD;">🎭</div>
+                  <div class="option-card-title">{{ sp.display_name || sp.name }}</div>
+                </div>
+                <p class="option-card-desc">{{ sp.from_addr || '未配置伪装邮箱' }}</p>
+              </div>
             </div>
-            <div class="deliver-info">
-              <div style="font-size:12px;font-weight:500;">送达评分：{{ selectedChannel?.score ?? 0 }} 分</div>
-              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;">{{ domainDnsHint }}</div>
-            </div>
-            <span class="badge" :class="(selectedChannel?.score ?? 0) >= 80 ? 'badge-success' : 'badge-warning'">{{ (selectedChannel?.score ?? 0) >= 80 ? '优秀' : '待检测' }}</span>
+            <p v-if="!senderProfiles.length" class="form-hint">暂无伪装发件人，可先「不伪装」或前往发送配置页创建</p>
+            <p
+              v-if="selectedSenderProfile && selectedTemplate?.sender && selectedTemplate.sender !== selectedSenderProfile.display_name"
+              class="form-hint"
+              style="color:#D85A30;margin-top:8px;"
+            >
+              ⚠️ 模板建议发件人「{{ selectedTemplate.sender }}」将被覆盖为「{{ selectedSenderProfile.display_name }}」，发件身份以伪装发件人配置为准
+            </p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">追踪落地域名<span class="required">*</span></label>
+            <p class="form-hint" style="margin-bottom:8px;">决定邮件内落地页链接、追踪像素与附件信标走哪个演练域名（与 From 伪装无关）</p>
+            <el-select v-model="tplForm.spoof_domain" class="form-input">
+              <el-option
+                v-for="d in spoofDomains"
+                :key="d.id"
+                :label="d.domain"
+                :value="d.domain"
+              />
+            </el-select>
+            <p class="form-hint">{{ domainDnsHint }}</p>
           </div>
         </div>
         <div class="form-group">
@@ -748,6 +743,10 @@ const domainDnsHint = computed(() => {
   const parts = [`SPF ${d.spf}`, `DKIM ${d.dkim}`, `DMARC ${d.dmarc}`]
   return parts.join(' · ')
 })
+/** DNS 状态徽章判定：OK 通过；DMARC 已发布策略（reject/quarantine/none）视为已配置（发信域认证对齐即可通过） */
+function dnsOk(v: string) {
+  return v === 'OK' || v.startsWith('reject') || v.startsWith('quarantine') || v.startsWith('p=none')
+}
 const fieldOptions = ref([
   { val: 'account', label: '收集用户名/邮箱', checked: true },
   { val: 'password', label: '收集登录密码（不存储明文）', checked: true },
@@ -757,9 +756,6 @@ const fieldOptions = ref([
 const landingForm = reactive({ page_id: 1 })
 
 const sendChannelId = ref(0) // 选中的 SMTP 发送通道 id
-const selectedChannel = computed(() =>
-  sendChannels.value.find((ch) => ch.id === sendChannelId.value),
-)
 const selectedSenderProfile = computed(() =>
   senderProfiles.value.find((sp) => sp.id === senderProfileId.value),
 )
@@ -1176,34 +1172,6 @@ async function submit() {
   display: flex;
   gap: 6px;
   margin-top: 4px;
-}
-.deliver-box {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid var(--color-border-tertiary);
-  border-radius: 8px;
-  background: var(--color-background-secondary);
-}
-.deliver-ring {
-  width: 48px; height: 48px;
-  border-radius: 50%;
-  background: conic-gradient(#1D9E75 0% 98%, #e5e7eb 98% 100%);
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.deliver-ring-inner {
-  width: 38px; height: 38px;
-  border-radius: 50%;
-  background: var(--color-background-secondary);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 600;
-  color: #1D9E75;
-}
-.deliver-info {
-  flex: 1;
-  min-width: 0;
 }
 .test-row {
   display: flex;
