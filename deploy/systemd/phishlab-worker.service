@@ -1,0 +1,17 @@
+# PhishLab 投递引擎 Celery Worker（裸机）
+# 注意：模型字段变更后必须重启本服务与 beat，否则旧进程不加载新代码
+[Unit]
+Description=PhishLab Celery Worker（投递引擎/事件消费）
+After=network.target mysql.service redis-server.service
+
+[Service]
+Type=simple
+User=phishlab
+Group=phishlab
+WorkingDirectory=/opt/phishlab/server
+ExecStart=/opt/phishlab/server/.venv/bin/celery -A worker worker -l info
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

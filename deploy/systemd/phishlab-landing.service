@@ -1,0 +1,17 @@
+# PhishLab 落地页服务（仿冒页渲染/表单捕获，端口 8082，裸机）
+# 生产经独立域名 p.example.com 暴露，严禁与主平台同域（红线 3）
+[Unit]
+Description=PhishLab 落地页服务 (landing)
+After=network.target mysql.service redis-server.service
+
+[Service]
+Type=simple
+User=phishlab
+Group=phishlab
+WorkingDirectory=/opt/phishlab/server
+ExecStart=/opt/phishlab/server/.venv/bin/uvicorn landing.main:app --host 0.0.0.0 --port 8082
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

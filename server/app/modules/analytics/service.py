@@ -211,7 +211,7 @@ def overview_metrics(db, account, range_: str) -> dict:
     ).all()
     running_ids = [c.id for c in running_camps]
     live_campaign_name = running_camps[0].name if running_camps else ""
-    live = [0] * 5
+    live = [0] * 6
     if running_ids:
         row = db.execute(
             select(
@@ -219,6 +219,7 @@ def overview_metrics(db, account, range_: str) -> dict:
                 func.coalesce(func.sum(CampaignStat.open_cnt), 0),
                 func.coalesce(func.sum(CampaignStat.click_cnt), 0),
                 func.coalesce(func.sum(CampaignStat.submit_cnt), 0),
+                func.coalesce(func.sum(CampaignStat.attach_cnt), 0),
                 func.coalesce(func.sum(CampaignStat.report_cnt), 0),
             ).where(CampaignStat.campaign_id.in_(running_ids))
         ).one()
@@ -228,7 +229,8 @@ def overview_metrics(db, account, range_: str) -> dict:
         ("已阅读", live[1], "#13C2C2"),
         ("已点击", live[2], "#FAAD14"),
         ("已提交", live[3], "#A32D2D"),
-        ("已举报", live[4], "#7F77DD"),
+        ("附件运行", live[4], "#E67E22"),
+        ("已举报", live[5], "#7F77DD"),
     ]
     live_stats = []
     for label, val, color in live_defs:

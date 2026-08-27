@@ -1,0 +1,17 @@
+# PhishLab 追踪服务（像素/链接跳转/附件 beacon，端口 8081，裸机）
+# 生产经独立域名 t.example.com 暴露，严禁与主平台同域（红线 3）
+[Unit]
+Description=PhishLab 追踪服务 (track)
+After=network.target mysql.service redis-server.service
+
+[Service]
+Type=simple
+User=phishlab
+Group=phishlab
+WorkingDirectory=/opt/phishlab/server
+ExecStart=/opt/phishlab/server/.venv/bin/uvicorn track.main:app --host 0.0.0.0 --port 8081
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

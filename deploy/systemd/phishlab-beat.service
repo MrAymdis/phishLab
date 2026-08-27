@@ -1,0 +1,16 @@
+# PhishLab Celery Beat 定时调度（裸机）——必须单实例
+[Unit]
+Description=PhishLab Celery Beat（定时调度）
+After=network.target mysql.service redis-server.service
+
+[Service]
+Type=simple
+User=phishlab
+Group=phishlab
+WorkingDirectory=/opt/phishlab/server
+ExecStart=/opt/phishlab/server/.venv/bin/celery -A worker beat -l info
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
