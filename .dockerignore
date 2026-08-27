@@ -1,0 +1,19 @@
+# 红线：密钥与敏感配置绝不打进镜像
+server/.env
+deploy/license/vendor_private.pem
+
+# 运行时上传数据（附件/Logo/课程素材）：走 static_data 共享卷，不进镜像
+# （进镜像会触发多容器并发 copy-up 竞态：failed to mkdir ... file exists）
+server/static/
+
+# 本地开发产物
+server/.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+web/node_modules/
+server/certs/
+
+# 构建/发布产物
+release/
+.git/

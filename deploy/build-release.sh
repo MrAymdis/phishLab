@@ -15,7 +15,7 @@ command -v rsync >/dev/null || { echo "✗ 需要 rsync" >&2; exit 1; }
 rm -rf "$STAGE"
 mkdir -p "$STAGE/phishlab/docs" "$ROOT/release"
 
-echo "→ server（源码 + 离线 wheel，排除 venv/缓存/私钥/一次性脚本）"
+echo "→ server（源码 + 离线 wheel，排除 venv/缓存/私钥/一次性脚本/运行时上传数据）"
 rsync -a \
   --exclude .venv --exclude __pycache__ --exclude '*.pyc' --exclude .pytest_cache \
   --exclude .env --exclude celerybeat-schedule --exclude tests \
@@ -24,6 +24,7 @@ rsync -a \
   --exclude deploy/license/vendor_private.pem \
   --exclude certs \
   --exclude scripts/start_landing_tls.sh \
+  --exclude static \
   "$ROOT/server/" "$STAGE/phishlab/server/"
 
 echo "→ web（源码 + dist 产物，排除 node_modules）"
@@ -32,6 +33,8 @@ rsync -a --exclude node_modules "$ROOT/web/" "$STAGE/phishlab/web/"
 echo "→ deploy / docs"
 rsync -a "$ROOT/deploy/" "$STAGE/phishlab/deploy/"
 cp "$ROOT/docs/部署手册.md" "$ROOT/docs/离线交付说明.md" "$STAGE/phishlab/docs/"
+# .dockerignore 必须在构建上下文根（生产解包目录），保证镜像构建同样排除 .env/static/私钥
+cp "$ROOT/.dockerignore" "$STAGE/phishlab/.dockerignore"
 
 tar -C "$STAGE" -czf "$OUT" phishlab
 rm -rf "$STAGE"
