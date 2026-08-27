@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, File, Query, UploadFile
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
@@ -41,6 +41,16 @@ def tree(account=Depends(get_current_account), db: Session = Depends(get_db)):
 @depts.post("", summary="添加部门", dependencies=[Depends(require_perm("org:manage"))])
 def create(payload: DeptCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_dept(db, account, payload.model_dump())})
+
+
+class DeptUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=32)
+    code: str | None = None  # None=不变；传空串可清除
+
+
+@depts.put("/{did}", summary="重命名部门", dependencies=[Depends(require_perm("org:manage"))])
+def update(did: int, payload: DeptUpdate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.update_dept(db, account, did, payload.model_dump()))
 
 
 @depts.post("/sync", summary="触发组织架构同步（LDAP/企微/钉钉/飞书）", dependencies=[Depends(require_perm("org:manage"))])

@@ -90,6 +90,8 @@ export const orgApi = {
   deptTree: () => get('/api/v1/depts'),
   createDept: (payload: Record<string, unknown>) =>
     post<{ id: number }>('/api/v1/depts', payload),
+  updateDept: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/depts/${id}`, payload),
   syncSource: (system: string) => post(`/api/v1/depts/sync?source=${system}`),
   overview: () =>
     get<{ total: number; dept_count: number; month_new: number; month_growth: number | null; high_risk: number; trained: number; training_pct: number }>(
@@ -194,7 +196,7 @@ export const channelApi = {
   /** 演练向导预览发送：模板 + 落地页 + 伪装发件人的真实样式测试邮件 */
   sendTestEmailWithContent: (
     id: number,
-    payload: { to: string; template_id?: number; landing_page_id?: number; sender_name?: string; domain?: string },
+    payload: { to: string; template_id?: number; landing_page_id?: number; sender_name?: string },
   ) =>
     post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
       `/api/v1/channels/${id}/send-test-email`, payload,

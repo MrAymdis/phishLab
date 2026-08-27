@@ -24,15 +24,14 @@ _SEND_JITTER_SEC = (0.5, 3.0)
 
 
 def _load_campaign_assets(db, campaign, target_ids: list[int]) -> dict:
-    """批次共享实体一次加载：模板/落地页/域名/通道/伪装发件人 + 批次内员工与部门 + 附件载荷。"""
+    """批次共享实体一次加载：模板/落地页/通道/伪装发件人 + 批次内员工与部门 + 附件载荷。"""
     from app.modules.campaign.models import CampaignAttachment
-    from app.modules.channel.models import PhishDomain, SendChannel, SenderProfile
+    from app.modules.channel.models import SendChannel, SenderProfile
     from app.modules.org.models import EmpDept, EmpUser
     from app.modules.template.models import AttachmentPayload, EmailTemplate, LandingPage
 
     tpl = db.get(EmailTemplate, campaign.template_id) if campaign.template_id else None
     lp = db.get(LandingPage, campaign.landing_page_id) if campaign.landing_page_id else None
-    domain = db.get(PhishDomain, campaign.domain_id) if campaign.domain_id else None
     ch = _pick_channel(db, campaign)
     sp = db.get(SenderProfile, campaign.sender_profile_id) if campaign.sender_profile_id else None
     users = {u.id: u for u in db.scalars(
@@ -47,8 +46,13 @@ def _load_campaign_assets(db, campaign, target_ids: list[int]) -> dict:
         .where(CampaignAttachment.campaign_id == campaign.id)
         .order_by(CampaignAttachment.sort, CampaignAttachment.id)
     ).all()
-    return {"tpl": tpl, "lp": lp, "domain": domain, "ch": ch, "sp": sp,
-            "users": users, "depts": depts, "payloads": payloads}
+    # 追踪/落地域名（演练级覆盖 > 设置页配置）：批次解析一次，渲染时不逐封查表
+    from app.modules.settings.service import resolve_track_urls
+
+    base_urls = resolve_track_urls(db, campaign)
+    return {"tpl": tpl, "lp": lp, "ch": ch, "sp": sp,
+            "users": users, "depts": depts, "payloads": payloads,
+            "base_urls": base_urls}
 
 
 def _check_recipient_domain(email: str, cache: dict[str, str | None]) -> str | None:
@@ -83,15 +87,15 @@ def _send_via_channel(db, ch, to: str, subject: str, html: str, sender_name: str
                       attachments: list[dict] | None = None,
                       from_addr: str | None = None, reply_to: str | None = None) -> tuple[bool, str]:
     """按通道加密配置发信；返回 (成功, 失败原因)。from_addr/reply_to 为伪装发件人（From 头展示）。"""
-    from app.core.security import decrypt_secret
-    from app.modules.channel.service import _smtp_send
+    from app.core.errors import BizError
+    from app.modules.channel.service import _channel_smtp_password, _smtp_send
 
-    password = ""
-    if ch.smtp_password_enc:
-        try:
-            password = decrypt_secret(ch.smtp_password_enc)
-        except Exception:
-            password = ""
+    try:
+        password = _channel_smtp_password(ch)
+    except BizError as err:
+        # 密码解密失败（.env 密钥与保存通道时不一致）：直接失败，不做无认证投递
+        # （公共邮箱服务器会以 503 need AUTH 拒绝，报错含糊难排查）
+        return False, err.message
     cfg = {
         "smtp_host": ch.smtp_host,
         "smtp_port": ch.smtp_port,

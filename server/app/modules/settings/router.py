@@ -1,7 +1,8 @@
-"""平台基础参数路由（logo/名称/版权/留存天数/免责声明/AI开关）。
+"""平台基础参数路由（logo/名称/版权/留存天数/免责声明/AI开关/追踪落地域）。
 
-注：邮件追踪（像素/链接/附件）由模板级 track_pixel/track_link/track_attach 控制，
-追踪域名来自演练绑定的 PhishDomain，此处不再维护全局追踪配置。
+注：邮件追踪（像素/链接/附件）由模板级 track_pixel/track_link/track_attach 控制；
+追踪/落地域基础 URL 由 track_base_url/landing_base_url 配置（本页维护），
+渲染链接时经 settings.service.resolve_track_urls 解析（平台设置 > dev 端口直连 > .env）。
 """
 import json
 from pathlib import Path
@@ -29,6 +30,9 @@ _DEFAULTS = {
     "copyright": "© 2026 公司信息安全部 版权所有",
     "icp": "",
     "drill_domain": "drill.phishlab.cn",
+    # 追踪/落地域基础 URL（空 = 未前端配置，回退 dev 端口直连 / .env）
+    "track_base_url": "",
+    "landing_base_url": "",
     "retention_drill": "180d",
     "retention_behavior": "180d",
     "retention_log": "1y",
@@ -114,6 +118,16 @@ async def upload_logo(file: UploadFile = File(...), account=Depends(get_current_
     return resp.ok({"logo": url})
 
 
+_BASE_URL_KEYS = ("track_base_url", "landing_base_url")
+
+
+def _validate_base_url(key: str, value: str, request: Request) -> str:
+    """薄封装：见 settings.service.validate_base_url（request 提供主平台 Host 做同域检查）。"""
+    from .service import validate_base_url
+
+    return validate_base_url(value, request_host=request.url.hostname, key=key)
+
+
 @settings.put("", summary="批量更新平台参数（写审计）", dependencies=[Depends(require_perm("settings:manage"))])
 def update_settings(
     payload: dict,
@@ -126,6 +140,9 @@ def update_settings(
             value = json.dumps(value, ensure_ascii=False)
         elif value is not None and not isinstance(value, str):
             value = str(value)
+        # 追踪/落地域：格式与域名隔离校验（红线 3），空串 = 清除配置
+        if key in _BASE_URL_KEYS:
+            value = _validate_base_url(key, value or "", request)
         # 取证操作密码：只存 PBKDF2 哈希（不存原文/可逆密文），仅可验证不可还原
         if key == "reveal_operation_pwd" and value:
             from app.core.security import hash_password

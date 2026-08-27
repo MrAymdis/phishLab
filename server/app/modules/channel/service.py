@@ -364,28 +364,39 @@ def _smtp_send(
                 pass
 
 
-def send_test_email(db, account, channel_id: int, to: str) -> dict:
-    """通过已保存的 SMTP 通道真实发送测试邮件，结果回写最近测试。"""
+def _channel_smtp_password(ch) -> str:
+    """通道 SMTP 密码解密：未配置返回空串（允许无认证内网中继）；
+    配置了但解密失败则抛业务错误——静默空密码会跳过 AUTH 直接发信，
+    公共邮箱服务器返回 503 need EHLO and AUTH（常见根因：.env 的
+    AES_KEY_B64/SECRET_KEY 与保存通道时不一致，如重新部署时重生了密钥）。"""
     from app.core.security import decrypt_secret
 
+    if not ch.smtp_password_enc:
+        return ""
+    try:
+        return decrypt_secret(ch.smtp_password_enc)
+    except Exception:
+        raise BizError(
+            ErrorCode.INTEGRATION_ERROR,
+            "通道 SMTP 密码解密失败：.env 的 AES_KEY_B64/SECRET_KEY 可能与保存通道时不一致，"
+            "请在通道编辑中重新保存密码（或恢复原密钥）",
+        )
+
+
+def send_test_email(db, account, channel_id: int, to: str) -> dict:
+    """通过已保存的 SMTP 通道真实发送测试邮件，结果回写最近测试。"""
     ch = db.get(SendChannel, channel_id)
     if ch is None:
         raise BizError(ErrorCode.NOT_FOUND)
     if ch.type != "smtp":
         raise BizError(ErrorCode.PARAM_INVALID, "仅 SMTP 通道支持测试邮件发送")
 
-    password = ""
-    if ch.smtp_password_enc:
-        try:
-            password = decrypt_secret(ch.smtp_password_enc)
-        except Exception:
-            password = ""
     cfg = {
         "smtp_host": ch.smtp_host,
         "smtp_port": ch.smtp_port,
         "smtp_encrypt": ch.smtp_encrypt,
         "smtp_username": ch.smtp_username,
-        "smtp_password": password,
+        "smtp_password": _channel_smtp_password(ch),
     }
     result = _smtp_send(ch.name, cfg, to)
 
@@ -404,25 +415,17 @@ def send_test_email(db, account, channel_id: int, to: str) -> dict:
 
 def send_html_email(db, account, channel_id: int, to: str, subject: str, html: str) -> dict:
     """按指定通道发送自定义内容邮件（模板测试发送复用，真实投递）。"""
-    from app.core.security import decrypt_secret
-
     ch = db.get(SendChannel, channel_id)
     if ch is None:
         raise BizError(ErrorCode.NOT_FOUND, "SMTP 通道不存在")
     if ch.type != "smtp":
         raise BizError(ErrorCode.PARAM_INVALID, "仅 SMTP 通道支持发送")
-    password = ""
-    if ch.smtp_password_enc:
-        try:
-            password = decrypt_secret(ch.smtp_password_enc)
-        except Exception:
-            password = ""
     cfg = {
         "smtp_host": ch.smtp_host,
         "smtp_port": ch.smtp_port,
         "smtp_encrypt": ch.smtp_encrypt,
         "smtp_username": ch.smtp_username,
-        "smtp_password": password,
+        "smtp_password": _channel_smtp_password(ch),
     }
     result = _smtp_send(ch.name, cfg, to, subject=subject, html_body=html)
     ch.last_test_result = result
@@ -465,14 +468,18 @@ def send_test_email_with_content(db, account, channel_id: int, payload: dict) ->
     to = payload.get("to") or ""
     tpl = db.get(EmailTemplate, payload["template_id"]) if payload.get("template_id") else None
     lp = db.get(LandingPage, payload["landing_page_id"]) if payload.get("landing_page_id") else None
-    # 链接域名优先用向导选择的欺骗性域名（与真实演练邮件一致）；未选时退回独立落地页域名。
-    # 演示环境：http + 落地页端口直连（开发机 hosts 映射演练域名后点击即可打开仿冒登录页）；
-    # 生产部署：演练域名 DNS 指向落地页服务并配置 TLS，链接为 https://{domain}/p/{slug}。
-    spoof_domain = (payload.get("domain") or "").strip().rstrip("/")
-    if spoof_domain:
-        landing_url = f"http://{spoof_domain}:{settings.landing_port}/p/{lp.slug}" if lp else ""
-    else:
-        landing_url = f"{settings.landing_base_url.rstrip('/')}/p/{lp.slug}" if lp else ""
+    # 链接域名解析与真实演练渲染一致（campaign/render.py）：平台设置（设置页配置）优先；
+    # dev 未配置时沿用 http://{drill_domain}:{landing_port} 直连（hosts 映射后点击即可演示）；
+    # 其他环境未配置时退回 .env 独立落地页域名。
+    from app.modules.settings.service import get_setting, resolve_track_urls
+
+    _track_base, landing_base = resolve_track_urls(db)
+    if not landing_base:
+        drill_domain = get_setting(db, "drill_domain", "drill-domain.com")
+        landing_base = (f"http://{drill_domain}:{settings.landing_port}"
+                        if settings.env == "dev" else settings.landing_base_url.rstrip("/"))
+    # 自定义路径优先（仿真防识别），空则回退默认 /p/{slug}
+    landing_url = f"{landing_base}{lp.custom_path or f'/p/{lp.slug}'}" if lp else ""
 
     # 变量替换（演示值；真实演练按目标员工档案逐人渲染）
     var_map = {

@@ -58,6 +58,7 @@
             <el-button size="small" class="dept-btn" :icon="Refresh" @click="onSyncAd">
               同步AD/LDAP
             </el-button>
+            <el-button size="small" class="dept-btn" :icon="Edit" @click="onRenameDept">重命名</el-button>
             <el-button size="small" class="dept-btn" :icon="Plus" @click="openDeptDialog">添加部门</el-button>
           </div>
         </div>
@@ -164,7 +165,7 @@
               <template #default="{ row }: { row: Employee }">
                 <el-button size="small" link type="primary" @click.stop="selectEmp(row)">查看档案</el-button>
                 <el-button size="small" link @click.stop="openEmpDialog(row)">编辑</el-button>
-                <el-button size="small" link type="success" @click.stop="onSendDrill(row)">发送演练</el-button>
+                <el-button size="small" link type="danger" @click.stop="onDeleteEmp(row)">删除</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -437,10 +438,10 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { ElMessage, ElTree } from 'element-plus'
+import { ElMessage, ElMessageBox, ElTree } from 'element-plus'
 import {
   Upload, Download, Plus, Search, Refresh, OfficeBuilding,
-  CircleCheckFilled, WarningFilled, Document,
+  CircleCheckFilled, WarningFilled, Document, Edit,
 } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
@@ -566,6 +567,39 @@ async function createDept() {
     ElMessage.success(`部门「${deptForm.name.trim()}」创建成功`)
     deptDialogVisible.value = false
     await loadDepts() // 从后端刷新部门树（含人数统计），不本地伪造节点
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
+}
+
+async function onRenameDept() {
+  const dept = selectedDept.value
+  if (!dept) {
+    ElMessage.warning('请先在左侧选择要重命名的部门')
+    return
+  }
+  let value: string
+  try {
+    const res = await ElMessageBox.prompt(`将部门「${dept.label}」重命名为：`, '重命名部门', {
+      inputValue: dept.label,
+      inputValidator: (v: string) =>
+        (v.trim().length > 0 && v.trim().length <= 32) || '名称需为 1-32 个字符',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+    })
+    value = res.value.trim()
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await orgApi.updateDept(dept.id, { name: value })
+    ElMessage.success(`部门已重命名为「${value}」`)
+    await loadDepts() // 树刷新后 selectedDept 指向旧对象，按 id 回指新节点
+    if (selectedDept.value) {
+      const refreshed = findNodeById(deptTree.value, selectedDept.value.id)
+      if (refreshed) selectedDept.value = refreshed
+    }
+    await loadUsers() // 员工行部门名称展示同步刷新
   } catch {
     // 失败提示由 http 拦截器统一弹出
   }
@@ -996,9 +1030,29 @@ async function onSyncAd() {
     // 失败提示由 http 拦截器统一弹出
   }
 }
-function onSendDrill(emp: Employee) {
-  // TODO: 后端未提供单员工快速发起演练路由，需走演练管理创建流程
-  ElMessage.info(`单员工快捷演练未开放，请到「演练管理」创建演练并添加「${emp.name}」为目标`)
+async function onDeleteEmp(emp: Employee) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除员工「${emp.name}」？删除后按离职处理，将移出部门与后续演练目标，历史中招记录保留。`,
+      '删除员工', { type: 'warning', confirmButtonText: '删除', confirmButtonClass: 'el-button--danger' },
+    )
+  } catch {
+    return // 用户取消
+  }
+  try {
+    await orgApi.deleteUser(emp.id)
+    ElMessage.success(`已删除员工「${emp.name}」`)
+    // 若删除的是当前档案选中的员工，清空右侧档案面板
+    if (selectedEmp.value?.id === emp.id) {
+      selectedEmp.value = null
+      riskProfileData.value = null
+      riskProfileFailed.value = false
+    }
+    await loadUsers()
+    await loadOverview()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
 }
 </script>
 

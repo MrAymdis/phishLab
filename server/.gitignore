@@ -13,3 +13,13 @@ static/
 
 # Celery beat 状态文件
 celerybeat-schedule
+
+# License 供应商私钥（红线：绝不可入库）
+deploy/license/vendor_private.pem
+
+# 离线 wheel 依赖（体积大不入库；发布包构建时由联网机器生成）
+vendor/wheels/*
+!vendor/wheels/.gitkeep
+
+# 本地演练域名自签证书（开发演示用，生产用真实证书）
+certs/

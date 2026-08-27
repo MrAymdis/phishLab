@@ -23,7 +23,9 @@ class Campaign(Base, TimestampMixin):
     landing_page_id: Mapped[int | None] = mapped_column(BigInteger)
     channel_id: Mapped[int | None] = mapped_column(BigInteger)
     sender_profile_id: Mapped[int | None] = mapped_column(BigInteger)
-    domain_id: Mapped[int | None] = mapped_column(BigInteger)
+    # 演练级追踪/落地域覆盖（成对生效，空=沿用全局设置，见 settings.service.resolve_track_urls）
+    track_base_url: Mapped[str | None] = mapped_column(String(128), comment="演练级追踪域覆盖，空=全局设置")
+    landing_base_url: Mapped[str | None] = mapped_column(String(128), comment="演练级落地域覆盖，空=全局设置")
     target_mode: Mapped[str | None] = mapped_column(String(16), comment="dept/tag/csv/mix")
     target_snapshot: Mapped[dict | None] = mapped_column(JSON, comment="圈选条件快照")
     target_count: Mapped[int] = mapped_column(Integer, default=0)

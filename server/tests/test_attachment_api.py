@@ -65,22 +65,57 @@ def test_upload_rejects_macro_exe(_static_tmp):
         db.close()
 
 
-def test_delete_rejects_used(_static_tmp):
+def _add_campaign_with_attachment(db, pid, status="draft"):
+    c = Campaign(name=f"引用演练-{status}", type="mail", creator_id=1,
+                 target_mode="dept", target_snapshot={}, status=status)
+    db.add(c)
+    db.flush()
+    db.add(CampaignAttachment(campaign_id=c.id, payload_id=pid, deliver_mode="inline", sort=0))
+    db.commit()
+    return c
+
+
+def test_delete_rejects_sending_running_scheduled(_static_tmp):
+    """投递链路中的演练（待开始/发送中/追踪期）构成占用，删除被拒。"""
     db = SessionLocal()
     account = db.get(SysAccount, 1)
+    campaigns = []
     try:
-        pid = upload_attachment(db, account, "工资条.docx", b"PK", platform="")
-        c = Campaign(name="引用演练", type="mail", creator_id=1, target_mode="dept", target_snapshot={})
-        db.add(c)
-        db.flush()
-        db.add(CampaignAttachment(campaign_id=c.id, payload_id=pid, deliver_mode="inline", sort=0))
-        db.commit()
-
-        with pytest.raises(BizError) as ei:
-            delete_attachment(db, account, pid)
-        assert "无法删除" in ei.value.message
-        assert db.get(AttachmentPayload, pid) is not None  # 引用保护：记录保留
+        for status in ("scheduled", "sending", "running"):
+            pid = upload_attachment(db, account, f"工资条-{status}.docx", b"PK", platform="")
+            campaigns.append(_add_campaign_with_attachment(db, pid, status))
+            with pytest.raises(BizError) as ei:
+                delete_attachment(db, account, pid)
+            assert "无法删除" in ei.value.message
+            assert db.get(AttachmentPayload, pid) is not None  # 引用保护：记录保留
     finally:
+        for c in campaigns:
+            db.execute(delete(CampaignAttachment).where(CampaignAttachment.campaign_id == c.id))
+            db.execute(delete(Campaign).where(Campaign.id == c.id))
+        db.execute(delete(AttachmentPayload).where(AttachmentPayload.name.like("工资条-%")))
+        db.commit()
+        db.close()
+
+
+def test_delete_allows_paused_terminated_and_detaches(_static_tmp):
+    """草稿/暂停/终止不构成占用：删除成功且挂载行一并清理（不残留孤儿引用）。"""
+    db = SessionLocal()
+    account = db.get(SysAccount, 1)
+    campaigns = []
+    try:
+        for status in ("draft", "paused", "completed", "terminated"):
+            pid = upload_attachment(db, account, f"工资条-{status}.docx", b"PK", platform="")
+            campaigns.append(_add_campaign_with_attachment(db, pid, status))
+            delete_attachment(db, account, pid)
+            assert db.get(AttachmentPayload, pid) is None
+            links = db.scalar(select(CampaignAttachment.id)
+                              .where(CampaignAttachment.payload_id == pid))
+            assert links is None  # 挂载行已清理
+    finally:
+        for c in campaigns:
+            db.execute(delete(CampaignAttachment).where(CampaignAttachment.campaign_id == c.id))
+            db.execute(delete(Campaign).where(Campaign.id == c.id))
+        db.commit()
         db.close()
 
 

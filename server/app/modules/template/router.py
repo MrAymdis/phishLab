@@ -33,6 +33,7 @@ class LandingPageCreate(BaseModel):
     type: str  # mail_login/oa_login/pan_auth/custom/cloned
     html_content: str | None = None
     form_schema: dict | None = None
+    custom_path: str | None = None  # 仿真防识别：/ 或 /login.html 等；空 = 默认 /p/{slug}
 
 
 class CloneRequest(BaseModel):

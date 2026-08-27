@@ -39,7 +39,12 @@ _NONE_PAGE = """<!DOCTYPE html><html lang="zh"><head><meta charset="utf-8"><titl
 <body style="margin:0"></body></html>"""
 
 
-def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "") -> str:
+def _submit_path(page_path: str) -> str:
+    """页面路径 → 提交路径：根路径 / → /submit（避免 //submit）。"""
+    return page_path.rstrip("/") + "/submit"
+
+
+def _render_login_page(title: str, fields: list[dict], page_path: str, token: str = "") -> str:
     """渲染仿冒登录页：标题 + 表单字段 + 轻量指纹采集 JS（提交时回传）。"""
     from app.modules.template.service import FP_SCRIPT
     inputs = []
@@ -63,7 +68,7 @@ def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "
 <div style="width:360px;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:32px">
   <h2 style="text-align:center;color:#333;margin:0 0 8px">{title}</h2>
   <p style="text-align:center;color:#888;font-size:12px;margin:0 0 20px">统一身份认证中心</p>
-  <form method="post" action="/p/{slug}/submit" id="login-form" style="display:flex;flex-direction:column">
+  <form method="post" action="{_submit_path(page_path)}" id="login-form" style="display:flex;flex-direction:column">
     {fields_html}
     <input type="hidden" name="token" value="{token}" />
     <input type="hidden" name="fp" id="fp-input" value="" />
@@ -74,21 +79,25 @@ def _render_login_page(title: str, fields: list[dict], slug: str, token: str = "
 </body></html>""" + FP_SCRIPT
 
 
-def _render_custom_html(page, slug: str, token: str, submit_base: str = "") -> str:
+def _render_custom_html(page, slug: str, token: str, submit_base: str = "",
+                        custom_path: str = "") -> str:
     """渲染自定义/克隆页面：静态渲染 + 消毒 + 表单重定向 + token/指纹注入，
     逻辑收敛在 template.service.render_cloned_html（预览接口共用，保证一致）。
 
     submit_base 传演练域名（request.base_url）：克隆页 <base> 指向原站，表单 action
-    必须用绝对 URL，否则会被 base 劫持提交到原站域名。"""
+    必须用绝对 URL，否则会被 base 劫持提交到原站域名。
+    custom_path 为空时提交端点 = /p/{slug}/submit，非空时 = {custom_path}/submit。"""
     from app.modules.template.service import render_cloned_html
 
     return render_cloned_html(
-        page.html_content or "", slug, token, page.clone_from_url or "", submit_base
+        page.html_content or "", slug, token, page.clone_from_url or "",
+        submit_base, custom_path,
     )
 
 
-def _load_page_and_fields(slug: str) -> tuple[object | None, list[dict] | None]:
-    """slug → (LandingPage, 表单字段)；页面与字段单会话加载（避免同请求两次连接）。
+def _load_page_and_fields(slug: str | None = None,
+                          custom_path: str | None = None) -> tuple[object | None, list[dict] | None]:
+    """slug 或 custom_path（二选一）→ (LandingPage, 表单字段)；单会话加载（避免同请求两次连接）。
 
     page 为 None 或字段为空时返回 None/None，由调用方回退默认登录卡片。
     TODO(三期)：接入 Redis 缓存。
@@ -98,7 +107,9 @@ def _load_page_and_fields(slug: str) -> tuple[object | None, list[dict] | None]:
 
     db = SessionLocal()
     try:
-        page = db.query(LandingPage).filter(LandingPage.slug == slug).first()
+        q = db.query(LandingPage)
+        page = (q.filter(LandingPage.slug == slug).first() if slug is not None
+                else q.filter(LandingPage.custom_path == custom_path).first())
         if page is None:
             return None, None
         fields = [
@@ -191,16 +202,17 @@ def redirect(token: str, request: Request):
 
     演练域名解析到本服务（与 /px 同驻）；token 无效时兜底 placeholder 页。
     """
-    from app.modules.tracking.stream import push_event, resolve_landing_slug
+    from app.modules.tracking.stream import push_event, resolve_landing_path
 
-    slug = resolve_landing_slug(token)
+    slug, custom_path, _ = resolve_landing_path(token)
     if slug:
         push_event(
             token=token, event_type="click",
             ip=request.client.host if request.client else "",
             ua=request.headers.get("user-agent", ""),
         )
-    location = f"/p/{slug or 'placeholder'}"
+    # 自定义路径优先（仿真防识别：干净 URL），空则回退默认 /p/{slug}
+    location = custom_path or f"/p/{slug or 'placeholder'}"
     if slug:
         location += f"?token={token}"
     return RedirectResponse(location, status_code=302)
@@ -238,9 +250,9 @@ def attach_beacon(token: str, request: Request):
                     headers={"Cache-Control": "no-store"})
 
 
-@app.get("/p/{slug}", response_class=HTMLResponse)
-def serve(slug: str, request: Request, token: str = ""):
-    """渲染落地页：自定义/克隆页面渲染 html_content（消毒后），内置类型渲染通用登录卡片。
+def _serve_page(page, fields: list[dict] | None, page_path: str,
+                request: Request, token: str = ""):
+    """落地页渲染共用体：自定义/克隆页渲染 html_content（消毒后），内置类型渲染通用登录卡片。
     带 token 访问即记录 click 事件（点击邮件链接）。"""
     from app.modules.tracking.stream import push_event
 
@@ -250,22 +262,40 @@ def serve(slug: str, request: Request, token: str = ""):
             ip=request.client.host if request.client else "",
             ua=request.headers.get("user-agent", ""),
         )
-    page, fields = _load_page_and_fields(slug)
     if page is not None and page.html_content:
         return HTMLResponse(
-            _render_custom_html(page, slug, token, str(request.base_url)),
+            # 提交端点跟随受害者在看的 URL：/p/{slug} 或自定义路径，保持一致
+            _render_custom_html(page, page.slug, token, str(request.base_url), page_path),
             headers={"Cache-Control": "no-store"},
         )
-    if page is None:
-        title = "统一认证平台"
-    else:
-        title = page.name
+    title = page.name if page is not None else "统一认证平台"
     if not fields:
         fields = [
             {"field_key": "username", "label": "用户名"},
             {"field_key": "password", "label": "密码", "sensitive_flag": 1},
         ]
-    return _render_login_page(title, fields, slug, token=token)
+    return _render_login_page(title, fields, page_path, token=token)
+
+
+@app.get("/p/{slug}", response_class=HTMLResponse)
+def serve(slug: str, request: Request, token: str = ""):
+    """默认路径渲染：/p/{slug}（平台默认形态）。"""
+    page, fields = _load_page_and_fields(slug=slug)
+    return _serve_page(page, fields, f"/p/{slug}", request, token)
+
+
+@app.get("/{path:path}", response_class=HTMLResponse)
+def serve_custom(path: str, request: Request, token: str = ""):
+    """自定义路径兜底（注册在固定路由之后）：path 为空即根路径 /。
+
+    仅当 custom_path 与 /{path} 精确匹配时渲染（仿真防识别：干净 URL）；
+    未命中返回 404，演练域名任意路径不渲染仿冒页。
+    """
+    custom_path = f"/{path}" if path else "/"
+    page, fields = _load_page_and_fields(custom_path=custom_path)
+    if page is None:
+        return Response("Not Found", status_code=404)
+    return _serve_page(page, fields, custom_path, request, token)
 
 
 def _mask_value(value: str) -> str | None:
@@ -295,8 +325,7 @@ def _fp_hash(fp_json: str) -> str | None:
         return None
 
 
-@app.post("/p/{slug}/submit")
-async def submit(slug: str, request: Request):
+async def _submit(request: Request, slug: str):
     """表单捕获：所有字段 AES-GCM 加密入库（明文不落盘）；口令另存长度/首尾字符用于展示；
     账号等非口令字段存脱敏掩码用于展示；指纹组件哈希入库。
 
@@ -360,3 +389,24 @@ async def submit(slug: str, request: Request):
             url = f"/learn/{cid}" + (f"?token={quote(token)}" if token else "")
             return RedirectResponse(url, status_code=302)
     return HTMLResponse(_EDU_POPUP)
+
+
+@app.post("/p/{slug}/submit")
+async def submit(slug: str, request: Request):
+    """默认路径提交：POST /p/{slug}/submit。"""
+    return await _submit(request, slug)
+
+
+@app.post("/{path:path}")
+async def submit_custom(path: str, request: Request):
+    """自定义路径提交兜底（注册在固定路由之后）：POST {custom_path}/submit。
+
+    仅匹配已注册的自定义路径（根路径 / 的表单提交到 /submit），未命中返回 404。
+    """
+    if path != "submit" and not path.endswith("/submit"):
+        return Response("Not Found", status_code=404)
+    custom_path = "/" + path[: -len("/submit")] if path != "submit" else "/"
+    page, _ = _load_page_and_fields(custom_path=custom_path)
+    if page is None:
+        return Response("Not Found", status_code=404)
+    return await _submit(request, page.slug)

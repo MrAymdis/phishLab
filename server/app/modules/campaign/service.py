@@ -279,12 +279,27 @@ def _campaign_attachments(db, campaign_id: int) -> list[dict]:
             for ca, name, file_type in rows]
 
 
-def create_campaign(db, account, payload) -> int:
+def _validate_base_urls(payload, request_host: str | None = None) -> tuple[str | None, str | None]:
+    """演练级追踪/落地域校验：成对生效；格式/同域/协议走公共校验。返回规范化值或 (None, None)。"""
+    from app.modules.settings.service import validate_base_url
+
+    track = (payload.track_base_url or "").strip()
+    landing = (payload.landing_base_url or "").strip()
+    if bool(track) != bool(landing):
+        raise BizError(ErrorCode.PARAM_INVALID, "追踪域与落地域需成对配置，或同时留空（沿用全局设置）")
+    if not track:
+        return None, None
+    return (validate_base_url(track, request_host=request_host, key="track_base_url"),
+            validate_base_url(landing, request_host=request_host, key="landing_base_url"))
+
+
+def create_campaign(db, account, payload, request_host: str | None = None) -> int:
     """创建演练：授权校验 → 配额检查 → 目标展开 → target+token → 切批次。"""
     if not payload.auth_confirmed:
         raise BizError(ErrorCode.PARAM_INVALID, "必须勾选授权确认")
     _validate_time_range(payload.schedule_type, payload.schedule_at, payload.ended_at)
     check_quota(db, "campaign", 1)
+    track_base_url, landing_base_url = _validate_base_urls(payload, request_host)
 
     snapshot = payload.target_snapshot or {}
     user_ids = _expand_target_ids(db, payload.target_mode, snapshot)
@@ -300,7 +315,8 @@ def create_campaign(db, account, payload) -> int:
         landing_page_id=payload.landing_page_id,
         channel_id=payload.channel_id,
         sender_profile_id=payload.sender_profile_id,
-        domain_id=payload.domain_id,
+        track_base_url=track_base_url,
+        landing_base_url=landing_base_url,
         target_mode=payload.target_mode,
         target_snapshot=snapshot,
         target_count=len(user_ids),
@@ -362,7 +378,8 @@ def duplicate_campaign(db, account, campaign_id: int) -> int:
         landing_page_id=src.landing_page_id,
         channel_id=src.channel_id,
         sender_profile_id=src.sender_profile_id,
-        domain_id=src.domain_id,
+        track_base_url=src.track_base_url,
+        landing_base_url=src.landing_base_url,
         target_mode=src.target_mode,
         target_snapshot=payload_snapshot,
         target_count=len(user_ids),
@@ -428,7 +445,8 @@ def get_campaign(db, account, campaign_id: int):
         "landing_page_id": c.landing_page_id,
         "channel_id": c.channel_id,
         "sender_profile_id": c.sender_profile_id,
-        "domain_id": c.domain_id,
+        "track_base_url": c.track_base_url,
+        "landing_base_url": c.landing_base_url,
         "started_at": _dt(c.started_at),
         "ended_at": _dt(c.ended_at),
         "created_at": _dt(c.created_at),
@@ -436,7 +454,7 @@ def get_campaign(db, account, campaign_id: int):
     }
 
 
-def update_draft(db, account, campaign_id: int, payload):
+def update_draft(db, account, campaign_id: int, payload, request_host: str | None = None):
     """向导草稿暂存（仅 draft/scheduled 可编辑，不触碰状态/目标数）。"""
     c = _get_or_404(db, account, campaign_id)
     if c.status not in ("draft", "scheduled"):
@@ -449,7 +467,7 @@ def update_draft(db, account, campaign_id: int, payload):
     c.landing_page_id = payload.landing_page_id
     c.channel_id = payload.channel_id
     c.sender_profile_id = payload.sender_profile_id
-    c.domain_id = payload.domain_id
+    c.track_base_url, c.landing_base_url = _validate_base_urls(payload, request_host)
     c.target_mode = payload.target_mode
     c.target_snapshot = payload.target_snapshot or {}
     c.schedule_type = payload.schedule_type
@@ -955,6 +973,7 @@ def delete_campaign(db, account, campaign_id: int) -> None:
     db.execute(CampaignBatch.__table__.delete().where(CampaignBatch.campaign_id == campaign_id))
     db.execute(CampaignStat.__table__.delete().where(CampaignStat.campaign_id == campaign_id))
     db.execute(CampaignAlert.__table__.delete().where(CampaignAlert.campaign_id == campaign_id))
+    db.execute(CampaignAttachment.__table__.delete().where(CampaignAttachment.campaign_id == campaign_id))
     db.delete(c)
     db.commit()
     # 受影响员工画像重算（与 track_stream/risk_recalc 同口径：中招=submit+attach_run）；

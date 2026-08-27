@@ -94,12 +94,15 @@ def redirect(token: str, request: Request):
 
     token 无效时兜底跳 placeholder 页（渲染默认登录卡片，无害）。
     """
-    from app.modules.tracking.stream import resolve_landing_slug
+    from app.modules.tracking.stream import resolve_landing_path
 
-    slug = resolve_landing_slug(token)
+    slug, custom_path, landing_base = resolve_landing_path(token)
     if slug:
         _emit(token, "click", request)
-    landing = f"{settings.landing_base_url}/p/{slug or 'placeholder'}"
+    # 自定义路径优先（仿真防识别：干净 URL），空则回退默认 /p/{slug}
+    path = custom_path or ("/p/" + (slug or "placeholder"))
+    # 落地域按演练级覆盖 > 平台设置 > .env 解析；解析为空（dev 未配置）时兜底 .env
+    landing = f"{landing_base or settings.landing_base_url}{path}"
     if slug:
         landing += f"?token={token}"
     return Response(status_code=302, headers={"Location": landing})

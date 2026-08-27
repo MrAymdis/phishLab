@@ -215,6 +215,27 @@ def create_dept(db: Session, account, payload: dict) -> int:
     return dept.id
 
 
+def update_dept(db: Session, account, dept_id: int, payload: dict) -> dict:
+    """重命名部门：仅改 name/code（path 由 id 组成不受影响），code=None 表示不变。"""
+    dept = db.get(EmpDept, dept_id)
+    if dept is None:
+        raise BizError(ErrorCode.NOT_FOUND, "部门不存在")
+    name = payload["name"].strip()
+    if not name:
+        raise BizError(ErrorCode.PARAM_INVALID, "部门名称不能为空")
+    old_name = dept.name
+    dept.name = name
+    if payload.get("code") is not None:
+        dept.code = payload["code"].strip() or None
+    db.commit()
+    record_audit(
+        db, account=account, module="org", action="update_dept",
+        target_type="emp_dept", target_id=str(dept.id),
+        detail={"old_name": old_name, "new_name": dept.name},
+    )
+    return {"id": dept.id, "name": dept.name}
+
+
 def sync_org(db: Session, account, source: str) -> dict:
     """触发组织架构同步（LDAP/企微/钉钉/飞书）。真实拉取比对 TODO(二期)。"""
     record_audit(db, account=account, module="org", action="sync_org", detail={"source": source})
@@ -378,14 +399,21 @@ def update_user(db: Session, account, user_id: int, payload: dict) -> dict:
 
 
 def delete_user(db: Session, account, user_id: int) -> dict:
-    """软删除：status=0 离职停用，不物理删除。"""
+    """软删除：status=0 离职停用，不物理删除。
+
+    同时释放邮箱唯一索引：email 加 `#del{id}` 后缀（# 在邮箱中非法，不会与真实邮箱
+    混淆；后缀完整保留 id，截断邮箱前缀也不影响唯一性）。否则重加同邮箱员工时
+    唯一约束（uk_emp_user_email）拦截 → 500。原始邮箱保留在审计日志 detail 中。
+    """
     user = _get_emp_user_or_404(db, account, user_id)
+    email_archived = user.email
     user.status = 0
+    user.email = f"{user.email[:100]}#del{user.id}"
     db.commit()
     record_audit(
         db, account=account, module="org", action="delete_user",
         target_type="emp_user", target_id=str(user.id),
-        detail={"email": user.email},
+        detail={"email": email_archived},
     )
     return {"id": user_id}
 

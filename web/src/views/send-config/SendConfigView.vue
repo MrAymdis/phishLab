@@ -140,7 +140,30 @@
         </el-tab-pane>
 
         <el-tab-pane label="域名与DNS" name="domain">
-          <div class="toolbar">
+          <el-card class="track-url-card" shadow="never">
+            <template #header>
+              <span>追踪与落地域（演练链接全局配置，所有通道共用）</span>
+            </template>
+            <el-form label-width="130px" size="default">
+              <el-form-item label="追踪域基础 URL">
+                <el-input v-model="domains.track_base_url"
+                  placeholder="https://t.example.com（点击 /t/{token}、像素 /px/、附件信标 /pa/ 所在域）" />
+              </el-form-item>
+              <el-form-item label="落地域基础 URL">
+                <el-input v-model="domains.landing_base_url"
+                  placeholder="https://p.example.com（落地页 /p/{slug} 所在域）" />
+              </el-form-item>
+              <el-form-item>
+                <el-button type="primary" size="small" @click="saveDomains">保存追踪与落地域</el-button>
+                <div class="track-url-hint">
+                  须与主平台不同域名（合规红线 3），生产环境必须 https；两项需成对配置，留空则回退演练绑定域名直连（开发模式）或 .env 配置。
+                  此处仅决定演练链接使用的域名，DNS 解析、Nginx 转发与 TLS 证书仍需在服务器侧配置。
+                </div>
+              </el-form-item>
+            </el-form>
+          </el-card>
+
+          <div class="toolbar" style="margin-top: 12px">
             <el-button type="primary" size="small" :icon="Plus" @click="openDomainDialog">新增域名</el-button>
           </div>
           <el-table :data="domainRows" size="small" class="dns-table" style="margin-top: 12px">
@@ -584,7 +607,7 @@ import { Plus, ArrowDown, Search, Promotion } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
-import { channelApi } from '@/api'
+import { channelApi, systemApi } from '@/api'
 
 type ChannelType = 'smtp' | 'ews' | 'sms'
 
@@ -1076,6 +1099,40 @@ const domainRows = ref<DomainRow[]>([
   { id: 4, domain: 'it-alert.top', spf: 'FAIL', dkim: 'FAIL', dmarc: 'FAIL', score: 62, last_check: '2026-08-14 03:00' },
 ])
 
+/** 追踪/落地域基础 URL（演练链接/像素使用的域名，渲染时经后端 resolve_track_urls 生效） */
+const domains = reactive({
+  track_base_url: '',
+  landing_base_url: '',
+})
+
+async function loadTrackUrls() {
+  try {
+    const s = (await systemApi.settings()) as Record<string, any>
+    if (s && typeof s === 'object') {
+      if (s.track_base_url) domains.track_base_url = s.track_base_url
+      if (s.landing_base_url) domains.landing_base_url = s.landing_base_url
+    }
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
+}
+
+const saveDomains = async () => {
+  const track = domains.track_base_url.trim()
+  const landing = domains.landing_base_url.trim()
+  // 成对生效（后端 resolve_track_urls 同口径）：单边配置不生效，提前拦截给提示
+  if (Boolean(track) !== Boolean(landing)) {
+    ElMessage.warning('追踪域与落地域需成对配置，或同时留空')
+    return
+  }
+  try {
+    await systemApi.updateSettings({ track_base_url: track, landing_base_url: landing })
+    ElMessage.success('追踪与落地域已保存')
+  } catch (err) {
+    ElMessage.error(`保存失败：${err instanceof Error ? err.message : String(err)}`)
+  }
+}
+
 // ============ 接口加载（失败保持空状态，拦截器统一提示） ============
 async function loadChannels() {
   try {
@@ -1262,6 +1319,7 @@ onMounted(() => {
   loadChannels()
   loadSenderProfiles()
   loadDomains()
+  loadTrackUrls()
 })
 </script>
 
@@ -1275,6 +1333,19 @@ onMounted(() => {
   }
   .stat-value { font-size: 24px; font-weight: 600; margin-top: 6px; }
   .stat-sub { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
+}
+.track-url-card {
+  :deep(.el-card__header) {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-primary);
+  }
+  .track-url-hint {
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    line-height: 1.6;
+    margin-top: 4px;
+  }
 }
 .toolbar {
   display: flex;

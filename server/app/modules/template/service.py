@@ -404,6 +404,8 @@ def list_landing_pages(db, account) -> list[dict]:
                 "type": p.type,
                 "source": p.source,
                 "typeText": _PAGE_TYPE_LABELS.get(p.type, p.type),
+                "slug": p.slug,
+                "custom_path": p.custom_path,
                 "fields": fields,
                 "collect": collect,
                 "used": used_map.get(p.id, 0),
@@ -1023,7 +1025,7 @@ def _render_coremail_shell(html: str) -> str:
 
 
 _FALLBACK_LOGIN = """<div style="max-width:360px;margin:0 auto;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,.08);padding:32px;font-family:'Microsoft YaHei',Arial,sans-serif;">
-<form method="post" action="{submit_base}/p/{slug}/submit" style="display:flex;flex-direction:column;gap:14px;">
+<form method="post" action="{action}" style="display:flex;flex-direction:column;gap:14px;">
   <h3 style="margin:0 0 8px;text-align:center;color:#333;font-size:18px;">账号登录</h3>
   <input type="text" name="uid" placeholder="用户名 / 邮箱" required style="width:100%;padding:11px 14px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:14px;" />
   <input type="password" name="password" placeholder="密码" required style="width:100%;padding:11px 14px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box;font-size:14px;" />
@@ -1034,13 +1036,13 @@ _FALLBACK_LOGIN = """<div style="max-width:360px;margin:0 auto;background:#fff;b
 </div>"""
 
 
-def _inject_fallback_login(html: str, slug: str, token: str, submit_base: str = "") -> str:
+def _inject_fallback_login(html: str, submit_action: str, token: str) -> str:
     """兜底表单注入策略：优先替换常见的 JS 占位容器，否则追加在 </body> 之前。
 
-    submit_base 传演练域名（如 http://p.example.com），表单 action 用绝对 URL，
-    避免被克隆页 <base>（原站域名）劫持；为空时退化为相对路径。
+    submit_action 传完整提交 URL（演练域名 + 页面路径 + /submit），
+    避免被克隆页 <base>（原站域名）劫持。
     """
-    form_html = _FALLBACK_LOGIN.format(slug=slug, token=token, submit_base=submit_base)
+    form_html = _FALLBACK_LOGIN.format(action=submit_action, token=token)
     # 1) 替换空 content / loginArea 容器
     for pattern in [
         r"<div\b[^>]*class\s*=\s*['\"]content['\"][^>]*>\s*</div>",
@@ -1055,15 +1057,53 @@ def _inject_fallback_login(html: str, slug: str, token: str, submit_base: str = 
     return html + form_html
 
 
+def _fill_input_names(html: str) -> str:
+    """为无 name 的输入域补名，保证原生表单提交时字段值能被捕获。
+
+    HTML 表单只提交带 name 的字段；原站 JS 提交型表单常常省略 name（靠脚本组装请求），
+    脚本剥离后这些字段的值会全部丢失（事件只剩指纹）。命名规则：
+    password 框 → password（重名加序号，submit 端点按 key 含 "pass" 分类口令字段）；
+    其余优先 id → placeholder → field；hidden/submit/button 等不补名（原站 CSRF 噪声）。
+    """
+    used: dict[str, int] = {}
+
+    def _fix(m: "re.Match") -> str:
+        tag = m.group(0)
+        existing = re.search(r"\s+name\s*=\s*[\"']([^\"']*)[\"']", tag, re.I)
+        if existing:
+            if existing.group(1):
+                used[existing.group(1)] = used.get(existing.group(1), 0) + 1
+            return tag
+        mtype = re.search(r"\s+type\s*=\s*[\"']?([\w-]+)", tag, re.I)
+        itype = (mtype.group(1) if mtype else "text").lower()
+        if itype in ("hidden", "submit", "button", "reset", "image", "file"):
+            return tag
+        if itype == "password":
+            base = "password"
+        else:
+            mid = re.search(r"\s+id\s*=\s*[\"']([^\"']+)[\"']", tag, re.I)
+            mph = re.search(r"\s+placeholder\s*=\s*[\"']([^\"']+)[\"']", tag, re.I)
+            base = (mid.group(1) if mid else mph.group(1) if mph else "field")
+        n = used.get(base, 0)
+        used[base] = n + 1
+        name = base if n == 0 else f"{base}_{n + 1}"
+        return tag[:-1].rstrip() + f' name="{name}">'
+
+    html = re.sub(r"<input\b[^>]*>", _fix, html, flags=re.I)
+    return re.sub(r"<textarea\b[^>]*>", _fix, html, flags=re.I)
+
+
 def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: str = "",
-                       submit_base: str = "") -> str:
+                       submit_base: str = "", custom_path: str = "") -> str:
     """克隆/自定义页服务端渲染 + 消毒，落地页服务与预览接口共用（所见即受害者所见）。
 
     1) Coremail 等 JS 渲染页面静态化：JS 模板+数据 → 静态壳（内容区/登录侧栏/背景），
        保证与原页视觉一致；
     2) 红线消毒：剥离脚本/内联事件/内嵌框架——原页登录 JS 会把口令发回真实系统，
        消毒后口令只进入本服务的提交端点（仅记录是否输入+长度）；
-    3) 相对资源解析（<base>）、表单重定向到 submit_base/p/{slug}/submit、注入 token/指纹隐藏域。
+    3) 相对资源解析（<base>）、表单重定向到 submit 端点、注入 token/指纹隐藏域。
+       custom_path 为空时提交端点 = {submit_base}/p/{slug}/submit（默认），
+       非空时 = {submit_base}{custom_path}/submit（仿真防识别：干净路径）。
        submit_base 传演练域名：页面 <base> 指向原站（热链资源），root-relative action
        会被劫持到原站域名，必须用绝对 URL 提交到本服务。
     """
@@ -1106,13 +1146,15 @@ def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: st
             flags=re.I,
         )
 
-    # 3) 表单重定向：action → /p/{slug}/submit（POST），注入 token 与指纹隐藏域
+    # 3) 表单重定向：action → 提交端点（POST），注入 token 与指纹隐藏域
     inject = (
         f'<input type="hidden" name="token" value="{token}" />'
         f'<input type="hidden" name="fp" id="fp-input" value="" />'
     )
 
-    submit_action = f"{submit_base}/p/{slug}/submit" if submit_base else f"/p/{slug}/submit"
+    # 根路径 custom_path="/" → 提交端点 /submit（rstrip 避免 //submit）
+    page_path = (custom_path or f"/p/{slug}").rstrip("/")
+    submit_action = f"{submit_base}{page_path}/submit" if submit_base else f"{page_path}/submit"
 
     def _rewrite_form(m: "re.Match") -> str:
         tag = m.group(0)
@@ -1146,11 +1188,14 @@ def render_cloned_html(html: str, slug: str, token: str = "", clone_from_url: st
         flags=re.I,
     )
 
-    # 5) 目标站登录表单可能完全由 JS 生成（静态化后仍无表单）：注入兜底登录表单
-    if not re.search(r"<form\b", html, re.I):
-        html = _inject_fallback_login(html, slug, token, submit_base)
+    # 5) 无 name 输入域补名（原站 JS 提交型表单省略 name，脚本剥离后值会全部丢失）
+    html = _fill_input_names(html)
 
-    # 6) 注入指纹采集（存在 </body> 则前置，否则追加文末）
+    # 6) 目标站登录表单可能完全由 JS 生成（静态化后仍无表单）：注入兜底登录表单
+    if not re.search(r"<form\b", html, re.I):
+        html = _inject_fallback_login(html, submit_action, token)
+
+    # 7) 注入指纹采集（存在 </body> 则前置，否则追加文末）
     if re.search(r"</body\s*>", html, re.I):
         html = re.sub(r"</body\s*>", FP_SCRIPT + "</body>", html, count=1, flags=re.I)
     else:
@@ -1176,6 +1221,7 @@ def get_landing_page(db, account, page_id: int) -> dict:
         "type": p.type,
         "typeText": _PAGE_TYPE_LABELS.get(p.type, p.type),
         "slug": p.slug,
+        "custom_path": p.custom_path,
         "html_content": html,
         "form_schema": fs,
         "fields": [
@@ -1202,20 +1248,65 @@ def get_landing_page_preview(db, account, page_id: int) -> dict:
                           self_owner_col=LandingPage.created_by, allow_null_owner=True,
                           msg="落地页不存在")
     raw = p.html_content or _default_landing_html(p.type, p.name)
+    # 提交端点与线上一致：演练域名 + 自定义路径（空则 /p/{slug}）——预览所见即受害者所见
+    from app.modules.settings.service import get_setting, resolve_track_urls
+
+    _, landing_base = resolve_track_urls(db)
+    if not landing_base:
+        drill_domain = get_setting(db, "drill_domain", "drill-domain.com")
+        landing_base = f"http://{drill_domain}:{settings.landing_port}"
     return {
         "id": p.id,
         "slug": p.slug,
-        "html_content": render_cloned_html(raw, p.slug, "", p.clone_from_url or ""),
+        "custom_path": p.custom_path,
+        "html_content": render_cloned_html(raw, p.slug, "", p.clone_from_url or "",
+                                           landing_base, p.custom_path or ""),
     }
+
+
+def _validate_custom_path(value) -> str | None:
+    """自定义路径校验（仿真防识别）：以 / 开头、不占用平台保留前缀、不含 ?#、≤64 字符。
+
+    空串/None = 使用默认 /p/{slug}（返回 None）。保留前缀：/p/ /t/ /px/ /pa/ /learn/ /health，
+    与落地页/追踪服务的固定路由隔离，避免自定义路径被特定路由遮蔽。
+    """
+    v = (value or "").strip()
+    if not v:
+        return None
+    if not v.startswith("/"):
+        raise BizError(ErrorCode.PARAM_INVALID, "自定义路径必须以 / 开头（如 / 或 /login.html）")
+    for prefix in ("/p/", "/t/", "/px/", "/pa/", "/learn/", "/health"):
+        if v == prefix.rstrip("/") or v.startswith(prefix):
+            raise BizError(ErrorCode.PARAM_INVALID, f"自定义路径不能使用平台保留路径（{prefix}…）")
+    if any(c in v for c in "?#"):
+        raise BizError(ErrorCode.PARAM_INVALID, "自定义路径不能包含 ? 或 #")
+    if len(v) > 64:
+        raise BizError(ErrorCode.PARAM_INVALID, "自定义路径长度不能超过 64 字符")
+    return v
+
+
+def _check_custom_path_taken(db, custom_path: str, exclude_id: int | None = None) -> None:
+    """自定义路径全局唯一检查（DB unique 约束兜底，此处先行返回友好错误）。"""
+    stmt = select(LandingPage.id).where(LandingPage.custom_path == custom_path)
+    if exclude_id is not None:
+        stmt = stmt.where(LandingPage.id != exclude_id)
+    if db.scalar(stmt) is not None:
+        raise BizError(ErrorCode.BIZ_CONFLICT, "该自定义路径已被其他落地页占用")
 
 
 def create_landing_page(db, account, payload: dict) -> int:
     """新建落地页：slug 随机生成，form_schema.fields 落 landing_form_field。"""
+    from sqlalchemy.exc import IntegrityError
+
     form_schema = payload.get("form_schema") or {}
+    custom_path = _validate_custom_path(payload.get("custom_path"))
+    if custom_path:
+        _check_custom_path_taken(db, custom_path)
     page = LandingPage(
         name=payload["name"],
         type=payload.get("type") or "custom",
         slug=secrets.token_hex(6),
+        custom_path=custom_path,
         html_content=payload.get("html_content"),
         form_schema=form_schema or None,
         source="custom",
@@ -1235,7 +1326,11 @@ def create_landing_page(db, account, payload: dict) -> int:
                 sort=int(f.get("sort") or idx),
             )
         )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise BizError(ErrorCode.BIZ_CONFLICT, "该自定义路径已被其他落地页占用")
     db.refresh(page)
     record_audit(
         db, account=account, module="template", action="create_landing_page",
@@ -1245,7 +1340,9 @@ def create_landing_page(db, account, payload: dict) -> int:
 
 
 def update_landing_page(db, account, page_id: int, payload: dict) -> None:
-    """更新落地页：同步 form_schema、html_content、表单字段。"""
+    """更新落地页：同步 form_schema、html_content、表单字段；custom_path 传空串清除。"""
+    from sqlalchemy.exc import IntegrityError
+
     p = get_scoped_or_404(db, account, LandingPage, page_id,
                           self_owner_col=LandingPage.created_by, allow_null_owner=True,
                           msg="落地页不存在")
@@ -1253,6 +1350,11 @@ def update_landing_page(db, account, page_id: int, payload: dict) -> None:
         p.name = payload["name"]
     if "type" in payload:
         p.type = payload["type"]
+    if "custom_path" in payload:
+        custom_path = _validate_custom_path(payload.get("custom_path"))
+        if custom_path:
+            _check_custom_path_taken(db, custom_path, exclude_id=page_id)
+        p.custom_path = custom_path
     if "html_content" in payload:
         p.html_content = payload["html_content"] or None
     if "form_schema" in payload:
@@ -1272,7 +1374,11 @@ def update_landing_page(db, account, page_id: int, payload: dict) -> None:
                     sort=int(f.get("sort") or idx),
                 )
             )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise BizError(ErrorCode.BIZ_CONFLICT, "该自定义路径已被其他落地页占用")
     record_audit(
         db, account=account, module="template", action="update_landing_page",
         target_type="landing_page", target_id=page_id,
@@ -1432,13 +1538,28 @@ def download_attachment(db, account, payload_id: int, ip: str = "") -> tuple[str
 
 
 def delete_attachment(db, account, payload_id: int) -> None:
-    """删除附件载荷：已被演练引用时拒绝；文件与库记录一并清理，全程审计。"""
+    """删除附件载荷：仅投递链路中的演练（scheduled/sending/running）构成占用；文件与库记录一并清理，全程审计。
+
+    待开始演练到点自动投递、无人在环，同样构成占用；草稿/暂停解除挂载即可
+    删除（恢复演练是人工动作，届时详情页可见附件已移除）；已终止/已完成
+    不构成占用（历史关联行随载荷删除一并清理，避免残留孤儿引用）。
+    """
+    from app.modules.campaign.models import Campaign
+
     p = get_scoped_or_404(db, account, AttachmentPayload, payload_id,
                           self_owner_col=AttachmentPayload.created_by, allow_null_owner=True)
-    used = db.scalar(select(func.count(CampaignAttachment.id))
-                     .where(CampaignAttachment.payload_id == payload_id)) or 0
+    used = db.scalar(
+        select(func.count(CampaignAttachment.id))
+        .join(Campaign, Campaign.id == CampaignAttachment.campaign_id)
+        .where(CampaignAttachment.payload_id == payload_id,
+               Campaign.status.in_(("scheduled", "sending", "running")))
+    ) or 0
     if used:
-        raise BizError(ErrorCode.BIZ_CONFLICT, f"附件已被 {used} 个演练引用，无法删除")
+        raise BizError(ErrorCode.BIZ_CONFLICT,
+                       f"附件正被 {used} 个待开始/发送中/追踪期演练使用，无法删除")
+    # 解除全部挂载（含草稿/暂停等非占用演练），不残留孤儿引用
+    db.execute(CampaignAttachment.__table__.delete()
+               .where(CampaignAttachment.payload_id == payload_id))
     abs_path = Path(settings.static_dir) / (p.file_path or "")
     db.delete(p)
     db.commit()

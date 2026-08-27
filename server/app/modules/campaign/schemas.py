@@ -13,7 +13,8 @@ class CampaignCreate(BaseModel):
     landing_page_id: int | None = None
     channel_id: int | None = None
     sender_profile_id: int | None = None
-    domain_id: int | None = None
+    track_base_url: str | None = Field(None, max_length=128, description="演练级追踪域覆盖，空=沿用全局设置")
+    landing_base_url: str | None = Field(None, max_length=128, description="演练级落地域覆盖，空=沿用全局设置")
     target_mode: Literal["dept", "tag", "csv", "mix"] = "dept"
     target_snapshot: dict = Field(default_factory=dict, description="部门/分组/标签/CSV 圈选快照")
     schedule_type: Literal["now", "timed"] = "now"

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query, Request
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
 
@@ -36,8 +36,8 @@ def list_campaigns(
 
 
 @campaigns.post("", summary="创建演练（7步向导）", dependencies=[Depends(require_perm("campaign:create"))])
-def create(payload: schemas.CampaignCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok({"id": service.create_campaign(db, account, payload)})
+def create(payload: schemas.CampaignCreate, request: Request, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"id": service.create_campaign(db, account, payload, request_host=request.url.hostname)})
 
 
 @campaigns.get("/{cid}", summary="演练详情")
@@ -56,8 +56,8 @@ def delete(cid: int, account=Depends(get_current_account), db: Session = Depends
 
 
 @campaigns.put("/{cid}/draft", summary="向导草稿暂存", dependencies=[Depends(require_perm("campaign:control"))])
-def save_draft(cid: int, payload: schemas.CampaignCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
-    return resp.ok(service.update_draft(db, account, cid, payload))
+def save_draft(cid: int, payload: schemas.CampaignCreate, request: Request, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.update_draft(db, account, cid, payload, request_host=request.url.hostname))
 
 
 @campaigns.post("/{cid}/start", summary="启动", dependencies=[Depends(require_perm("campaign:control"))])

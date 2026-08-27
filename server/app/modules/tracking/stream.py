@@ -36,34 +36,40 @@ def _client() -> redis.Redis:
     return redis.from_url(settings.redis_url, decode_responses=True)
 
 
-def resolve_landing_slug(token: str) -> str | None:
-    """token → 演练落地页 slug（点击跳转 /t/{token} 用）。
+def resolve_landing_path(token: str) -> tuple[str | None, str | None, str]:
+    """token → (slug, custom_path, landing_base)，点击跳转 /t/{token} 用。
 
-    只读查询（红线：追踪侧禁止写 MySQL）；token 无效返回 None，调用方兜底。
+    custom_path 非空时优先（仿真防识别：根路径 /login.html 等干净 URL），
+    空则回退默认 /p/{slug}；landing_base 按演练级覆盖 > 平台设置 > .env 解析
+    （track 服务拼 302 绝对 URL 用，不可直接读 .env——设置页配置的平台级落地域会失效）。
+    只读查询（红线：追踪侧禁止写 MySQL）；
+    token 无效返回 (None, None, landing_base)，调用方兜底。
     """
     from sqlalchemy import select
 
     from app.db.session import SessionLocal
     from app.modules.campaign.models import Campaign, CampaignTarget
+    from app.modules.settings.service import resolve_track_urls
     from app.modules.template.models import LandingPage
 
     if not token:
-        return None
+        return None, None, ""
     try:
         db = SessionLocal()
         try:
             target = db.scalar(select(CampaignTarget).where(CampaignTarget.token == token))
-            if target is None:
-                return None
-            campaign = db.get(Campaign, target.campaign_id)
-            if campaign is None or not campaign.landing_page_id:
-                return None
+            campaign = db.get(Campaign, target.campaign_id) if target is not None else None
+            _, landing_base = resolve_track_urls(db, campaign)
+            if target is None or campaign is None or not campaign.landing_page_id:
+                return None, None, landing_base
             page = db.get(LandingPage, campaign.landing_page_id)
-            return page.slug if page else None
+            if page is None:
+                return None, None, landing_base
+            return page.slug, page.custom_path, landing_base
         finally:
             db.close()
     except Exception:
-        return None  # DB 异常回退兜底跳转，不阻断链路
+        return None, None, ""  # DB 异常回退兜底跳转，不阻断链路
 
 
 def push_event(*, token: str, event_type: str, ip: str = "", ua: str = "",

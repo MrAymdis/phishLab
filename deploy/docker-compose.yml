@@ -46,6 +46,9 @@ services:
       redis:
         condition: service_started
     working_dir: /srv/phishlab/server
+    volumes:
+      # 附件/落地页资源统一落共享卷：worker 投递时读取、容器重建不丢文件
+      - static_data:/srv/phishlab/server/static
 
   worker:
     build:
@@ -58,6 +61,9 @@ services:
       REDIS_URL: redis://redis:6379/0
     depends_on: [mysql, redis]
     working_dir: /srv/phishlab/server
+    volumes:
+      # 与 server 共享附件目录：投递渲染时按 file_path 读载荷字节
+      - static_data:/srv/phishlab/server/static
     deploy:
       replicas: 2
 
@@ -80,6 +86,8 @@ services:
     command: uvicorn track.main:app --host 0.0.0.0 --port 8081
     env_file: ../server/.env
     environment:
+      # /t/{token} 需只读查 landing_page（resolve_landing_path），DB 同样指向容器内网
+      DATABASE_URL: mysql+pymysql://phishlab:phishlab@mysql:3306/phishlab?charset=utf8mb4
       REDIS_URL: redis://redis:6379/0
     depends_on: [redis]
     working_dir: /srv/phishlab/server
@@ -92,6 +100,8 @@ services:
     command: uvicorn landing.main:app --host 0.0.0.0 --port 8082
     env_file: ../server/.env
     environment:
+      # 落地页渲染/表单捕获需查 landing_page 与 campaign 策略，DB 同样指向容器内网
+      DATABASE_URL: mysql+pymysql://phishlab:phishlab@mysql:3306/phishlab?charset=utf8mb4
       REDIS_URL: redis://redis:6379/0
     depends_on: [redis]
     working_dir: /srv/phishlab/server
@@ -110,3 +120,4 @@ volumes:
   mysql_data:
   redis_data:
   minio_data:
+  static_data:

@@ -258,11 +258,6 @@
                 <div>🔐 加密：{{ ch.ssl ? 'SSL/TLS' : 'STARTTLS' }}</div>
                 <div>📦 每日上限：{{ ch.daily_limit.toLocaleString() }} 封</div>
                 <div>📊 送达评分：{{ ch.score }} 分 · 最近测试：{{ ch.last_test }}</div>
-                <div class="dns-badges" v-if="selectedDomain">
-                  <span class="badge" :class="dnsOk(selectedDomain.spf) ? 'badge-success' : 'badge-warning'">SPF {{ dnsOk(selectedDomain.spf) ? '✓' : '✗' }}</span>
-                  <span class="badge" :class="dnsOk(selectedDomain.dkim) ? 'badge-success' : 'badge-warning'">DKIM {{ dnsOk(selectedDomain.dkim) ? '✓' : '✗' }}</span>
-                  <span class="badge" :class="dnsOk(selectedDomain.dmarc) ? 'badge-success' : 'badge-warning'">DMARC {{ dnsOk(selectedDomain.dmarc) ? '✓' : '✗' }}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -308,17 +303,20 @@
             </p>
           </div>
           <div class="form-group">
-            <label class="form-label">追踪落地域名<span class="required">*</span></label>
-            <p class="form-hint" style="margin-bottom:8px;">决定邮件内落地页链接、追踪像素与附件信标走哪个演练域名（与 From 伪装无关）</p>
-            <el-select v-model="tplForm.spoof_domain" class="form-input">
-              <el-option
-                v-for="d in spoofDomains"
-                :key="d.id"
-                :label="d.domain"
-                :value="d.domain"
-              />
-            </el-select>
-            <p class="form-hint">{{ domainDnsHint }}</p>
+            <label class="form-label">追踪与落地域<span class="required">*</span></label>
+            <p class="form-hint" style="margin-bottom:8px;">
+              决定邮件内落地页链接、追踪像素与附件信标走哪个域名（与 From 伪装无关）。
+              留空沿用全局默认（发送配置 → 域名与DNS）；按演练覆盖可实现域名轮换——某域名被拉黑时单场切换不波及其他演练。
+            </p>
+            <div class="form-row">
+              <div class="form-group">
+                <el-input v-model="trackBaseUrl" class="form-input" :placeholder="globalTrackPlaceholder || '追踪域基础 URL，如 https://t.example.com'" />
+              </div>
+              <div class="form-group">
+                <el-input v-model="landingBaseUrl" class="form-input" :placeholder="globalLandingPlaceholder || '落地域基础 URL，如 https://p.example.com'" />
+              </div>
+            </div>
+            <p class="form-hint">须与主平台不同域名（红线 3），生产环境必须 https。</p>
           </div>
         </div>
         <div class="form-group">
@@ -505,7 +503,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElLink } from 'element-plus'
 import type { ElTree, UploadFile } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
-import { attachmentApi, campaignApi, orgApi, templateApi, channelApi, trainingApi } from '@/api'
+import { attachmentApi, campaignApi, orgApi, templateApi, channelApi, trainingApi, systemApi } from '@/api'
 
 const router = useRouter()
 const step = ref(0)
@@ -547,6 +545,15 @@ onMounted(() => {
     .catch(() => {})
   trainingApi.courses()
     .then((list) => { if (Array.isArray(list)) courses.value = list as { id: number; title: string; duration_min: number }[] })
+    .catch(() => {})
+  // 全局追踪/落地域默认值：向导留空即沿用，placeholder 展示当前值
+  systemApi.settings()
+    .then((s) => {
+      if (s && typeof s === 'object') {
+        globalTrackPlaceholder.value = (s as any).track_base_url ? `全局默认：${(s as any).track_base_url}` : '未配置全局默认（留空走演练域名直连）'
+        globalLandingPlaceholder.value = (s as any).landing_base_url ? `全局默认：${(s as any).landing_base_url}` : '未配置全局默认（留空走演练域名直连）'
+      }
+    })
     .catch(() => {})
   loadWizardAssets()
 })
@@ -660,7 +667,6 @@ const selectedTemplate = computed(() =>
   templates.value.find((t) => t.id === tplForm.template_id),
 )
 const landingPages = ref<{ id: number; name: string; tag: string; label: string; bg: string }[]>([])
-const spoofDomains = ref<{ id: number; domain: string; spf: string; dkim: string; dmarc: string }[]>([])
 const senderProfiles = ref<{ id: number; name: string; display_name: string; from_addr: string }[]>([])
 const senderProfileId = ref<number | null>(null)
 const sendChannels = ref<{ id: number; name: string; type: string; type_label: string; server?: string; port?: number; ssl?: boolean; daily_limit: number; score: number; status: string; is_default?: boolean; last_test?: string }[]>([])
@@ -668,8 +674,12 @@ const sendChannels = ref<{ id: number; name: string; type: string; type_label: s
 const tplForm = reactive({
   template_id: 0 as number,
   sender_name: '',
-  spoof_domain: '',
 })
+/** 演练级追踪/落地域覆盖（留空 = 沿用全局默认，见「发送配置 → 域名与DNS」） */
+const trackBaseUrl = ref('')
+const landingBaseUrl = ref('')
+const globalTrackPlaceholder = ref('')
+const globalLandingPlaceholder = ref('')
 
 async function loadWizardAssets() {
   try {
@@ -717,13 +727,6 @@ async function loadWizardAssets() {
     ElMessage.warning('落地页加载失败，请稍后在「素材模板」页确认')
   }
   try {
-    const list = (await channelApi.domains()) as { id: number; domain: string; spf: string; dkim: string; dmarc: string }[]
-    if (Array.isArray(list) && list.length) {
-      spoofDomains.value = list
-      if (!tplForm.spoof_domain && list[0]) tplForm.spoof_domain = list[0].domain
-    }
-  } catch { /* 域名加载失败不阻断 */ }
-  try {
     const list = (await channelApi.list()) as typeof sendChannels.value
     if (Array.isArray(list)) {
       sendChannels.value = list.filter((ch) => ch.type === 'smtp')
@@ -734,19 +737,6 @@ async function loadWizardAssets() {
   } catch { /* 通道加载失败不阻断 */ }
 }
 
-const selectedDomain = computed(() =>
-  spoofDomains.value.find((d) => d.domain === tplForm.spoof_domain),
-)
-const domainDnsHint = computed(() => {
-  const d = selectedDomain.value
-  if (!d) return 'DNS 状态未知'
-  const parts = [`SPF ${d.spf}`, `DKIM ${d.dkim}`, `DMARC ${d.dmarc}`]
-  return parts.join(' · ')
-})
-/** DNS 状态徽章判定：OK 通过；DMARC 已发布策略（reject/quarantine/none）视为已配置（发信域认证对齐即可通过） */
-function dnsOk(v: string) {
-  return v === 'OK' || v.startsWith('reject') || v.startsWith('quarantine') || v.startsWith('p=none')
-}
 const fieldOptions = ref([
   { val: 'account', label: '收集用户名/邮箱', checked: true },
   { val: 'password', label: '收集登录密码（不存储明文）', checked: true },
@@ -783,7 +773,6 @@ async function sendWizardTest() {
       template_id: tplForm.template_id || undefined,
       landing_page_id: landingForm.page_id || undefined,
       sender_name: selectedSenderProfile.value?.display_name || selectedSenderProfile.value?.name || undefined,
-      domain: tplForm.spoof_domain || undefined,
     })
     testResult.value = res.ok ? `✓ ${res.message}` : `✗ ${res.message}`
     if (res.ok) ElMessage.success('测试邮件已发送（含所选模板与落地页链接）')
@@ -908,7 +897,8 @@ async function submit() {
       attachment_ids: selectedAttachmentIds.value,
       landing_page_id: landingForm.page_id,
       channel_id: sendChannelId.value || null,
-      domain_id: selectedDomain.value?.id || null,
+      track_base_url: trackBaseUrl.value.trim() || null,
+      landing_base_url: landingBaseUrl.value.trim() || null,
       sender_profile_id: senderProfileId.value || null,
       schedule_type: triggerForm.mode === 'now' ? 'now' : 'timed',
       schedule_at: triggerForm.mode === 'schedule' ? triggerForm.schedule_time : null,

@@ -502,7 +502,7 @@
       <div v-loading="landingPreviewLoading" class="landing-preview-container">
         <div class="landing-preview-header">
           <div class="preview-row"><span class="preview-label">页面类型：</span><span>{{ landingPreviewData.typeText || '—' }}</span></div>
-          <div class="preview-row" v-if="landingPreviewData.slug"><span class="preview-label">访问路径：</span><span class="preview-slug">/p/{{ landingPreviewData.slug }}</span></div>
+          <div class="preview-row" v-if="landingPreviewData.slug"><span class="preview-label">访问路径：</span><span class="preview-slug">{{ landingPreviewData.custom_path || `/p/${landingPreviewData.slug}` }}</span></div>
           <div class="preview-row" v-if="landingPreviewData.fields.length"><span class="preview-label">表单字段：</span><span>{{ landingPreviewData.fields.map(f => f.label).join(' / ') }}</span></div>
         </div>
         <div class="email-preview-divider"></div>
@@ -551,6 +551,10 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="自定义路径">
+          <el-input v-model="landingForm.custom_path" placeholder="留空 = 默认 /p/{随机slug}；可设 / 或 /login.html（仿真防识别）" />
+          <div class="form-hint">访问地址变为「追踪/落地域 + 自定义路径」，如 https://oa-verify.cn/login.html；/ 表示根路径。全局唯一，不能使用平台保留路径（/p/ /t/ /px/ /pa/）。</div>
+        </el-form-item>
         <el-form-item label="HTML 内容">
           <div class="html-editor-wrap">
             <div class="html-editor-toolbar">
@@ -730,6 +734,8 @@ interface LandingPage {
   type: string
   source?: string
   typeText: string
+  slug?: string
+  custom_path?: string | null
   fields: number
   collect: number
   used: number
@@ -1056,17 +1062,18 @@ const landingPreviewData = reactive({
   type: '',
   typeText: '',
   slug: '',
+  custom_path: '',
   html_content: '',
   fields: [] as { name: string; label: string; input_type: string; required: boolean }[],
 })
 
-// 走真实链路预览（落地页服务 /p/{slug}），所见即受害者所见；不可达时回退 srcdoc。
+// 走真实链路预览（落地页服务，自定义路径优先），所见即受害者所见；不可达时回退 srcdoc。
 const landingSrcFailed = ref(false)
 const landingPreviewSrc = computed(() => {
-  const slug = landingPreviewData.slug
-  if (!slug) return ''
+  if (!landingPreviewData.slug) return ''
   const base = (import.meta.env.VITE_LANDING_BASE as string) || `http://${location.hostname}:8082`
-  return `${base}/p/${slug}`
+  const path = landingPreviewData.custom_path || `/p/${landingPreviewData.slug}`
+  return `${base}${path}`
 })
 
 async function previewLanding(row: LandingPage) {
@@ -1086,6 +1093,7 @@ async function previewLanding(row: LandingPage) {
     ]) as [Record<string, unknown>, Record<string, unknown>]
     landingPreviewData.html_content = (preview.html_content as string) || (detail.html_content as string) || ''
     landingPreviewData.slug = (detail.slug as string) || ''
+    landingPreviewData.custom_path = (detail.custom_path as string) || ''
     landingPreviewData.fields = (detail.fields as { name: string; label: string; input_type: string; required: boolean }[]) || []
   } catch {
     // 失败时由拦截器提示
@@ -1146,6 +1154,7 @@ const landingForm = reactive({
   id: 0,
   name: '',
   type: 'mail' as string,
+  custom_path: '',
   html_content: '',
   fields: ['用户名', '密码', '验证码'] as string[],
   edu: '⚠️ 您刚刚中招了！\n\n这是一次公司组织的安全演练。您刚刚在仿冒页面输入了账号密码，如果在真实场景中，您的凭据已被攻击者窃取。\n\n请牢记：\n1. 认准官方域名，不轻信邮件中的链接\n2. 输入密码前核对网址是否为 HTTPS 且域名正确\n3. 可疑邮件请及时通过举报通道上报安全团队',
@@ -1158,10 +1167,12 @@ async function openLandingDialog(row?: LandingPage) {
     landingForm.name = row.name
     landingForm.type = row.type
     landingForm.html_content = ''
+    landingForm.custom_path = ''
     landingForm.fields = ['用户名', '密码']
     try {
       const detail = await templateApi.getLandingPage(row.id) as Record<string, unknown>
       landingForm.html_content = (detail.html_content as string) || ''
+      landingForm.custom_path = (detail.custom_path as string) || ''
       const fields = (detail.fields as { label: string }[]) || []
       if (fields.length) landingForm.fields = fields.map(f => f.label || '字段')
     } catch {
@@ -1169,7 +1180,7 @@ async function openLandingDialog(row?: LandingPage) {
     }
   } else {
     Object.assign(landingForm, {
-      id: 0, name: '', type: 'mail', html_content: '',
+      id: 0, name: '', type: 'mail', custom_path: '', html_content: '',
       fields: ['用户名', '密码', '验证码'], redirect: 'edu',
     })
   }
@@ -1202,6 +1213,7 @@ async function saveLanding() {
     const payload = {
       name: landingForm.name,
       type: VIEW_TYPE_TO_PAGE[landingForm.type] ?? 'custom',
+      custom_path: landingForm.custom_path.trim() || null,
       html_content: landingForm.html_content,
       form_schema: {
         fields: landingForm.fields.map((label, i) => ({ label, input_type: 'text', sort: i })),

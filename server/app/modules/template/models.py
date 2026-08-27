@@ -38,6 +38,8 @@ class LandingPage(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(128), nullable=False)
     type: Mapped[str] = mapped_column(String(24), comment="mail_login/oa_login/pan_auth/custom/cloned")
     slug: Mapped[str] = mapped_column(String(48), unique=True, comment="URL: /p/{slug}")
+    # 自定义路径（仿真防识别）：如 /（根路径）、/login.html；空 = 默认 /p/{slug}。全局唯一。
+    custom_path: Mapped[str | None] = mapped_column(String(64), unique=True)
     html_content: Mapped[str | None] = mapped_column(MediumText)
     page_schema: Mapped[dict | None] = mapped_column(JSON, comment="构建器区块描述")
     form_schema: Mapped[dict | None] = mapped_column(JSON, comment="表单字段定义")

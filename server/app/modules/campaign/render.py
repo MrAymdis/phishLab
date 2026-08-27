@@ -4,6 +4,7 @@ Worker 批量投递与演练「测试发送」共用，保证测试邮件与真�
 """
 import hashlib
 import io
+import logging
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -12,8 +13,9 @@ from sqlalchemy import select
 
 from app.core.config import settings
 from app.core.qr import render_qr_png
-from app.modules.channel.models import PhishDomain, SendChannel, SenderProfile
+from app.modules.channel.models import SendChannel, SenderProfile
 from app.modules.org.models import EmpDept
+from app.modules.settings.service import resolve_track_urls
 from app.modules.template.models import EmailTemplate, LandingPage
 
 
@@ -229,16 +231,22 @@ def _render_xlsx_variant(raw: bytes, var_map: dict, pixel_url: str | None) -> by
 
 
 def _load_payload_bytes(payload) -> bytes | None:
-    """读取载荷文件字节；缺失返回 None（跳过该附件，不阻断投递）。"""
+    """读取载荷文件字节；缺失返回 None（跳过该附件，不阻断投递）。
+
+    缺失属异常（文件被删/容器间无共享卷），告警留痕便于排查，但不阻断投递。
+    """
     try:
         abs_path = Path(settings.static_dir) / (payload.file_path or "")
         return abs_path.read_bytes()
     except OSError:
+        logging.getLogger("phishlab.render").warning(
+            "附件文件缺失，投递时跳过 attachment=%s path=%s",
+            payload.name, abs_path)
         return None
 
 
 def _render_payload_attachments(db, campaign, user, target, token: str,
-                                var_map: dict, domain_name: str, track_attach: bool,
+                                var_map: dict, track_base: str, track_attach: bool,
                                 payload_rows: list | None) -> list[dict]:
     """演练附件载荷 → 每目标变体（docx 个性化 + beacon；其他类型透传）。
 
@@ -263,7 +271,7 @@ def _render_payload_attachments(db, campaign, user, target, token: str,
     # 同一 URL 无法区分"打开邮件"与"运行附件"，消费端事件维度会错位。
     pixel_url = None
     if user is not None and track_attach:
-        pixel_url = f"http://{domain_name}:{settings.landing_port}/pa/{token}.png"
+        pixel_url = f"{track_base}/pa/{token}.png"
 
     attachments: list[dict] = []
     for _ca, payload in payload_rows:
@@ -292,7 +300,7 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None,
 
     user 传 None 表示测试发送（收件人非演练目标员工），姓名/部门用演示值。
     target 传 CampaignTarget（真实投递）时附件变体落盘留痕；测试发送不传。
-    assets：批次投递预加载的共享实体 {tpl, lp, domain, ch, sp, users, depts, payloads}——
+    assets：批次投递预加载的共享实体 {tpl, lp, ch, sp, users, depts, payloads, base_urls}——
     千人规模批次避免每封重复查询；单封路径不传（走 db 查询）。
     """
     a = assets or {}
@@ -304,19 +312,27 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None,
         lp = a["lp"]
     else:
         lp = db.get(LandingPage, campaign.landing_page_id) if campaign.landing_page_id else None
-    if "domain" in a:
-        domain = a["domain"]
-    else:
-        domain = db.get(PhishDomain, campaign.domain_id) if campaign.domain_id else None
-    domain_name = domain.domain if domain else "drill-domain.com"
     slug = lp.slug if lp else "demo"
+    # 追踪/落地域名：演练级覆盖 > 设置页配置（resolve_track_urls，批次已预解析在 assets.base_urls）；
+    # dev 且未配置时沿用 http://{drill_domain}:{landing_port} 直连（开发机 hosts 映射后点击即可演示）
+    if "base_urls" in a:
+        track_base, landing_base = a["base_urls"]
+    else:
+        track_base, landing_base = resolve_track_urls(db, campaign)
+    if not track_base:
+        from app.modules.settings.service import get_setting
+
+        drill_domain = get_setting(db, "drill_domain", "drill-domain.com")
+        track_base = landing_base = f"http://{drill_domain}:{settings.landing_port}"
     # 链接追踪开关：开启时走 /t/{token} 短链跳转（记 click → 302 落地页，链接形态更真实，
-    # 落地页 slug 不直接暴露在邮件里）；关闭时直连落地页（无 token，点击不计入追踪）
+    # 落地页 slug 不直接暴露在邮件里）；关闭时直连落地页（无 token，点击不计入追踪）。
+    # 自定义路径优先（仿真防识别：根路径 /login.html 等干净 URL），空则回退默认 /p/{slug}
     track_link = tpl.track_link if tpl else 1
     if track_link:
-        landing_url = f"http://{domain_name}:{settings.landing_port}/t/{token}"
+        landing_url = f"{track_base}/t/{token}"
     else:
-        landing_url = f"http://{domain_name}:{settings.landing_port}/p/{slug}"
+        path = lp.custom_path if lp else None
+        landing_url = f"{landing_base}{path or f'/p/{slug}'}"
 
     dept = None
     if user is not None and user.dept_id:
@@ -362,13 +378,13 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None,
     track_pixel = tpl.track_pixel if tpl else 1
     if track_pixel:
         if campaign.pixel_degrade:
-            pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{token}.png"
+            pixel_url = f"{track_base}/px/{token}.png"
             html += (
                 f'<img src="{pixel_url}" width="120" height="30" '
                 f'style="border:0;display:block;margin-top:8px" alt="" />'
             )
         else:
-            pixel_url = f"http://{domain_name}:{settings.landing_port}/px/{token}.gif"
+            pixel_url = f"{track_base}/px/{token}.gif"
             html += (
                 f'<img src="{pixel_url}" width="1" height="1" '
                 f'style="border:0;width:1px;height:1px;opacity:0" alt="" />'
@@ -380,7 +396,7 @@ def render_campaign_email(db, campaign, user, token: str, to: str | None = None,
     if payload_rows is _MISSING:
         payload_rows = None  # 单封路径（测试发送）：render 内查询
     attachments += _render_payload_attachments(
-        db, campaign, user, target, token, var_map, domain_name, track_attach, payload_rows)
+        db, campaign, user, target, token, var_map, track_base, track_attach, payload_rows)
 
     # 发件人显示名：模板 sender → 通道名 → 演练伪装发件人（display_name/name）
     if "ch" in a:
