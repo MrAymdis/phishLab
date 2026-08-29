@@ -70,6 +70,7 @@ def _render_textcard(db, campaign, tpl, user, token: str, track_base: str) -> di
         "{{.Department}}": dept.name if dept else "",
         "{{.Date}}": datetime.now().strftime("%Y-%m-%d"),
         "{{.ResetURL}}": reset_url,
+        "{{.RestURL}}": reset_url,  # 兼容历史数据的常见拼写
     }
     title = (tpl.title if tpl and tpl.title else campaign.name)
     description = (tpl.description if tpl and tpl.description else "点击下方按钮查看详情")

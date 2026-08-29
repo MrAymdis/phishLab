@@ -814,8 +814,33 @@ def test_wecom(db, account, channel_id: int, wecom_template_id: int | None = Non
     if wecom_template_id and tpl is None:
         raise BizError(ErrorCode.NOT_FOUND, "企微消息模板不存在")
     if tpl is not None:
+        # 试发按真实投递同约定渲染模板变量（{{.FirstName}}/{{.Department}}/{{.Date}}/{{.ResetURL}}），
+        # 避免占位符原样出现在测试消息里；ResetURL 用演示短链（点击兜底 placeholder 页）
+        from app.modules.org.models import EmpDept
+        from app.modules.settings.service import resolve_track_urls
+
+        dept = db.get(EmpDept, emp.dept_id) if emp.dept_id else None
+        track_base, _landing_base = resolve_track_urls(db)
+        if tpl.url_mode == "custom" and tpl.custom_url:
+            reset_url = tpl.custom_url
+        elif track_base:
+            reset_url = f"{track_base}/t/demo"
+        else:
+            reset_url = "https://work.weixin.qq.com"
+        var_map = {
+            "{{.FirstName}}": emp.name or "同事",
+            "{{.Department}}": dept.name if dept else "",
+            "{{.Date}}": datetime.now().strftime("%Y-%m-%d"),
+            "{{.ResetURL}}": reset_url,
+            "{{.RestURL}}": reset_url,  # 兼容历史数据的常见拼写
+        }
         title = tpl.title or "测试消息"
         description = tpl.description or ""
+        btn_text = tpl.btn_text or "查看详情"
+        for k, v in var_map.items():
+            title = title.replace(k, v)
+            description = description.replace(k, v)
+            btn_text = btn_text.replace(k, v)
         if tpl.msg_type == "text":
             # 文本消息无标题栏且必须带 content，否则企微渲染空白气泡：
             # 标题+摘要拼入 content 兜底
@@ -826,9 +851,9 @@ def test_wecom(db, account, channel_id: int, wecom_template_id: int | None = Non
                 "msgtype": tpl.msg_type or "textcard",
                 "title": title,
                 "description": description,
-                "btntxt": tpl.btn_text,
+                "btntxt": btn_text,
                 "url": tpl.custom_url if tpl.url_mode == "custom" and tpl.custom_url
-                else "https://work.weixin.qq.com",
+                else reset_url,
             }
     else:
         msg = {"msgtype": "textcard", "title": "PhishLab 通道测试",

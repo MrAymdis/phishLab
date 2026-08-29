@@ -411,6 +411,42 @@ def test_test_wecom_invaliduser_reports_failure(monkeypatch):
     db.close()
 
 
+def test_test_wecom_renders_template_variables(monkeypatch):
+    """试发消息按真实投递约定渲染 {{.FirstName}}/{{.RestURL}} 等占位符。"""
+    monkeypatch.setattr("redis.from_url", lambda *a, **k: _FakeRedis())
+    monkeypatch.setattr(
+        "httpx.get", lambda url, params=None, timeout=None: SimpleNamespace(
+            json=lambda: {"errcode": 0, "access_token": "tok-1", "expires_in": 7200}))
+    from app.modules.settings import service as settings_service
+
+    monkeypatch.setattr(settings_service, "resolve_track_urls",
+                        lambda db, campaign=None: ("https://t.phishlab.cn", "https://l.phishlab.cn"))
+    sent = {}
+    monkeypatch.setattr("httpx.post", lambda url, params=None, json=None, timeout=None: (
+        sent.update(body=json) or
+        SimpleNamespace(json=lambda: {"errcode": 0, "errmsg": "ok"})))
+    db = SessionLocal()
+    ch = _wecom_channel(db)
+    db.add(WecomTemplate(name="变量模板", msg_type="textcard",
+                         title="{{.FirstName}} 演练", description="重置链接 {{.RestURL}}",
+                         status="approved", created_by=1))
+    db.commit()
+    tpl = db.scalar(select(WecomTemplate))
+    db.add(EmpUser(id=90006, name="张三", email="z90006@corp.com",
+                   dept_id=0, status=1, initial_risk=70, wecom_userid="zsan"))
+    db.commit()
+
+    result = channel_service.test_wecom(db, _account(db), ch.id,
+                                        wecom_template_id=tpl.id, to_userid="zsan")
+    assert result["ok"] is True
+    card = sent["body"]["textcard"]
+    assert card["title"] == "张三 演练"
+    assert card["description"] == "重置链接 https://t.phishlab.cn/t/demo"
+    assert card["url"] == "https://t.phishlab.cn/t/demo"
+    assert "{{." not in card["title"] and "{{." not in card["description"]
+    db.close()
+
+
 def test_send_wecom_message_text_without_content_falls_back(monkeypatch):
     """send 层防御：text 消息缺 content 时用 title/description 兜底，杜绝空白气泡。"""
     monkeypatch.setattr("redis.from_url", lambda *a, **k: _FakeRedis())
