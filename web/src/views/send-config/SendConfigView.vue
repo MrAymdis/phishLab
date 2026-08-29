@@ -28,6 +28,7 @@
                   <el-dropdown-item command="smtp">SMTP 通道</el-dropdown-item>
                   <el-dropdown-item command="ews">Exchange EWS 通道</el-dropdown-item>
                   <el-dropdown-item command="sms">短信机通道</el-dropdown-item>
+                  <el-dropdown-item command="wecom">企业微信通道</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -41,6 +42,7 @@
               <el-option label="SMTP" value="smtp" />
               <el-option label="Exchange EWS" value="ews" />
               <el-option label="短信机" value="sms" />
+              <el-option label="企业微信" value="wecom" />
             </el-select>
             <el-input
               v-model="channelKw"
@@ -74,6 +76,10 @@
                   <span>服务商</span><code>{{ c.provider }}</code>
                   <el-tag size="small" effect="plain">签名：{{ c.signature }}</el-tag>
                 </div>
+                <div class="ch-meta" v-else-if="c.type === 'wecom'">
+                  <span>企业ID</span><code>{{ c.wecom_corp_id }}</code>
+                  <el-tag size="small" effect="plain">应用：{{ c.wecom_app_name || c.wecom_agent_id }}</el-tag>
+                </div>
                 <div class="ch-score">
                   <span class="ch-score-label">送达评分</span>
                   <el-progress
@@ -95,6 +101,13 @@
                       :loading="testingChannelId === c.id"
                       @click="testChannel(c)"
                     >连通测试</el-button>
+                    <el-button
+                      v-if="c.type === 'wecom'"
+                      size="small"
+                      link
+                      type="primary"
+                      @click="testWecom(c)"
+                    >试发</el-button>
                     <el-button size="small" link type="danger" @click="deleteChannel(c)">删除</el-button>
                   </div>
                 </div>
@@ -353,7 +366,7 @@
         </template>
 
         <!-- 短信机 SMS 字段 -->
-        <template v-else>
+        <template v-else-if="channelForm.type === 'sms'">
           <el-form-item label="短信通道类型">
             <el-select v-model="channelForm.sms_provider" style="width: 100%">
               <el-option label="阿里云短信服务" value="aliyun" />
@@ -434,6 +447,42 @@
           <el-form-item label="短信模板ID">
             <el-input v-model="channelForm.sms_template_id" placeholder="如：SMS_123456789（留空则使用默认模板）" />
             <div class="form-hint">在短信服务商后台申请的模板编号</div>
+          </el-form-item>
+        </template>
+
+        <!-- 企业微信 WeCom 字段 -->
+        <template v-else>
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            title="自建应用消息 API 接入说明"
+            description="在企业微信管理后台「应用管理」创建自建应用，获取 CorpID、AgentId 与 Secret，并配置可信域名（红线3：卡片链接须落在独立演练域）。"
+            style="margin-bottom: 18px"
+          />
+          <el-row :gutter="16">
+            <el-col :span="12">
+              <el-form-item label="企业ID（CorpID）" prop="wecom_corp_id">
+                <el-input v-model="channelForm.wecom_corp_id" placeholder="如：ww1234567890abcdef" />
+              </el-form-item>
+            </el-col>
+            <el-col :span="12">
+              <el-form-item label="应用 AgentId" prop="wecom_agent_id">
+                <el-input v-model="channelForm.wecom_agent_id" placeholder="如：1000002" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+          <el-form-item label="应用 Secret" prop="wecom_secret">
+            <el-input
+              v-model="channelForm.wecom_secret"
+              type="password"
+              show-password
+              :placeholder="secretPlaceholder('输入应用 Secret')"
+            />
+          </el-form-item>
+          <el-form-item label="应用显示名">
+            <el-input v-model="channelForm.wecom_app_name" placeholder="如：企业IT服务中心（仅展示用）" />
+            <div class="form-hint">消息卡片顶部显示的应用名称（企微侧自定义名称/头像）</div>
           </el-form-item>
         </template>
 
@@ -598,6 +647,13 @@
         <el-button type="primary" :loading="senderTestLoading" @click="runSenderTest">发送测试邮件</el-button>
       </template>
     </el-dialog>
+
+    <WecomTestDialog
+      v-model="wecomTestVisible"
+      :channel-id="wecomTestChannel?.id ?? 0"
+      :channel-name="wecomTestChannel?.name"
+      @sent="loadChannels"
+    />
   </div>
 </template>
 
@@ -605,11 +661,12 @@
 import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { Plus, ArrowDown, Search, Promotion } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import WecomTestDialog from '@/components/wecom/WecomTestDialog.vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
 import { channelApi, systemApi } from '@/api'
 
-type ChannelType = 'smtp' | 'ews' | 'sms'
+type ChannelType = 'smtp' | 'ews' | 'sms' | 'wecom'
 
 interface ChannelItem {
   id: number
@@ -640,10 +697,14 @@ interface ChannelItem {
   sms_port_dev?: string
   sms_baudrate?: number
   sms_sim?: string
+  wecom_corp_id?: string
+  wecom_agent_id?: string
+  wecom_app_name?: string
   has_smtp_pass?: boolean
   has_ews_pass?: boolean
   has_client_secret?: boolean
   has_sms_secret?: boolean
+  has_wecom_secret?: boolean
   daily_limit?: number
   is_default?: boolean
 }
@@ -700,6 +761,7 @@ const CHANNEL_TYPES: { value: ChannelType; label: string; desc: string }[] = [
   { value: 'smtp', label: 'SMTP', desc: '标准邮件发送协议' },
   { value: 'ews', label: 'Exchange (EWS)', desc: 'Office365 / 本地Exchange' },
   { value: 'sms', label: '短信机 (SMS)', desc: '短信网关API / 4G模块' },
+  { value: 'wecom', label: '企业微信', desc: '自建应用消息卡片投递' },
 ]
 const SCENE_TAGS = ['财务类', 'HR类', '系统类', '节假日', '中奖类', '安全类']
 
@@ -730,6 +792,11 @@ interface ChannelFormState {
   sms_port_dev: string
   sms_baudrate: string
   sms_sim: string
+  // 企业微信 WeCom
+  wecom_corp_id: string
+  wecom_agent_id: string
+  wecom_secret: string
+  wecom_app_name: string
   // 公共字段
   daily_limit: string
   is_default: boolean
@@ -743,6 +810,7 @@ function defaultChannelForm(type: ChannelType): ChannelFormState {
     ews_client_id: '', ews_client_secret: '', ews_tenant_id: '',
     sms_provider: 'aliyun', sms_url: '', sms_signature: '', sms_api_key: '', sms_api_secret: '',
     sms_template_id: '', sms_port_dev: '', sms_baudrate: '115200', sms_sim: '',
+    wecom_corp_id: '', wecom_agent_id: '', wecom_secret: '', wecom_app_name: '',
     daily_limit: '5000', is_default: false,
   }
 }
@@ -772,16 +840,20 @@ const channelRules = computed<FormRules>(() => {
       rules.ews_client_id = [req('请输入Client ID')]
       if (secretRequired) rules.ews_client_secret = [req('请输入Client Secret')]
     }
-  } else {
+  } else if (channelForm.type === 'sms') {
     rules.sms_url = [req(channelForm.sms_provider === '4g' ? '请输入管理IP' : '请输入API地址 / 网关URL')]
     rules.sms_signature = [req('请输入短信签名')]
     rules.sms_api_key = [req('请输入API Key')]
     if (secretRequired) rules.sms_api_secret = [req('请输入API Secret')]
+  } else if (channelForm.type === 'wecom') {
+    rules.wecom_corp_id = [req('请输入企业ID（CorpID）')]
+    rules.wecom_agent_id = [req('请输入应用 AgentId')]
+    if (secretRequired) rules.wecom_secret = [req('请输入应用 Secret')]
   }
   if (channelForm.type === 'sms') {
     rules.sender_sms_number = [req('请输入短信发送号码')]
     rules.sender_sms_sign = [req('请输入短信签名')]
-  } else {
+  } else if (channelForm.type !== 'wecom') {
     rules.sender_email = [
       req('请输入发件邮箱地址'),
       { type: 'email', message: '请输入正确的邮箱地址', trigger: ['blur', 'change'] },
@@ -836,7 +908,7 @@ function openChannelDialog(type: ChannelType, channel?: ChannelItem) {
       channelForm.ews_tenant_id = channel.oauth_tenant_id ?? ''
       channelForm.ews_pass = ''
       channelForm.ews_client_secret = ''
-    } else {
+    } else if (channel.type === 'sms') {
       channelForm.sms_provider = guessSmsProvider(channel.provider)
       channelForm.sms_signature = channel.signature ?? ''
       channelForm.sms_url = channel.sms_url ?? ''
@@ -846,6 +918,11 @@ function openChannelDialog(type: ChannelType, channel?: ChannelItem) {
       channelForm.sms_baudrate = channel.sms_baudrate != null ? String(channel.sms_baudrate) : '115200'
       channelForm.sms_sim = channel.sms_sim ?? ''
       channelForm.sms_api_secret = ''
+    } else {
+      channelForm.wecom_corp_id = channel.wecom_corp_id ?? ''
+      channelForm.wecom_agent_id = channel.wecom_agent_id ?? ''
+      channelForm.wecom_app_name = channel.wecom_app_name ?? ''
+      channelForm.wecom_secret = '' // 已设置：留空沿用密文
     }
   }
   channelDialogVisible.value = true
@@ -873,7 +950,7 @@ function buildChannelPayload(): Record<string, unknown> {
       ews_client_secret: channelForm.ews_client_secret,
       ews_tenant_id: channelForm.ews_tenant_id,
     }
-  } else {
+  } else if (channelForm.type === 'sms') {
     config = {
       sms_provider: channelForm.sms_provider,
       sms_url: channelForm.sms_url,
@@ -884,6 +961,13 @@ function buildChannelPayload(): Record<string, unknown> {
       sms_port_dev: channelForm.sms_port_dev,
       sms_baudrate: channelForm.sms_baudrate,
       sms_sim: channelForm.sms_sim,
+    }
+  } else {
+    config = {
+      wecom_corp_id: channelForm.wecom_corp_id,
+      wecom_agent_id: channelForm.wecom_agent_id,
+      wecom_secret: channelForm.wecom_secret,
+      wecom_app_name: channelForm.wecom_app_name,
     }
   }
   return {
@@ -1165,6 +1249,15 @@ async function testChannel(c: ChannelItem) {
   } finally {
     testingChannelId.value = null
   }
+}
+
+/** 企微试发：弹窗选取接收员工（在职且已配置 userid）后发送测试卡片消息 */
+const wecomTestVisible = ref(false)
+const wecomTestChannel = ref<ChannelItem | null>(null)
+
+function testWecom(c: ChannelItem) {
+  wecomTestChannel.value = c
+  wecomTestVisible.value = true
 }
 
 /** 删除通道：二次确认后调用后端删除并刷新列表 */

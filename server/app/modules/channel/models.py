@@ -12,7 +12,7 @@ class SendChannel(Base, TimestampMixin):
 
     id: Mapped[int] = pk()
     name: Mapped[str] = mapped_column(String(128), nullable=False)
-    type: Mapped[str] = mapped_column(String(8), comment="smtp/ews/sms")
+    type: Mapped[str] = mapped_column(String(8), comment="smtp/ews/sms/wecom")
     # SMTP
     smtp_host: Mapped[str | None] = mapped_column(String(128))
     smtp_port: Mapped[int | None] = mapped_column(Integer)
@@ -39,6 +39,11 @@ class SendChannel(Base, TimestampMixin):
     serial_port: Mapped[str | None] = mapped_column(String(64))
     baud_rate: Mapped[int | None] = mapped_column(Integer)
     sim_number: Mapped[str | None] = mapped_column(String(32))
+    # 企业微信（自建应用消息 API）
+    wecom_corp_id: Mapped[str | None] = mapped_column(String(64))
+    wecom_agent_id: Mapped[str | None] = mapped_column(String(32))
+    wecom_secret_enc: Mapped[bytes | None] = mapped_column(LargeBinary, comment="应用 Secret，AES-GCM加密（红线2）")
+    wecom_app_name: Mapped[str | None] = mapped_column(String(64), comment="应用显示名（仅展示；企微侧自定义名称/头像）")
     daily_limit: Mapped[int] = mapped_column(Integer, default=5000, comment="每日上限,超限顺延")
     is_default: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(12), default="normal", comment="normal/abnormal/disabled")

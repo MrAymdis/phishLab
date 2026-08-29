@@ -13,6 +13,9 @@ from app.core.config import settings
 from app.core.errors import BizError
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
+# 红线 2：httpx INFO 会整行打印带 corpsecret/access_token 的请求 URL——
+# 企微等外部调用日志降到 WARNING，避免密钥落日志
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("phishlab")
 
 # 有管理端路由的业务模块（tracking 仅模型，无路由）

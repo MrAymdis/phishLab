@@ -23,6 +23,14 @@ logger = logging.getLogger("phishlab.delivery")
 _SEND_JITTER_SEC = (0.5, 3.0)
 
 
+def _inter_target_delay_sec(campaign) -> tuple[float, float]:
+    """逐封发送间隔抖动区间：演练高级设置 time_jitter_sec 优先（防识别配置，
+    0=未开启），未配置回退内置小幅抖动。返回 random.uniform 的 (min, max)。"""
+    if getattr(campaign, "time_jitter_sec", 0) and campaign.time_jitter_sec > 0:
+        return (0.0, float(campaign.time_jitter_sec))
+    return _SEND_JITTER_SEC
+
+
 def _load_campaign_assets(db, campaign, target_ids: list[int]) -> dict:
     """批次共享实体一次加载：模板/落地页/通道/伪装发件人 + 批次内员工与部门 + 附件载荷。"""
     from app.modules.campaign.models import CampaignAttachment
@@ -180,8 +188,8 @@ def dispatch_due_batches():
 
     db = SessionLocal()
     try:
-        rows = db.scalars(
-            select(CampaignBatch)
+        rows = db.execute(
+            select(CampaignBatch, Campaign.type)
             .join(Campaign, Campaign.id == CampaignBatch.campaign_id)
             .where(
                 CampaignBatch.status == "pending",
@@ -190,7 +198,7 @@ def dispatch_due_batches():
             )
             .order_by(CampaignBatch.plan_at)
         ).all()
-        for b in rows:
+        for b, campaign_type in rows:
             # 原子认领：beat 兜底扫描与启动时手动派发并发时仅一方成功，
             # 防止同一批次被派发两次（否则两个 deliver_batch 重复发信）
             claimed = db.execute(
@@ -202,7 +210,13 @@ def dispatch_due_batches():
             if claimed.rowcount == 0:
                 continue  # 已被其他派发器认领
             try:
-                deliver_batch.delay(b.campaign_id, b.batch_no)
+                # social（企微）演练走企微投递任务；邮件/SMS 走邮件引擎
+                if campaign_type == "social":
+                    from worker.tasks.wecom_sender import deliver_wecom_batch
+
+                    deliver_wecom_batch.delay(b.campaign_id, b.batch_no)
+                else:
+                    deliver_batch.delay(b.campaign_id, b.batch_no)
             except Exception:
                 # 派发失败（如 Redis 不可用）回退 pending，等下次扫描重试，避免僵尸 sending 批次
                 logger.exception("批次派发失败 campaign=%s batch=%s", b.campaign_id, b.batch_no)
@@ -282,7 +296,7 @@ def deliver_batch(self, campaign_id: int, batch_no: int):
         sent = failed = 0
         for idx, t in enumerate(targets):
             if idx > 0:
-                time.sleep(random.uniform(*_SEND_JITTER_SEC))
+                time.sleep(random.uniform(*_inter_target_delay_sec(campaign)))
             try:
                 ok = _deliver_target(db, t, campaign, assets)
             except Exception as e:

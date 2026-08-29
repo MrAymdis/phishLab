@@ -145,6 +145,12 @@
             <el-table-column prop="pos" label="岗位" width="130" />
             <el-table-column prop="email" label="邮箱" min-width="180" />
             <el-table-column prop="phone" label="手机号" width="120" />
+            <el-table-column label="企业微信ID" width="130">
+              <template #default="{ row }">
+                <span v-if="row.wecomUserid" class="mono">{{ row.wecomUserid }}</span>
+                <el-tag v-else size="small" type="info" effect="plain">未配置</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="风险等级" width="110" align="center">
               <template #default="{ row }: { row: Employee }">
                 <span class="badge" :style="riskBadgeStyle(row.risk)">{{ riskMap[row.risk].label }}</span>
@@ -207,6 +213,9 @@
                 <div class="profile-meta-row">
                   <span>邮箱：<span class="mono">{{ selectedEmp.email }}</span></span>
                   <span>手机：<span class="mono">{{ selectedEmp.phone }}</span></span>
+                </div>
+                <div class="profile-meta-row">
+                  <span>企业微信ID：<span class="mono">{{ selectedEmp.wecomUserid || '未配置' }}</span></span>
                 </div>
               </div>
             </div>
@@ -329,6 +338,10 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="企业微信ID">
+          <el-input v-model="empForm.wecomUserid" placeholder="员工在企业微信的 userid（企微演练投递目标用）" />
+          <div class="form-hint">企微演练仅投递给已配置 userid 的员工；可在企业微信管理后台「通讯录」查看</div>
+        </el-form-item>
         <el-form-item label="标签">
           <div class="tag-chips">
             <span
@@ -460,6 +473,7 @@ interface Employee {
   pos: string
   email: string
   phone: string
+  wecomUserid: string
   risk: RiskLevel
   riskScore: number
   tags: string[]
@@ -829,6 +843,7 @@ const empForm = reactive({
   no: '',
   email: '',
   phone: '',
+  wecomUserid: '',
   dept: '技术部 / 研发组',
   pos: '',
   tags: [] as string[],
@@ -843,6 +858,7 @@ function openEmpDialog(row?: Employee) {
       no: row.no,
       email: row.email,
       phone: row.phone,
+      wecomUserid: row.wecomUserid,
       dept: row.dept,
       pos: row.pos,
       tags: [...row.tags],
@@ -855,6 +871,7 @@ function openEmpDialog(row?: Employee) {
       no: '',
       email: '',
       phone: '',
+      wecomUserid: '',
       dept: '技术部 / 研发组',
       pos: '',
       tags: [],
@@ -960,6 +977,7 @@ async function saveEmp() {
     emp_no: empForm.no,
     email: empForm.email,
     mobile: empForm.phone,
+    wecom_userid: empForm.wecomUserid.trim(),
     dept_id: findDeptId(empForm.dept),
     position: empForm.pos,
     tag_ids: tagIds,

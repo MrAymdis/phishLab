@@ -123,6 +123,76 @@ def _expand_target_ids(db, target_mode: str, snapshot: dict) -> list[int]:
     ).all())
 
 
+# ---------- 企业微信（social）演练 ----------
+
+# 授权勾选项快照键（红线4）。P0 强制前 3 项；OAuth 静默身份识别披露随 P1 溯源上线后强制
+_WECOM_AUTH_REQUIRED = ("wecom:written_auth", "wecom:domain_verified", "wecom:internal_only")
+_WECOM_AUTH_LABELS = {
+    "wecom:written_auth": "已获企业书面授权",
+    "wecom:domain_verified": "应用可信域名已配置",
+    "wecom:internal_only": "仅针对本企业成员",
+    "wecom:oauth_disclosed": "已向员工披露静默身份识别（OAuth）",
+}
+
+
+def _require_wecom_auth(payload) -> None:
+    """social 演练强制授权：快照须含全部企微专有条款（红线4，与 auth_confirmed 叠加校验）。"""
+    if payload.type != "social":
+        return
+    missing = [k for k in _WECOM_AUTH_REQUIRED if k not in (payload.auth_snapshot or [])]
+    if missing:
+        labels = "、".join(_WECOM_AUTH_LABELS.get(k, k) for k in missing)
+        raise BizError(ErrorCode.PARAM_INVALID, f"企业微信演练须勾选全部授权条款（缺：{labels}）")
+
+
+def _validate_wecom_campaign(db, payload) -> None:
+    """social 演练配置校验：授权条款 → 消息模板（须审核通过）→ 发送通道类型。"""
+    from app.modules.channel.models import SendChannel
+    from app.modules.template.models import WecomTemplate
+
+    _require_wecom_auth(payload)
+    if not payload.wecom_template_id:
+        raise BizError(ErrorCode.PARAM_INVALID, "企业微信演练须选择企微消息模板")
+    tpl = db.get(WecomTemplate, payload.wecom_template_id)
+    if tpl is None:
+        raise BizError(ErrorCode.NOT_FOUND, "企微消息模板不存在")
+    if tpl.status != "approved":
+        raise BizError(ErrorCode.PARAM_INVALID, "企微消息模板未审核通过，请先在模板管理完成审核")
+    if payload.channel_id:
+        ch = db.get(SendChannel, payload.channel_id)
+        if ch is None or ch.type != "wecom":
+            raise BizError(ErrorCode.PARAM_INVALID, "企业微信演练的发送通道须为企业微信类型")
+
+
+def _resolve_wecom_targets(db, target_mode: str, snapshot: dict) -> tuple[list[int], list[EmpUser]]:
+    """social 目标展开：仅保留已配置 wecom_userid 的员工；返回 (有效 id, 被跳过员工列表)。"""
+    user_ids = _expand_target_ids(db, target_mode, snapshot)
+    if not user_ids:
+        return [], []
+    with_userid = set(db.scalars(
+        select(EmpUser.id).where(
+            EmpUser.id.in_(user_ids),
+            EmpUser.wecom_userid.isnot(None),
+            EmpUser.wecom_userid != "",
+        )
+    ).all())
+    skipped = list(db.scalars(
+        select(EmpUser).where(EmpUser.id.in_(set(user_ids) - with_userid))
+    ).all())
+    return sorted(with_userid), skipped
+
+
+def _alert_skipped_wecom(db, campaign_id: int, skipped: list[EmpUser]) -> None:
+    """无 userid 被跳过员工的演练预警（目标展开告警，设计稿 §5.1）。"""
+    if not skipped:
+        return
+    names = "、".join(u.name for u in skipped[:5]) + ("等" if len(skipped) > 5 else "")
+    db.add(CampaignAlert(
+        campaign_id=campaign_id, type="wecom_no_userid", level=2,
+        message=f"{len(skipped)} 名目标员工未配置企业微信 userid 已跳过：{names}",
+    ))
+
+
 def list_campaigns(db, account, *, status=None, type=None, kw=None,
                    start_date: str | None = None, end_date: str | None = None,
                    page=1, page_size=20):
@@ -302,8 +372,16 @@ def create_campaign(db, account, payload, request_host: str | None = None) -> in
     track_base_url, landing_base_url = _validate_base_urls(payload, request_host)
 
     snapshot = payload.target_snapshot or {}
-    user_ids = _expand_target_ids(db, payload.target_mode, snapshot)
+    if payload.type == "social":
+        _validate_wecom_campaign(db, payload)
+        user_ids, skipped = _resolve_wecom_targets(db, payload.target_mode, snapshot)
+    else:
+        user_ids = _expand_target_ids(db, payload.target_mode, snapshot)
+        skipped = []
     if not user_ids:
+        if skipped:
+            raise BizError(ErrorCode.PARAM_INVALID,
+                           "所选目标均未配置企业微信 userid，请先在「用户和组」为员工补充 userid")
         raise BizError(ErrorCode.PARAM_INVALID, "未选择演练目标")
 
     campaign = Campaign(
@@ -333,6 +411,8 @@ def create_campaign(db, account, payload, request_host: str | None = None) -> in
         course_ids=payload.course_ids or [],
         force_training_rules=payload.force_training_rules or [],
         auth_confirmed=1,
+        auth_snapshot=payload.auth_snapshot or [],
+        wecom_template_id=payload.wecom_template_id,
         status="scheduled" if payload.schedule_type == "timed" else "draft",
     )
     db.add(campaign)
@@ -341,6 +421,9 @@ def create_campaign(db, account, payload, request_host: str | None = None) -> in
 
     # 附件载荷关联（直发模式）
     _sync_campaign_attachments(db, cid, payload.attachment_ids or [])
+
+    # 企微演练：无 userid 被跳过目标即时告警（目标展开告警）
+    _alert_skipped_wecom(db, cid, skipped)
 
     # 目标明细：唯一令牌贯穿像素/链接/落地页；按批次数轮转切批
     for i, uid in enumerate(user_ids):
@@ -366,7 +449,11 @@ def duplicate_campaign(db, account, campaign_id: int) -> int:
     """复制演练：基于原演练配置创建新草稿（目标按快照重新展开）。"""
     src = _get_or_404(db, account, campaign_id)
     payload_snapshot = src.target_snapshot or {}
-    user_ids = _expand_target_ids(db, src.target_mode, payload_snapshot) if payload_snapshot else []
+    if src.type == "social":
+        user_ids, skipped = _resolve_wecom_targets(db, src.target_mode, payload_snapshot)
+    else:
+        user_ids = _expand_target_ids(db, src.target_mode, payload_snapshot) if payload_snapshot else []
+        skipped = []
 
     new = Campaign(
         name=f"{src.name}（副本）",
@@ -393,6 +480,8 @@ def duplicate_campaign(db, account, campaign_id: int) -> int:
         course_ids=src.course_ids or [],
         force_training_rules=src.force_training_rules or [],
         auth_confirmed=1,
+        auth_snapshot=src.auth_snapshot or [],
+        wecom_template_id=src.wecom_template_id,
     )
     db.add(new)
     db.flush()
@@ -401,6 +490,7 @@ def duplicate_campaign(db, account, campaign_id: int) -> int:
         select(CampaignAttachment.payload_id)
         .where(CampaignAttachment.campaign_id == src.id)).all()]
     _sync_campaign_attachments(db, new.id, src_attach)
+    _alert_skipped_wecom(db, new.id, skipped)
     for i, uid in enumerate(user_ids):
         db.add(CampaignTarget(
             campaign_id=new.id,
@@ -439,6 +529,8 @@ def get_campaign(db, account, campaign_id: int):
         "course_ids": c.course_ids or [],
         "force_training_rules": c.force_training_rules or [],
         "auth_confirmed": bool(c.auth_confirmed),
+        "auth_snapshot": c.auth_snapshot or [],
+        "wecom_template_id": c.wecom_template_id,
         "target_mode": c.target_mode,
         "target_snapshot": c.target_snapshot or {},
         "template_id": c.template_id,
@@ -460,6 +552,8 @@ def update_draft(db, account, campaign_id: int, payload, request_host: str | Non
     if c.status not in ("draft", "scheduled"):
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始状态可编辑")
 
+    if payload.type == "social":
+        _validate_wecom_campaign(db, payload)
     c.name = payload.name
     c.description = payload.description
     c.type = payload.type
@@ -484,6 +578,8 @@ def update_draft(db, account, campaign_id: int, payload, request_host: str | Non
     c.course_ids = payload.course_ids or []
     c.force_training_rules = payload.force_training_rules or []
     c.auth_confirmed = int(payload.auth_confirmed)
+    c.auth_snapshot = payload.auth_snapshot or []
+    c.wecom_template_id = payload.wecom_template_id
     # 附件载荷关联（先清后写，幂等）
     _sync_campaign_attachments(db, campaign_id, payload.attachment_ids or [])
     db.commit()
@@ -506,15 +602,30 @@ def start(db, account, campaign_id: int):
     自动启动（campaign_auto.start_scheduled）并发时仅一方成功，避免重复生成批次。
     """
     now = datetime.now()
+    c = db.get(Campaign, campaign_id)
+    if c is None:
+        raise BizError(ErrorCode.NOT_FOUND)
+    # 企微演练启动前重校验（红线4：无授权不可启动；通道缺失提前拦截，避免批次派发后整批失败）
+    if c.type == "social":
+        if not c.auth_confirmed:
+            raise BizError(ErrorCode.PARAM_INVALID, "演练未勾选授权，不可启动（红线4）")
+        missing = [k for k in _WECOM_AUTH_REQUIRED if k not in (c.auth_snapshot or [])]
+        if missing:
+            labels = "、".join(_WECOM_AUTH_LABELS.get(k, k) for k in missing)
+            raise BizError(ErrorCode.PARAM_INVALID, f"企微演练授权条款不完整，不可启动（缺：{labels}）")
+        from app.modules.channel.models import SendChannel
+
+        ch = db.get(SendChannel, c.channel_id) if c.channel_id else None
+        if ch is not None and ch.type != "wecom":
+            raise BizError(ErrorCode.PARAM_INVALID, "企微演练的发送通道须为企业微信类型")
+        if ch is None and db.scalar(select(SendChannel).where(
+                SendChannel.type == "wecom").order_by(SendChannel.is_default.desc(), SendChannel.id)) is None:
+            raise BizError(ErrorCode.PARAM_INVALID, "无可用企业微信发送通道，请先在「发送配置」创建企微通道")
     claimed = db.execute(
         update(Campaign)
         .where(Campaign.id == campaign_id, Campaign.status.in_(("draft", "scheduled")))
         .values(status="sending", started_at=now)
     )
-    c = db.get(Campaign, campaign_id)
-    if c is None:
-        db.rollback()
-        raise BizError(ErrorCode.NOT_FOUND)
     if claimed.rowcount == 0:
         db.rollback()
         raise BizError(ErrorCode.CAMPAIGN_STATE_INVALID, "仅草稿/待开始状态可启动")

@@ -153,3 +153,57 @@ def delete_attachment(pid: int, account=Depends(get_current_account), db: Sessio
 @qr_assets.get("", summary="二维码资产列表")
 def list_qr(account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.list_qr_assets(db, account))
+
+
+# ---------- 企业微信消息模板 ----------
+
+wecom_templates = APIRouter(prefix="/api/v1/wecom-templates", tags=["素材模板"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/template"))])
+routers.append(wecom_templates)
+
+
+class WecomTemplateCreate(BaseModel):
+    name: str
+    msg_type: str = "textcard"  # P0 仅 textcard；news/text/markdown/file 预留
+    title: str | None = None
+    description: str | None = None
+    btn_text: str = "查看详情"
+    url_mode: str = "track"  # track=追踪链接/custom=自定义
+    custom_url: str | None = None
+    status: str = "draft"  # draft/approved/discarded
+
+
+class WecomTemplateStatus(BaseModel):
+    status: str  # approved/discarded
+
+
+@wecom_templates.get("", summary="企微消息模板列表")
+def list_wecom_templates(account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.list_wecom_templates(db, account))
+
+
+@wecom_templates.post("", summary="新建企微消息模板", dependencies=[Depends(require_perm("template:manage"))])
+def create_wecom_template(payload: WecomTemplateCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"id": service.create_wecom_template(db, account, payload.model_dump())})
+
+
+@wecom_templates.get("/{tid}", summary="企微消息模板详情")
+def get_wecom_template(tid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.get_wecom_template(db, account, tid))
+
+
+@wecom_templates.put("/{tid}", summary="更新企微消息模板", dependencies=[Depends(require_perm("template:manage"))])
+def update_wecom_template(tid: int, payload: WecomTemplateCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.update_wecom_template(db, account, tid, payload.model_dump())
+    return resp.ok({"id": tid})
+
+
+@wecom_templates.post("/{tid}/review", summary="企微消息模板审核流转（approved/discarded）", dependencies=[Depends(require_perm("template:manage"))])
+def review_wecom_template(tid: int, payload: WecomTemplateStatus, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.set_wecom_template_status(db, account, tid, payload.status)
+    return resp.ok(None)
+
+
+@wecom_templates.delete("/{tid}", summary="删除企微消息模板（被演练引用时阻止）", dependencies=[Depends(require_perm("template:manage"))])
+def delete_wecom_template(tid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.delete_wecom_template(db, account, tid)
+    return resp.ok(None)

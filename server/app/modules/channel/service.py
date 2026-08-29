@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from sqlalchemy import func, select
 
 from app.core.audit import record_audit
+from app.core.config import settings
 from app.core.deps import apply_data_scope
 from app.core.errors import BizError, ErrorCode
 from app.core.security import encrypt_secret
@@ -20,9 +21,10 @@ from app.modules.campaign.models import Campaign, CampaignTarget
 
 from .models import PhishDomain, SendChannel, SenderProfile
 
-_TYPE_LABELS = {"smtp": "SMTP", "ews": "Exchange EWS", "sms": "短信机"}
+_TYPE_LABELS = {"smtp": "SMTP", "ews": "Exchange EWS", "sms": "短信机", "wecom": "企业微信"}
 # 列表卡片强调色按 (type, 序号) 轮换
-_ACCENTS = {"smtp": ["blue", "teal"], "ews": ["purple"], "sms": ["orange", "green", "red"]}
+_ACCENTS = {"smtp": ["blue", "teal"], "ews": ["purple"], "sms": ["orange", "green", "red"],
+            "wecom": ["cyan"]}
 _STATUS_TEXT = {"ok": "OK", "unknown": "WARN", "fail": "FAIL"}
 
 
@@ -116,10 +118,14 @@ def list_channels(db, account) -> list[dict]:
                 "sms_port_dev": ch.serial_port,
                 "sms_baudrate": ch.baud_rate,
                 "sms_sim": ch.sim_number,
+                "wecom_corp_id": ch.wecom_corp_id,
+                "wecom_agent_id": ch.wecom_agent_id,
+                "wecom_app_name": ch.wecom_app_name,
                 "has_smtp_pass": bool(ch.smtp_password_enc),
                 "has_ews_pass": bool(ch.ews_password_enc),
                 "has_client_secret": bool(ch.oauth_client_secret_enc),
                 "has_sms_secret": bool(ch.sms_secret_enc),
+                "has_wecom_secret": bool(ch.wecom_secret_enc),
             }
         )
     return result
@@ -129,7 +135,7 @@ def _channel_kw_from_payload(payload: dict) -> dict:
     """弹窗 payload → 模型列映射；敏感字段 AES-GCM 加密（空值返回 None 表示不设置）。"""
     ch_type = payload.get("type") or ""
     cfg = payload.get("config") or {}
-    if ch_type not in ("smtp", "ews", "sms"):
+    if ch_type not in ("smtp", "ews", "sms", "wecom"):
         raise BizError(ErrorCode.PARAM_INVALID, f"不支持的通道类型：{ch_type}")
 
     def _enc(v: str | None) -> bytes | None:
@@ -159,6 +165,13 @@ def _channel_kw_from_payload(payload: dict) -> dict:
             oauth_client_secret_enc=_enc(cfg.get("ews_client_secret")),
             oauth_tenant_id=cfg.get("ews_tenant_id"),
         )
+    elif ch_type == "wecom":
+        kw.update(
+            wecom_corp_id=cfg.get("wecom_corp_id"),
+            wecom_agent_id=str(cfg["wecom_agent_id"]) if cfg.get("wecom_agent_id") else None,
+            wecom_secret_enc=_enc(cfg.get("wecom_secret")),
+            wecom_app_name=cfg.get("wecom_app_name"),
+        )
     else:  # sms
         kw.update(
             sms_provider=cfg.get("sms_provider"),
@@ -178,8 +191,34 @@ def _probe_result(ch_type: str, cfg: dict) -> tuple[dict, str]:
     """保存前连通测试；SMS 通道仅登记，发送能力待真机验证。"""
     if ch_type == "sms":
         return {"ok": True, "score": 80, "latency_ms": None, "message": "SMS 通道已保存，发送能力待真机验证"}, "normal"
+    if ch_type == "wecom":
+        # 企微无 TCP 端口概念：用 gettoken 验证 corp/secret 有效性（不入缓存，直接调 API）
+        return _wecom_probe(cfg)
     result = _tcp_probe(*_resolve_probe_target(ch_type, cfg))
     return result, "normal" if result["ok"] else "abnormal"
+
+
+def _wecom_probe(cfg: dict) -> tuple[dict, str]:
+    """保存前企微凭证探测：gettoken 成功即视为配置有效。"""
+    import httpx
+
+    corp_id = (cfg.get("wecom_corp_id") or "").strip()
+    secret = (cfg.get("wecom_secret") or "").strip()
+    if not corp_id or not secret:
+        return {"ok": False, "score": 40, "latency_ms": None,
+                "message": "未配置企业 ID 或应用 Secret"}, "abnormal"
+    try:
+        resp = httpx.get(f"{WECOM_API}/gettoken",
+                         params={"corpid": corp_id, "corpsecret": secret}, timeout=8)
+        data = resp.json()
+    except Exception as err:  # 网络异常
+        return {"ok": False, "score": 40, "latency_ms": None,
+                "message": f"连接企微 API 失败：{err}"}, "abnormal"
+    if data.get("errcode") == 0:
+        return {"ok": True, "score": 95, "latency_ms": None,
+                "message": "凭证有效，access_token 获取成功"}, "normal"
+    return {"ok": False, "score": 40, "latency_ms": None,
+            "message": f"企微返回错误 {data.get('errcode')}：{data.get('errmsg')}"}, "abnormal"
 
 
 def create_channel(db, account, payload: dict) -> int:
@@ -207,7 +246,8 @@ def update_channel(db, account, channel_id: int, payload: dict) -> None:
     kw = _channel_kw_from_payload(payload)
     ch_type = kw.pop("type")
     # 敏感字段留空 → 沿用已有密文，不覆盖
-    for col in ("smtp_password_enc", "ews_password_enc", "oauth_client_secret_enc", "sms_secret_enc"):
+    for col in ("smtp_password_enc", "ews_password_enc", "oauth_client_secret_enc",
+                "sms_secret_enc", "wecom_secret_enc"):
         if kw.get(col) is None:
             kw.pop(col, None)
     for k, v in kw.items():
@@ -217,7 +257,8 @@ def update_channel(db, account, channel_id: int, payload: dict) -> None:
         for col in ("smtp_host", "smtp_port", "smtp_encrypt", "smtp_username",
                     "ews_url", "ews_username", "ews_auth_mode", "oauth_client_id", "oauth_tenant_id",
                     "sms_provider", "sms_api_url", "sms_sign", "sms_key",
-                    "sms_template_id", "serial_port", "baud_rate", "sim_number"):
+                    "sms_template_id", "serial_port", "baud_rate", "sim_number",
+                    "wecom_corp_id", "wecom_agent_id", "wecom_app_name"):
             if col not in kw:
                 setattr(ch, col, None)
         ch.type = ch_type
@@ -569,6 +610,149 @@ def send_test_email_with_content(db, account, channel_id: int, payload: dict) ->
     return result
 
 
+# ---------- 企业微信通道（自建应用 message/send） ----------
+
+WECOM_API = "https://qyapi.weixin.qq.com/cgi-bin"
+# access_token 有效期 7200s；缓存 TTL 缩 300s 提前刷新（无需记录过期时间戳）
+_TOKEN_TTL = 7200 - 300
+
+
+def _wecom_secret(ch: SendChannel) -> str:
+    """通道企微应用 Secret 解密（红线 2）。解密失败显式报错，绝不降级为空 Secret。"""
+    from app.core.security import decrypt_secret
+
+    if not ch.wecom_secret_enc:
+        return ""
+    try:
+        return decrypt_secret(ch.wecom_secret_enc)
+    except Exception:
+        raise BizError(
+            ErrorCode.INTEGRATION_ERROR,
+            "通道企业微信 Secret 解密失败：.env 的 AES_KEY_B64/SECRET_KEY 可能与保存通道时不一致，"
+            "请在通道编辑中重新保存 Secret（或恢复原密钥）",
+        )
+
+
+def get_wecom_access_token(db, ch: SendChannel) -> str:
+    """获取企微 access_token：Redis 缓存（提前 300s 刷新）+ 分布式锁防雪崩。"""
+    import redis
+    import httpx
+
+    r = redis.from_url(settings.redis_url, decode_responses=True)
+    cache_key = f"wecom:token:{ch.id}"
+    lock_key = f"wecom:token:lock:{ch.id}"
+    try:
+        cached = r.get(cache_key)
+    except Exception:
+        cached = None  # Redis 不可用：直接调 API（不缓存）
+    if cached:
+        return cached
+
+    # 分布式锁：并发下仅一方调 gettoken，其余等待重读缓存
+    try:
+        if not r.set(lock_key, "1", nx=True, ex=10):
+            for _ in range(10):
+                time.sleep(0.3)
+                cached = r.get(cache_key)
+                if cached:
+                    return cached
+    except Exception:
+        pass
+
+    corp_id = (ch.wecom_corp_id or "").strip()
+    secret = _wecom_secret(ch)
+    if not corp_id or not secret:
+        raise BizError(ErrorCode.PARAM_INVALID, "通道未配置企业 ID 或应用 Secret")
+    try:
+        resp = httpx.get(f"{WECOM_API}/gettoken",
+                         params={"corpid": corp_id, "corpsecret": secret}, timeout=8)
+        data = resp.json()
+    except Exception as err:
+        raise BizError(ErrorCode.INTEGRATION_ERROR, f"获取企微 access_token 失败：{err}")
+    if data.get("errcode") != 0:
+        raise BizError(ErrorCode.INTEGRATION_ERROR,
+                       f"获取企微 access_token 失败：{data.get('errcode')} {data.get('errmsg')}")
+    token = data["access_token"]
+    try:
+        r.set(cache_key, token, ex=_TOKEN_TTL)
+    except Exception:
+        pass
+    return token
+
+
+def invalidate_wecom_token(ch: SendChannel) -> None:
+    """清缓存：message/send 返回 40014（token 失效）后强制刷新重试。"""
+    import redis
+
+    try:
+        r = redis.from_url(settings.redis_url, decode_responses=True)
+        r.delete(f"wecom:token:{ch.id}")
+    except Exception:
+        pass
+
+
+def send_wecom_message(db, ch: SendChannel, to_userid: str, msg: dict) -> dict:
+    """企微自建应用 message/send；msg 为 textcard/news/... 消息体（不含 touser/agentid）。
+
+    返回企微原始响应 {"errcode": int, "errmsg": str}；不在此层做状态映射。
+    """
+    import httpx
+
+    token = get_wecom_access_token(db, ch)
+    body = {
+        "touser": to_userid,
+        "msgtype": msg.get("msgtype") or "textcard",
+        "agentid": int(ch.wecom_agent_id or 0),
+    }
+    if not body["agentid"]:
+        raise BizError(ErrorCode.PARAM_INVALID, "通道未配置企微应用 AgentId")
+    payload = {k: v for k, v in msg.items() if k != "msgtype"}
+    if body["msgtype"] == "text" and not (payload.get("content") or "").strip():
+        # 文本消息缺 content 会渲染成空白气泡：title/description 兜底
+        content = "\n".join(filter(None, [payload.get("title"), payload.get("description")]))
+        payload = {"content": content or "PhishLab 测试消息"}
+    body[body["msgtype"]] = payload
+    try:
+        resp = httpx.post(f"{WECOM_API}/message/send",
+                          params={"access_token": token}, json=body, timeout=10)
+        return resp.json()
+    except Exception as err:
+        raise BizError(ErrorCode.INTEGRATION_ERROR, f"企微 message/send 请求失败：{err}")
+
+
+# errcode → (目标状态, 失败原因, 动作)；动作: sent 终态 / refresh 换 token 重试 /
+# backoff 频控退避 / bounced 标记退信 / fail 告警人工介入
+_WECOM_ERRMAP = {
+    0: ("sent", "", "sent"),
+    40014: ("pending", "access_token 失效", "refresh"),
+    42001: ("pending", "access_token 已过期", "refresh"),
+    45009: ("pending", "API 调用频率超限", "backoff"),
+    45024: ("pending", "用户消息发送频率超限", "backoff"),
+    60011: ("failed", "应用无发消息权限", "fail"),
+    60020: ("failed", "应用未启用/不可用", "fail"),
+    60111: ("bounced", "接收人 userid 不存在", "bounced"),
+    40008: ("failed", "消息体格式错误", "fail"),
+    41005: ("failed", "缺少多媒体文件数据", "fail"),
+    48001: ("failed", "应用 API 无权限", "fail"),
+    60003: ("failed", "应用不存在", "fail"),
+    60008: ("failed", "应用未绑定企业", "fail"),
+    82001: ("failed", "消息内容超限", "fail"),
+}
+
+
+def wecom_send_status(resp: dict) -> tuple[str, str, str]:
+    """message/send 响应 → (目标状态, 原因, 动作)。未知 errcode 一律 failed 告警。"""
+    code = int(resp.get("errcode", -1))
+    status, reason, action = _WECOM_ERRMAP.get(
+        code, ("failed", f"企微返回错误 {code}：{resp.get('errmsg')}", "fail"))
+    if code == 0:
+        return status, "", action
+    errmsg = resp.get("errmsg") or ""
+    if reason and errmsg:
+        reason = f"{reason}（{errmsg}）"
+    return status, reason, action
+
+
 def test_channel(db, account, channel_id: int, to: str | None = None) -> dict:
     """连通性复测，结果回写 last_test_result/last_test_at。"""
     ch = db.get(SendChannel, channel_id)
@@ -576,6 +760,11 @@ def test_channel(db, account, channel_id: int, to: str | None = None) -> dict:
         raise BizError(ErrorCode.NOT_FOUND)
     if ch.type == "sms":
         result = {"ok": True, "score": 80, "latency_ms": None, "message": "SMS 通道已保存，发送能力待真机验证"}
+    elif ch.type == "wecom":
+        result, _ = _wecom_probe({
+            "wecom_corp_id": ch.wecom_corp_id,
+            "wecom_secret": _wecom_secret(ch),
+        })
     elif ch.type == "smtp":
         port = ch.smtp_port or (465 if ch.smtp_encrypt == "ssl" else 587)
         result = _tcp_probe(ch.smtp_host, port)
@@ -588,6 +777,78 @@ def test_channel(db, account, channel_id: int, to: str | None = None) -> dict:
         ch.status = "normal" if result["ok"] else "abnormal"
     db.commit()
     return result
+
+
+def test_wecom(db, account, channel_id: int, wecom_template_id: int | None = None,
+               to_userid: str | None = None) -> dict:
+    """企微通道试发：向指定接收人发一条 textcard 测试消息。
+
+    接收人解析优先级：to_userid（前端从员工档案选取，红线8 仅限在职已配置
+    userid 的员工）→ 账号绑定员工（SysAccount.emp_user_id 兼容旧调用）。
+    两者都不可用时拒绝，避免试发无从验证（设计稿 §6.1：先建员工档案）。
+    """
+    from app.modules.account.models import SysAccount
+    from app.modules.org.models import EmpUser
+    from app.modules.template.models import WecomTemplate
+
+    ch = db.get(SendChannel, channel_id)
+    if ch is None:
+        raise BizError(ErrorCode.NOT_FOUND)
+    if ch.type != "wecom":
+        raise BizError(ErrorCode.PARAM_INVALID, "仅企业微信通道支持此测试")
+    if to_userid:
+        emp = db.scalar(select(EmpUser).where(
+            EmpUser.wecom_userid == to_userid.strip(), EmpUser.status == 1))
+        if emp is None:
+            raise BizError(ErrorCode.PARAM_INVALID,
+                           f"员工档案中不存在 userid 为「{to_userid.strip()}」的在职员工，"
+                           "请先在「用户和组」为员工填写企业微信 ID")
+    else:
+        account = db.get(SysAccount, account.id)
+        emp = db.get(EmpUser, account.emp_user_id) if account.emp_user_id else None
+        if emp is None or not emp.wecom_userid:
+            raise BizError(ErrorCode.PARAM_INVALID,
+                           "当前账号未绑定员工档案（或该员工未配置企业微信 userid），无法试发"
+                           "——请在试发弹窗中选取接收员工，或到「用户和组」补充员工企业微信 ID")
+    tpl = db.get(WecomTemplate, wecom_template_id) if wecom_template_id else None
+    if wecom_template_id and tpl is None:
+        raise BizError(ErrorCode.NOT_FOUND, "企微消息模板不存在")
+    if tpl is not None:
+        title = tpl.title or "测试消息"
+        description = tpl.description or ""
+        if tpl.msg_type == "text":
+            # 文本消息无标题栏且必须带 content，否则企微渲染空白气泡：
+            # 标题+摘要拼入 content 兜底
+            msg = {"msgtype": "text",
+                   "content": f"{title}\n{description}".strip() or "PhishLab 通道测试"}
+        else:
+            msg = {
+                "msgtype": tpl.msg_type or "textcard",
+                "title": title,
+                "description": description,
+                "btntxt": tpl.btn_text,
+                "url": tpl.custom_url if tpl.url_mode == "custom" and tpl.custom_url
+                else "https://work.weixin.qq.com",
+            }
+    else:
+        msg = {"msgtype": "textcard", "title": "PhishLab 通道测试",
+               "description": "企业微信通道试发成功", "btntxt": "查看详情",
+               "url": "https://work.weixin.qq.com"}
+    resp = send_wecom_message(db, ch, emp.wecom_userid, msg)
+    status, reason, _action = wecom_send_status(resp)
+    # errcode=0 但 invaliduser 含目标时企微实际未送达——不得报试发成功
+    invalid = str(resp.get("invaliduser") or "").strip()
+    if status == "sent" and invalid:
+        if invalid == "all" or emp.wecom_userid in invalid.split("|"):
+            status, reason = "bounced", (
+                f"企微已接收但未送达该 userid（invaliduser：{invalid}），"
+                "请确认员工在应用可见范围内或 userid 是否与通讯录一致")
+    ch.last_test_result = {"ok": status == "sent", "score": 95 if status == "sent" else 40,
+                           "latency_ms": None,
+                           "message": "试发成功" if status == "sent" else reason}
+    ch.last_test_at = datetime.now()
+    db.commit()
+    return ch.last_test_result
 
 
 # ---------- 域名 DNS ----------

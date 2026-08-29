@@ -335,6 +335,80 @@
           />
         </div>
       </el-tab-pane>
+
+      <el-tab-pane label="企微消息模板" name="wecom">
+        <div class="toolbar" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+          <el-button type="primary" @click="openWecomTplDialog()">+ 新建消息模板</el-button>
+          <span class="muted" style="font-size:12px;">企微演练（社交媒体）投递的 textcard 卡片素材；需审核通过后才能被演练选用</span>
+        </div>
+        <el-table :data="wecomTplRows" size="small" v-loading="wecomTplLoading">
+          <el-table-column prop="name" label="模板名称" min-width="140" />
+          <el-table-column prop="title" label="卡片标题" min-width="160" show-overflow-tooltip />
+          <el-table-column prop="description" label="卡片摘要" min-width="200" show-overflow-tooltip />
+          <el-table-column label="按钮/链接" width="150">
+            <template #default="{ row }">
+              <div style="font-size:12px;">{{ row.btn_text }}</div>
+              <div class="muted" style="font-size:11px;">{{ row.url_mode === 'track' ? '追踪短链' : '自定义URL' }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">
+              <span class="badge" :class="row.status === 'approved' ? 'badge-on' : row.status === 'discarded' ? 'badge-off' : 'badge-cat'">
+                {{ (WECOM_STATUS_TEXT as Record<string, string>)[row.status] ?? row.status }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="used_count" label="引用" width="70" align="center" />
+          <el-table-column label="操作" width="220">
+            <template #default="{ row }">
+              <div class="card-actions table-actions">
+                <el-button size="small" link @click="openWecomTplDialog(row)">编辑</el-button>
+                <el-button v-if="row.status !== 'approved'" size="small" link type="success" @click="reviewWecomTpl(row, 'approved')">通过</el-button>
+                <el-button v-if="row.status !== 'discarded'" size="small" link type="warning" @click="reviewWecomTpl(row, 'discarded')">驳回</el-button>
+                <el-button size="small" link type="danger" @click="deleteWecomTpl(row)">删除</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <!-- 新建/编辑企微消息模板弹窗 -->
+        <el-dialog v-model="wecomTplDialogVisible" :title="wecomTplForm.id ? '编辑企微消息模板' : '新建企微消息模板'" width="640px" destroy-on-close>
+          <el-form :model="wecomTplForm" label-width="100px">
+            <el-form-item label="模板名称" required>
+              <el-input v-model="wecomTplForm.name" placeholder="如：IT安全中心密码到期提醒" />
+            </el-form-item>
+            <el-form-item label="消息类型">
+              <el-select v-model="wecomTplForm.msg_type" style="width: 100%">
+                <el-option label="卡片消息（textcard）" value="textcard" />
+                <el-option label="文本消息（预留）" value="text" disabled />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="卡片标题" required>
+              <el-input v-model="wecomTplForm.title" maxlength="128" show-word-limit placeholder="支持变量 {{.FirstName}} {{.Department}} {{.Date}}" />
+            </el-form-item>
+            <el-form-item label="卡片摘要" required>
+              <el-input v-model="wecomTplForm.description" type="textarea" :rows="3" maxlength="512" show-word-limit placeholder="支持变量 {{.FirstName}} {{.Department}} {{.ResetURL}}" />
+            </el-form-item>
+            <el-form-item label="按钮文案">
+              <el-input v-model="wecomTplForm.btn_text" maxlength="16" placeholder="查看详情" />
+            </el-form-item>
+            <el-form-item label="链接模式">
+              <el-radio-group v-model="wecomTplForm.url_mode">
+                <el-radio value="track">追踪短链（点击统计 + 跳转落地页，推荐）</el-radio>
+                <el-radio value="custom">自定义 URL</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item v-if="wecomTplForm.url_mode === 'custom'" label="自定义URL">
+              <el-input v-model="wecomTplForm.custom_url" placeholder="https://…（须落在独立演练域，红线3）" />
+            </el-form-item>
+            <div class="form-hint" style="font-size:11px;color:var(--color-text-tertiary);margin-left:100px;">文案禁用「微信安全中心/官方通知」等冒充官方字样（合规红线），请以内部部门名义（IT 部/HR）；审核状态经列表「通过/驳回」流转</div>
+          </el-form>
+          <template #footer>
+            <el-button @click="wecomTplDialogVisible = false">取消</el-button>
+            <el-button type="primary" :loading="wecomTplSaving" @click="saveWecomTpl">保存</el-button>
+          </template>
+        </el-dialog>
+      </el-tab-pane>
     </el-tabs>
 
     <!-- ====== 弹窗：新建/编辑邮件模板 ====== -->
@@ -699,7 +773,7 @@ import PageHeader from '@/components/base/PageHeader.vue'
 import { attachmentApi, templateApi } from '@/api'
 
 // ===== 类型定义 =====
-type TabName = 'email' | 'landing' | 'payload'
+type TabName = 'email' | 'landing' | 'payload' | 'wecom'
 type Accent = 'blue' | 'green' | 'orange' | 'purple' | 'red' | 'teal'
 type SubTone = 'success' | 'secondary' | 'tertiary'
 
@@ -1334,7 +1408,124 @@ async function loadTemplates() {
   }
 }
 
-onMounted(loadTemplates)
+onMounted(() => {
+  loadTemplates()
+  loadWecomTpls()
+})
+
+// ============ 企业微信消息模板 ============
+const WECOM_STATUS_TEXT = { approved: '已审核', draft: '草稿', discarded: '已驳回' }
+interface WecomTplRow {
+  id: number
+  name: string
+  msg_type: string
+  title: string
+  description: string
+  btn_text: string
+  url_mode: string
+  custom_url: string
+  status: string
+  used_count: number
+}
+const wecomTplRows = ref<WecomTplRow[]>([])
+const wecomTplLoading = ref(false)
+const wecomTplSaving = ref(false)
+const wecomTplDialogVisible = ref(false)
+const wecomTplForm = reactive({
+  id: 0,
+  name: '',
+  msg_type: 'textcard',
+  title: '',
+  description: '',
+  btn_text: '查看详情',
+  url_mode: 'track',
+  custom_url: '',
+  status: 'draft',
+})
+
+async function loadWecomTpls() {
+  wecomTplLoading.value = true
+  try {
+    const list = await templateApi.wecomTemplates()
+    if (Array.isArray(list)) wecomTplRows.value = list as WecomTplRow[]
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    wecomTplLoading.value = false
+  }
+}
+
+function openWecomTplDialog(row?: WecomTplRow) {
+  Object.assign(wecomTplForm, row
+    ? {
+        id: row.id, name: row.name, msg_type: row.msg_type, title: row.title,
+        description: row.description, btn_text: row.btn_text, url_mode: row.url_mode,
+        custom_url: row.custom_url, status: row.status,
+      }
+    : { id: 0, name: '', msg_type: 'textcard', title: '', description: '', btn_text: '查看详情', url_mode: 'track', custom_url: '', status: 'draft' })
+  wecomTplDialogVisible.value = true
+}
+
+async function saveWecomTpl() {
+  if (!wecomTplForm.name.trim()) {
+    ElMessage.warning('请输入模板名称')
+    return
+  }
+  if (!wecomTplForm.title.trim() || !wecomTplForm.description.trim()) {
+    ElMessage.warning('请填写卡片标题与摘要')
+    return
+  }
+  wecomTplSaving.value = true
+  try {
+    const payload = {
+      name: wecomTplForm.name.trim(),
+      msg_type: wecomTplForm.msg_type,
+      title: wecomTplForm.title.trim(),
+      description: wecomTplForm.description.trim(),
+      btn_text: wecomTplForm.btn_text.trim() || '查看详情',
+      url_mode: wecomTplForm.url_mode,
+      custom_url: wecomTplForm.url_mode === 'custom' ? wecomTplForm.custom_url.trim() : null,
+      // 注意：不带 status——审核状态只能经「审核」按钮（review 端点）流转
+    }
+    if (wecomTplForm.id) {
+      await templateApi.updateWecomTemplate(wecomTplForm.id, payload)
+    } else {
+      await templateApi.createWecomTemplate(payload)
+    }
+    wecomTplDialogVisible.value = false
+    ElMessage.success(wecomTplForm.id ? '模板已更新（改动后需重新审核）' : '模板已创建')
+    await loadWecomTpls()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  } finally {
+    wecomTplSaving.value = false
+  }
+}
+
+async function reviewWecomTpl(row: WecomTplRow, status: 'approved' | 'discarded') {
+  try {
+    await templateApi.reviewWecomTemplate(row.id, status)
+    ElMessage.success(status === 'approved' ? '模板已审核通过，可被演练选用' : '模板已驳回')
+    await loadWecomTpls()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出
+  }
+}
+
+async function deleteWecomTpl(row: WecomTplRow) {
+  try {
+    await ElMessageBox.confirm(`确定删除企微消息模板「${row.name}」吗？`, '删除确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await templateApi.deleteWecomTemplate(row.id)
+    ElMessage.success('模板已删除')
+    await loadWecomTpls()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出（被演练引用时后端拒绝）
+  }
+}
 
 // 检测逃逸率配色：≥85 绿 / ≥70 黄 / 否则橙
 function evadeColor(rate: number): string {

@@ -23,7 +23,7 @@ class CampaignCreate(BaseModel):
     batch_count: int = Field(1, ge=1)
     batch_interval_min: int = Field(0, ge=0)
     randomize_content: bool = False
-    time_jitter_sec: int = Field(0, ge=0)
+    time_jitter_sec: int = Field(0, ge=0, le=600, description="发送时刻抖动：两封之间随机 0~N 秒（0=关闭，封顶 600）")
     pixel_degrade: bool = False
     training_policy: Literal["redirect", "popup", "none", "url"] = "none"
     training_redirect_url: str | None = Field(None, max_length=512, description="url 模式跳转目标")
@@ -31,6 +31,10 @@ class CampaignCreate(BaseModel):
     course_ids: list[int] = Field(default_factory=list)
     force_training_rules: list[dict] = Field(default_factory=list)
     auth_confirmed: bool = Field(description="授权确认勾选，必须为 true 才可提交")
+    auth_snapshot: list[str] = Field(
+        default_factory=list,
+        description="授权勾选项快照（企微演练须含 wecom:written_auth/wecom:domain_verified/wecom:internal_only，红线4）")
+    wecom_template_id: int | None = Field(None, description="企微消息模板（social 演练用）")
 
 
 class CampaignOut(BaseModel):

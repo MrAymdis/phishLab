@@ -33,6 +33,8 @@ class EmpUser(Base, TimestampMixin):
     emp_no: Mapped[str | None] = mapped_column(String(64), comment="工号")
     name: Mapped[str] = mapped_column(String(64), nullable=False)
     email: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    wecom_userid: Mapped[str | None] = mapped_column(
+        String(64), unique=True, comment="企业微信 userid（企微通道目标展开用，唯一）")
     mobile_enc: Mapped[bytes | None] = mapped_column(LargeBinary, comment="加密存储,展示掩码")
     dept_id: Mapped[int] = mapped_column(BigInteger, index=True)
     position: Mapped[str | None] = mapped_column(String(64))

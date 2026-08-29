@@ -149,6 +149,7 @@ def _user_rows(db: Session, users: list[EmpUser], dept_map: dict[int, EmpDept]) 
             "pos": u.position or "",
             "email": u.email,
             "phone": _mask_mobile(u.mobile_enc),
+            "wecomUserid": u.wecom_userid or "",
             "risk": _RISK_CODE.get(profile.risk_level if profile else 1, "low"),
             "riskScore": int(profile.total_score) if profile else 70,
             "tags": tags_map.get(u.id, []),
@@ -244,6 +245,39 @@ def sync_org(db: Session, account, source: str) -> dict:
 
 # ---------- 员工 ----------
 
+def _norm_wecom_userid(db: Session, userid, exclude_id: int | None = None) -> str | None:
+    """规范化企微 userid：空串→None；非空校验在职员工唯一（uk_emp_wecom_userid 兜底）。"""
+    userid = (userid or "").strip() or None
+    if userid and db.scalar(select(EmpUser.id).where(
+            EmpUser.wecom_userid == userid,
+            EmpUser.id != (exclude_id or 0),
+            EmpUser.status == 1)):
+        raise BizError(ErrorCode.PARAM_INVALID, f"企业微信 userid 已存在（{userid}）")
+    return userid
+
+
+def list_wecom_candidates(db: Session, account, kw: str | None = None) -> list[dict]:
+    """企微试发接收人候选：仅在职且已配置 wecom_userid 的员工（红线8：仅本企业员工）。"""
+    stmt = apply_data_scope(
+        db, select(EmpUser).where(
+            EmpUser.status == 1,
+            EmpUser.wecom_userid.isnot(None),
+            EmpUser.wecom_userid != "",
+        ), account, dept_col=EmpUser.dept_id,
+    )
+    if kw:
+        like = f"%{kw}%"
+        stmt = stmt.where(or_(
+            EmpUser.name.like(like), EmpUser.wecom_userid.like(like),
+            EmpUser.emp_no.like(like), EmpUser.email.like(like),
+        ))
+    rows = db.scalars(stmt.order_by(EmpUser.id).limit(50)).all()
+    return [
+        {"id": u.id, "name": u.name, "wecom_userid": u.wecom_userid,
+         "email": u.email, "emp_no": u.emp_no or ""}
+        for u in rows
+    ]
+
 def list_users(db: Session, account, *, dept_id=None, tag=None, risk_level=None,
                kw=None, page=1, page_size=20) -> dict:
     """员工档案列表：手机掩码，数据权限过滤（含子部门/标签/风险/关键字）。"""
@@ -303,6 +337,7 @@ def create_user(db: Session, account, payload: dict) -> int:
         name=payload["name"],
         email=email,
         mobile_enc=encrypt_secret(payload["mobile"]) if payload.get("mobile") else None,
+        wecom_userid=_norm_wecom_userid(db, payload.get("wecom_userid")),
         dept_id=payload["dept_id"],
         position=payload.get("position"),
         source="manual",
@@ -369,6 +404,11 @@ def update_user(db: Session, account, user_id: int, payload: dict) -> dict:
         user.mobile_enc = encrypt_secret(payload["mobile"])
     elif payload.get("mobile") == "":
         user.mobile_enc = None
+    # wecom_userid：None=不变、""=清除、非空=设置（校验唯一），与 mobile 同语义
+    if payload.get("wecom_userid"):
+        user.wecom_userid = _norm_wecom_userid(db, payload.get("wecom_userid"), exclude_id=user_id)
+    elif payload.get("wecom_userid") == "":
+        user.wecom_userid = None
 
     _bind_tags(db, user.id, payload.get("tag_ids") or [])
 
@@ -409,6 +449,8 @@ def delete_user(db: Session, account, user_id: int) -> dict:
     email_archived = user.email
     user.status = 0
     user.email = f"{user.email[:100]}#del{user.id}"
+    if user.wecom_userid:  # 同样释放 userid 唯一索引
+        user.wecom_userid = f"{user.wecom_userid[:50]}#del{user.id}"
     db.commit()
     record_audit(
         db, account=account, module="org", action="delete_user",
@@ -419,7 +461,7 @@ def delete_user(db: Session, account, user_id: int) -> dict:
 
 
 def import_users_csv(db: Session, account, content: bytes) -> dict:
-    """CSV 批量导入：工号,姓名,邮箱[,部门,岗位,手机号,初始风险]；逐行容错。
+    """CSV 批量导入：工号,姓名,邮箱[,部门,岗位,手机号,初始风险,标签,企业微信userid]；逐行容错。
 
     部门按名称精确匹配或「技术部/研发组」路径逐级匹配；不匹配的行跳过并返回原因。
     """
@@ -457,9 +499,10 @@ def import_users_csv(db: Session, account, content: bytes) -> dict:
         idx_mobile = col_idx(("手机", "电话", "mobile", "phone"))
         idx_risk = col_idx(("初始风险", "风险", "risk"))
         idx_tags = col_idx(("标签", "tag"))
+        idx_wecom = col_idx(("企业微信ID", "企微userid", "wecom_userid", "userid"))
     else:
-        # 无表头：固定顺序 工号,姓名,邮箱,部门,岗位,手机号,初始风险,标签
-        idx_no, idx_name, idx_email, idx_dept, idx_pos, idx_mobile, idx_risk, idx_tags = 0, 1, 2, 3, 4, 5, 6, 7
+        # 无表头：固定顺序 工号,姓名,邮箱,部门,岗位,手机号,初始风险,标签[,企业微信userid]
+        idx_no, idx_name, idx_email, idx_dept, idx_pos, idx_mobile, idx_risk, idx_tags, idx_wecom = 0, 1, 2, 3, 4, 5, 6, 7, 8
 
     def cell(row, idx):
         if idx is None or idx >= len(row):
@@ -547,6 +590,7 @@ def import_users_csv(db: Session, account, content: bytes) -> dict:
             "name": name,
             "email": email,
             "mobile": cell(row, idx_mobile) or None,
+            "wecom_userid": cell(row, idx_wecom) or None,
             "dept_id": dept_id or 0,
             "position": cell(row, idx_pos) or None,
             "tag_ids": tag_ids,

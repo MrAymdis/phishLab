@@ -112,6 +112,10 @@ export const orgApi = {
     )
   },
   riskProfile: (uid: number) => get(`/api/v1/emp-users/${uid}/risk-profile`),
+  wecomCandidates: (kw?: string) =>
+    get<Array<{ id: number; name: string; wecom_userid: string; email: string; emp_no: string }>>(
+      '/api/v1/emp-users/wecom-candidates', kw ? { kw } : {},
+    ),
   groups: () => get('/api/v1/groups'),
   tags: () => get('/api/v1/tags'),
   createTag: (payload: Record<string, unknown>) =>
@@ -131,6 +135,16 @@ export const templateApi = {
   deleteEmailTemplate: (id: number) => del(`/api/v1/email-templates/${id}`),
   testSendEmailTemplate: (id: number, to: string[]) =>
     post<{ ok: boolean; message: string }>(`/api/v1/email-templates/${id}/test-send`, { to }),
+  // ---- 企业微信消息模板 ----
+  wecomTemplates: () => get('/api/v1/wecom-templates'),
+  getWecomTemplate: (id: number) => get(`/api/v1/wecom-templates/${id}`),
+  createWecomTemplate: (payload: Record<string, unknown>) =>
+    post<{ id: number }>('/api/v1/wecom-templates', payload),
+  updateWecomTemplate: (id: number, payload: Record<string, unknown>) =>
+    put(`/api/v1/wecom-templates/${id}`, payload),
+  reviewWecomTemplate: (id: number, status: string) =>
+    post(`/api/v1/wecom-templates/${id}/review`, { status }),
+  deleteWecomTemplate: (id: number) => del(`/api/v1/wecom-templates/${id}`),
   landingPages: () => get('/api/v1/landing-pages'),
   getLandingPage: (id: number) => get(`/api/v1/landing-pages/${id}`),
   getLandingPagePreview: (id: number) => get(`/api/v1/landing-pages/${id}/preview`),
@@ -192,6 +206,12 @@ export const channelApi = {
   sendTestEmail: (id: number, to: string) =>
     post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
       `/api/v1/channels/${id}/send-test`, { to },
+    ),
+  /** 企业微信通道试发：发到管理员绑定员工的 userid（未绑定员工档案会明确报错） */
+  testWecom: (id: number, wecomTemplateId?: number, toUserid?: string) =>
+    post<{ ok: boolean; score: number; latency_ms: number | null; message: string }>(
+      `/api/v1/channels/${id}/test-wecom`,
+      { wecom_template_id: wecomTemplateId ?? null, to_userid: toUserid ?? null },
     ),
   /** 演练向导预览发送：模板 + 落地页 + 伪装发件人的真实样式测试邮件 */
   sendTestEmailWithContent: (

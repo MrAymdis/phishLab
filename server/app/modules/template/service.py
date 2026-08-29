@@ -25,6 +25,7 @@ from .models import (
     LandingFormField,
     LandingPage,
     QrAsset,
+    WecomTemplate,
 )
 
 # 场景 → 中文标签（卡片列表直接消费，未知场景回退原文）
@@ -1587,3 +1588,144 @@ def list_qr_assets(db, account) -> list[dict]:
         }
         for q in rows
     ]
+
+
+# ---------- 企业微信消息模板 ----------
+
+def list_wecom_templates(db, account) -> list[dict]:
+    """企微消息模板列表（无分页）：状态与引用演练数回显（P0 手工维护版）。"""
+    stmt = select(WecomTemplate)
+    stmt = apply_data_scope(db, stmt, account, self_owner_col=WecomTemplate.created_by,
+                            allow_null_owner=True)
+    rows = db.scalars(stmt.order_by(WecomTemplate.id.desc())).all()
+    used_map = dict(db.execute(
+        select(Campaign.wecom_template_id, func.count(Campaign.id))
+        .where(Campaign.wecom_template_id.isnot(None))
+        .group_by(Campaign.wecom_template_id)
+    ).all()) if rows else {}
+    return [
+        {
+            "id": t.id,
+            "name": t.name,
+            "msg_type": t.msg_type,
+            "title": t.title or "",
+            "description": t.description or "",
+            "btn_text": t.btn_text,
+            "url_mode": t.url_mode,
+            "custom_url": t.custom_url or "",
+            "media_id": t.media_id or "",
+            "status": t.status,
+            "used_count": used_map.get(t.id, 0),
+            "created_at": t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
+        }
+        for t in rows
+    ]
+
+
+def get_wecom_template(db, account, template_id: int) -> dict:
+    """企微消息模板详情。"""
+    t = get_scoped_or_404(db, account, WecomTemplate, template_id,
+                          self_owner_col=WecomTemplate.created_by, allow_null_owner=True,
+                          msg="企微消息模板不存在")
+    return {
+        "id": t.id, "name": t.name, "msg_type": t.msg_type,
+        "title": t.title or "", "description": t.description or "",
+        "btn_text": t.btn_text, "url_mode": t.url_mode,
+        "custom_url": t.custom_url or "", "media_id": t.media_id or "",
+        "status": t.status,
+        "created_at": t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
+    }
+
+
+def _apply_wecom_template_fields(t: WecomTemplate, payload: dict) -> None:
+    """字段落库 + 文案合规红线：模拟消息禁用冒充官方字样（微信安全中心/官方通知等）。"""
+    if "name" in payload:
+        t.name = (payload.get("name") or "").strip()
+    if "msg_type" in payload:
+        t.msg_type = payload.get("msg_type") or "textcard"
+    if "title" in payload:
+        t.title = payload.get("title") or None
+    if "description" in payload:
+        t.description = payload.get("description") or None
+    if "btn_text" in payload:
+        t.btn_text = payload.get("btn_text") or "查看详情"
+    if "url_mode" in payload:
+        t.url_mode = payload.get("url_mode") or "track"
+    if "custom_url" in payload:
+        t.custom_url = payload.get("custom_url") or None
+    # 注意：status 不经此函数流转——审核状态只能由 set_wecom_template_status
+    # （review 端点，带审计）变更，防止编辑载荷携带 status 绕过审核门。
+    for val in ((t.title or ""), (t.description or "")):
+        for banned in ("微信安全中心", "安全中心", "官方通知", "官方"):
+            if banned in val:
+                raise BizError(ErrorCode.PARAM_INVALID,
+                               f"文案不得含「{banned}」等冒充官方字样（合规红线），请以内部部门名义（IT 部/HR）")
+
+
+def create_wecom_template(db, account, payload: dict) -> int:
+    """新建企微消息模板（P0 手工维护；AI 产出接入 ai_draft 审核流属 P1）。"""
+    t = WecomTemplate(
+        name=(payload.get("name") or "").strip(),
+        msg_type=payload.get("msg_type") or "textcard",
+        created_by=account.id,
+    )
+    if not t.name:
+        raise BizError(ErrorCode.PARAM_INVALID, "模板名称不能为空")
+    _apply_wecom_template_fields(t, payload)
+    db.add(t)
+    db.commit()
+    record_audit(
+        db, account=account, module="template", action="create_wecom_template",
+        target_type="wecom_template", target_id=str(t.id), detail={"name": t.name},
+    )
+    return t.id
+
+
+def update_wecom_template(db, account, template_id: int, payload: dict) -> None:
+    """编辑企微消息模板；已 approved 的模板改动后回到 draft（需重新审核，防误投）。"""
+    t = get_scoped_or_404(db, account, WecomTemplate, template_id,
+                          self_owner_col=WecomTemplate.created_by, allow_null_owner=True,
+                          msg="企微消息模板不存在")
+    if t.status == "approved" and any(
+            k in payload for k in ("name", "msg_type", "title", "description", "btn_text",
+                                   "url_mode", "custom_url", "media_id")):
+        t.status = "draft"
+    _apply_wecom_template_fields(t, payload)
+    db.commit()
+    record_audit(
+        db, account=account, module="template", action="update_wecom_template",
+        target_type="wecom_template", target_id=str(template_id),
+    )
+
+
+def set_wecom_template_status(db, account, template_id: int, status: str) -> None:
+    """审核流转：draft/approved/discarded（approve 前校验字段完整，红线：AI 产出人工确认）。"""
+    t = get_scoped_or_404(db, account, WecomTemplate, template_id,
+                          self_owner_col=WecomTemplate.created_by, allow_null_owner=True,
+                          msg="企微消息模板不存在")
+    if status not in ("approved", "discarded"):
+        raise BizError(ErrorCode.PARAM_INVALID, "仅支持 approved/discarded 流转")
+    if status == "approved" and not (t.title and t.description):
+        raise BizError(ErrorCode.PARAM_INVALID, "标题与摘要不能为空，无法审核通过")
+    t.status = status
+    db.commit()
+    record_audit(
+        db, account=account, module="template", action="review_wecom_template",
+        target_type="wecom_template", target_id=str(template_id),
+        detail={"status": status, "reviewer": account.id},
+    )
+
+
+def delete_wecom_template(db, account, template_id: int) -> None:
+    """删除企微消息模板；被演练引用时阻止（防演练历史悬空）。"""
+    t = get_scoped_or_404(db, account, WecomTemplate, template_id,
+                          self_owner_col=WecomTemplate.created_by, allow_null_owner=True,
+                          msg="企微消息模板不存在")
+    if db.scalar(select(Campaign.id).where(Campaign.wecom_template_id == template_id).limit(1)):
+        raise BizError(ErrorCode.BIZ_CONFLICT, "模板已被演练引用，无法删除")
+    db.delete(t)
+    db.commit()
+    record_audit(
+        db, account=account, module="template", action="delete_wecom_template",
+        target_type="wecom_template", target_id=str(template_id), detail={"name": t.name},
+    )

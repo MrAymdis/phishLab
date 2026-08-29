@@ -16,11 +16,16 @@ routers = [channels, domains, sender_profiles]
 
 class ChannelCreate(BaseModel):
     name: str
-    type: str  # smtp/ews/sms
+    type: str  # smtp/ews/sms/wecom
     daily_limit: int = 5000
     is_default: bool = False
     # 其余字段按 type 分组，见 models.SendChannel；此处开放 dict
     config: dict = {}
+
+
+class WecomTestRequest(BaseModel):
+    wecom_template_id: int | None = None  # 可选：用指定企微模板试发，空=默认测试文案
+    to_userid: str | None = None  # 可选：接收员工 userid（从员工档案选取），空=账号绑定员工
 
 
 class DomainCreate(BaseModel):
@@ -104,6 +109,15 @@ def send_test_email_with_content(cid: int, req: ContentSendTestRequest, account=
 @channels.post("/{cid}/send-test", summary="发送测试邮件（真实 SMTP 发信）", dependencies=[Depends(require_perm("channel:manage"))])
 def send_test_email(cid: int, req: SendTestRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok(service.send_test_email(db, account, cid, req.to))
+
+
+@channels.post("/{cid}/test-wecom", summary="企业微信通道试发（接收人从员工档案选取，可选指定模板）", dependencies=[Depends(require_perm("channel:manage"))])
+def test_wecom(cid: int, req: WecomTestRequest | None = None, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.test_wecom(
+        db, account, cid,
+        req.wecom_template_id if req else None,
+        req.to_userid if req else None,
+    ))
 
 
 @domains.get("", summary="演练域名列表（含 DNS 状态/送达评分）")

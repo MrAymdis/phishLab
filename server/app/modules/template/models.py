@@ -99,3 +99,26 @@ class QrAsset(Base, TimestampMixin):
     landing_page_id: Mapped[int] = mapped_column(BigInteger)
     short_code: Mapped[str] = mapped_column(String(12), unique=True)
     img_path: Mapped[str | None] = mapped_column(String(512))
+
+
+class WecomTemplate(Base, TimestampMixin):
+    """企业微信消息模板（social 演练投递素材）。
+
+    msg_type=textcard 为主形态（卡片标题/摘要/按钮 → 追踪短链）；
+    file 消息载荷属红线 6（默认关闭），media_id 由上传接口生成后回填。
+    """
+
+    __tablename__ = "wecom_template"
+
+    id: Mapped[int] = pk()
+    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    msg_type: Mapped[str] = mapped_column(
+        String(16), default="textcard", comment="textcard/news/text/markdown/file")
+    title: Mapped[str | None] = mapped_column(String(128), comment="卡片标题")
+    description: Mapped[str | None] = mapped_column(String(512), comment="卡片摘要")
+    btn_text: Mapped[str] = mapped_column(String(16), default="查看详情")
+    url_mode: Mapped[str] = mapped_column(String(16), default="track", comment="track=追踪链接/custom=自定义")
+    custom_url: Mapped[str | None] = mapped_column(String(255))
+    media_id: Mapped[str | None] = mapped_column(String(64), comment="file 消息素材（红线6 门控）")
+    status: Mapped[str] = mapped_column(String(16), default="draft", comment="draft/approved/discarded")
+    created_by: Mapped[int | None] = mapped_column(BigInteger)

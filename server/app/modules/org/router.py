@@ -27,6 +27,7 @@ class EmpUserCreate(BaseModel):
     name: str
     email: EmailStr
     mobile: str | None = None  # 服务端加密后存储
+    wecom_userid: str | None = None  # 企业微信 userid（企微通道目标展开用，唯一）
     dept_id: int
     position: str | None = None
     tag_ids: list[int] = []
@@ -88,6 +89,11 @@ async def import_csv(file: UploadFile = File(...), account=Depends(get_current_a
 @emp_users.post("", summary="添加员工", dependencies=[Depends(require_perm("org:manage"))])
 def create_user(payload: EmpUserCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"id": service.create_user(db, account, payload.model_dump())})
+
+
+@emp_users.get("/wecom-candidates", summary="企微试发接收人候选（在职且已配置 userid 的员工）")
+def wecom_candidates(kw: str | None = None, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.list_wecom_candidates(db, account, kw=kw))
 
 
 @emp_users.get("/{uid}", summary="员工档案详情（含历史轨迹）")

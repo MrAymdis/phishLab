@@ -158,11 +158,52 @@
             我已获得企业充分授权，仅对自有员工开展模拟钓鱼演练（教育为主，数据严格保密，演练数据按留存策略处置）
           </el-checkbox>
         </div>
+        <!-- 企微演练专有授权条款（红线4）：P0 前 3 项必选 -->
+        <div class="form-group" v-if="form.type === 'social'">
+          <label class="form-label">企业微信演练专有授权确认<span class="required">*</span></label>
+          <div class="field-box">
+            <label class="field-item" v-for="item in WECOM_AUTH_ITEMS" :key="item.key">
+              <el-checkbox
+                :model-value="wecomAuthChecked.includes(item.key)"
+                @change="onWecomAuthCheck(item.key, $event)"
+              />
+              <span>{{ item.label }}</span>
+            </label>
+          </div>
+          <p class="form-hint">企微演练目标仅限已配置企业微信 userid 的本企业员工；卡片按钮跳转独立演练域追踪链接</p>
+        </div>
       </template>
 
       <!-- Step 3：选择模板 -->
       <template v-else-if="step === 2">
-        <div class="form-group">
+        <!-- 企微演练：选择企微消息模板（textcard 卡片） -->
+        <div class="form-group" v-if="form.type === 'social'">
+          <label class="form-label">企微消息模板<span class="required">*</span></label>
+          <p class="form-hint" style="margin-bottom:8px;">卡片按钮将跳转演练追踪短链 → 落地页；模板需先在「素材模板 → 企微消息模板」创建并审核通过</p>
+          <div class="option-grid cols-2">
+            <div
+              v-for="w in wecomTemplates"
+              :key="w.id"
+              class="option-card"
+              :class="{ selected: wecomTemplateId === w.id }"
+              @click="wecomTemplateId = w.id"
+            >
+              <div class="option-card-header">
+                <div class="option-card-icon" style="background:#EF9F27;">💬</div>
+                <div class="option-card-title">{{ w.name }}</div>
+                <el-tag v-if="w.status === 'approved'" size="small" type="success" style="margin-left:auto;">已审核</el-tag>
+                <el-tag v-else size="small" type="warning" style="margin-left:auto;">{{ w.status }}</el-tag>
+              </div>
+              <div class="send-meta">
+                <div>📌 标题：{{ w.title || '-' }}</div>
+                <div>📝 摘要：{{ w.description || '-' }}</div>
+                <div>🔗 链接：{{ w.url_mode === 'track' ? '追踪短链（/t/{token}）' : w.custom_url }}</div>
+              </div>
+            </div>
+          </div>
+          <p v-if="!wecomTemplates.length" class="form-hint">暂无已审核的企微消息模板，请先前往「素材模板」创建并审核</p>
+        </div>
+        <div class="form-group" v-else>
           <label class="form-label">邮件模板<span class="required">*</span></label>
           <div class="option-grid cols-4">
             <div v-for="(tpl) in templates" :key="tpl.id" class="template-card"
@@ -180,7 +221,7 @@
             </div>
           </div>
         </div>
-        <div class="form-group">
+        <div class="form-group" v-if="form.type !== 'social'">
           <label class="form-label">邮件附件<span v-if="attachPayloads.length" class="badge badge-info" style="margin-left:8px;">已选 {{ selectedAttachmentIds.length }} 个</span></label>
           <p class="form-hint" style="margin-bottom:8px;">可选附加良性文档（docx/xlsx/pdf/zip）。收件人打开附件时，若模板开启附件追踪将注入溯源信标（无需宏，设备级证据）。</p>
           <div class="field-box">
@@ -233,17 +274,17 @@
       <template v-else-if="step === 4">
         <div class="form-group">
           <label class="form-label">选择发送配置方案<span class="required">*</span></label>
-          <p class="form-hint" style="margin-bottom:12px;">从已配置的 SMTP 通道中选择，如需新增或修改请前往「发送配置」页</p>
+          <p class="form-hint" style="margin-bottom:12px;">从已配置的 {{ form.type === 'social' ? '企业微信' : 'SMTP' }} 通道中选择，如需新增或修改请前往「发送配置」页</p>
           <div class="option-grid cols-2">
             <div
-              v-for="ch in sendChannels"
+              v-for="ch in availableChannels"
               :key="ch.id"
               class="option-card"
               :class="{ selected: sendChannelId === ch.id }"
               @click="sendChannelId = ch.id"
             >
               <div class="option-card-header">
-                <div class="option-card-icon" style="background:#378ADD;">📧</div>
+                <div class="option-card-icon" :style="{ background: ch.type === 'wecom' ? '#EF9F27' : '#378ADD' }">{{ ch.type === 'wecom' ? '💬' : '📧' }}</div>
                 <div class="option-card-title">{{ ch.name }}</div>
                 <span v-if="ch.is_default" class="badge badge-info" style="margin-left:auto;">默认</span>
                 <span
@@ -253,7 +294,13 @@
                   style="margin-left:auto;"
                 >{{ ch.status === 'ok' ? '运行中' : '异常' }}</span>
               </div>
-              <div class="send-meta">
+              <div class="send-meta" v-if="ch.type === 'wecom'">
+                <div>🏢 企业ID：{{ ch.wecom_corp_id || '-' }}</div>
+                <div>📱 应用：{{ ch.wecom_app_name || ch.wecom_agent_id || '-' }}</div>
+                <div>📦 每日上限：{{ ch.daily_limit.toLocaleString() }} 条</div>
+                <div>📊 连通评分：{{ ch.score }} 分 · 最近测试：{{ ch.last_test }}</div>
+              </div>
+              <div class="send-meta" v-else>
                 <div>🖥️ SMTP：{{ ch.server || '-' }}:{{ ch.port || '-' }}</div>
                 <div>🔐 加密：{{ ch.ssl ? 'SSL/TLS' : 'STARTTLS' }}</div>
                 <div>📦 每日上限：{{ ch.daily_limit.toLocaleString() }} 封</div>
@@ -261,9 +308,9 @@
               </div>
             </div>
           </div>
-          <p v-if="!sendChannels.length" class="form-hint">暂无可用的 SMTP 通道，请先在「发送配置」页添加</p>
+          <p v-if="!availableChannels.length" class="form-hint">{{ form.type === 'social' ? '暂无可用的企业微信通道，请先在「发送配置」页添加' : '暂无可用的 SMTP 通道，请先在「发送配置」页添加' }}</p>
         </div>
-        <div class="form-row">
+        <div class="form-row" v-if="form.type !== 'social'">
           <div class="form-group">
             <label class="form-label">伪装发件人<span class="required">*</span></label>
             <p class="form-hint" style="margin-bottom:8px;">收件端展示的发件人名称与邮箱；新建请前往「发送配置 → 伪装发件人」</p>
@@ -321,14 +368,17 @@
         </div>
         <div class="form-group">
           <label class="form-label">发送测试（可选）</label>
-          <div class="test-row">
+          <div class="test-row" v-if="form.type !== 'social'">
             <el-input v-model="sendForm.test_email" placeholder="输入测试接收邮箱..." class="form-input" />
             <el-button type="primary" :loading="wizardTestLoading" @click="sendWizardTest">发送测试</el-button>
+          </div>
+          <div class="test-row" v-else>
+            <el-button type="primary" @click="wecomTestVisible = true">企微试发（选择接收员工）</el-button>
           </div>
           <p v-if="testResult" class="form-hint" :style="{ color: testResult.startsWith('✓') ? '#1D9E75' : '#D85A30' }">{{ testResult }}</p>
         </div>
         <div class="info-tip">
-          ℹ️ <span>如需配置新的SMTP服务器、域名或DNS记录，请前往 <el-link type="primary" :underline="false" style="font-size:11px;" @click="router.push('/send-config')">发送配置</el-link></span>
+          ℹ️ <span>如需配置新的{{ form.type === 'social' ? '企业微信通道、' : '' }}SMTP服务器、域名或DNS记录，请前往 <el-link type="primary" :underline="false" style="font-size:11px;" @click="router.push('/send-config')">发送配置</el-link></span>
         </div>
       </template>
 
@@ -395,11 +445,20 @@
               <span>邮件内容随机化（防止垃圾网关识别）</span>
               <el-tag size="small" type="info" effect="plain">三期</el-tag>
             </label>
-            <label class="field-item" style="opacity:.55">
-              <el-checkbox v-model="triggerForm.adv[1]" disabled />
-              <span>随机发件时间抖动（±5分钟）</span>
-              <el-tag size="small" type="info" effect="plain">三期</el-tag>
-            </label>
+            <div class="field-item">
+              <el-checkbox v-model="triggerForm.adv[1]" />
+              <span>随机发件时间抖动</span>
+              <el-input-number
+                v-model="triggerForm.jitterSec"
+                :min="0"
+                :max="600"
+                :step="30"
+                size="small"
+                :disabled="!triggerForm.adv[1]"
+                style="width: 110px"
+              />
+              <span style="margin-left:6px;font-size:12px;color:var(--el-text-color-secondary)">秒（每两封间隔随机 0~N 秒，打散瞬时连发；0 关闭）</span>
+            </div>
             <label class="field-item">
               <el-checkbox v-model="triggerForm.adv[2]" />
               <span>开启追踪像素降级模式（图片替代）</span>
@@ -494,12 +553,20 @@
         </div>
       </div>
     </div>
+
+    <WecomTestDialog
+      v-model="wecomTestVisible"
+      :channel-id="sendChannelId"
+      :template-id="wecomTemplateId ?? undefined"
+      @sent="onWecomTestSent"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import WecomTestDialog from '@/components/wecom/WecomTestDialog.vue'
 import { ElMessage, ElLink } from 'element-plus'
 import type { ElTree, UploadFile } from 'element-plus'
 import PageHeader from '@/components/base/PageHeader.vue'
@@ -535,6 +602,19 @@ const checkedLeafDeptIds = ref<number[]>([])
 const checkedTagIds = ref<number[]>([])
 const csvEmails = ref<string[]>([])
 const authConfirmed = ref(false)
+
+// 企微演练专有授权条款（红线4，与后端 campaign.service._WECOM_AUTH_REQUIRED 对齐）
+const WECOM_AUTH_ITEMS = [
+  { key: 'wecom:written_auth', label: '已获企业书面授权（覆盖企微场景）' },
+  { key: 'wecom:domain_verified', label: '企微自建应用可信域名已配置' },
+  { key: 'wecom:internal_only', label: '仅针对本企业成员（目标均有企业微信 userid）' },
+]
+const wecomAuthChecked = ref<string[]>([])
+function onWecomAuthCheck(key: string, checked: unknown) {
+  wecomAuthChecked.value = checked === true
+    ? [...wecomAuthChecked.value.filter((k) => k !== key), key]
+    : wecomAuthChecked.value.filter((k) => k !== key)
+}
 
 onMounted(() => {
   orgApi.deptTree()
@@ -669,7 +749,14 @@ const selectedTemplate = computed(() =>
 const landingPages = ref<{ id: number; name: string; tag: string; label: string; bg: string }[]>([])
 const senderProfiles = ref<{ id: number; name: string; display_name: string; from_addr: string }[]>([])
 const senderProfileId = ref<number | null>(null)
-const sendChannels = ref<{ id: number; name: string; type: string; type_label: string; server?: string; port?: number; ssl?: boolean; daily_limit: number; score: number; status: string; is_default?: boolean; last_test?: string }[]>([])
+const sendChannels = ref<{ id: number; name: string; type: string; type_label: string; server?: string; port?: number; ssl?: boolean; daily_limit: number; score: number; status: string; is_default?: boolean; last_test?: string; wecom_corp_id?: string; wecom_agent_id?: string; wecom_app_name?: string }[]>([])
+/** 按演练类型过滤可用通道：social→企微通道，其余→SMTP */
+const availableChannels = computed(() =>
+  sendChannels.value.filter((ch) => (form.type === 'social' ? ch.type === 'wecom' : ch.type === 'smtp')),
+)
+/** 企微消息模板（仅已审核；P0 卡片 textcard） */
+const wecomTemplates = ref<{ id: number; name: string; title: string; description: string; btn_text: string; url_mode: string; custom_url: string; status: string }[]>([])
+const wecomTemplateId = ref<number | null>(null)
 
 const tplForm = reactive({
   template_id: 0 as number,
@@ -729,12 +816,19 @@ async function loadWizardAssets() {
   try {
     const list = (await channelApi.list()) as typeof sendChannels.value
     if (Array.isArray(list)) {
-      sendChannels.value = list.filter((ch) => ch.type === 'smtp')
-      if (!sendChannelId.value && sendChannels.value.length) sendChannelId.value = sendChannels.value[0].id
+      sendChannels.value = list // 保留全部类型，页面按演练类型过滤（availableChannels）
+      if (!sendChannelId.value && availableChannels.value.length) sendChannelId.value = availableChannels.value[0].id
     }
     const sps = (await channelApi.senderProfiles()) as typeof senderProfiles.value
     if (Array.isArray(sps)) senderProfiles.value = sps
   } catch { /* 通道加载失败不阻断 */ }
+  try {
+    const list = (await templateApi.wecomTemplates()) as typeof wecomTemplates.value
+    if (Array.isArray(list)) {
+      wecomTemplates.value = list.filter((t) => t.status === 'approved')
+      if (!wecomTemplateId.value && wecomTemplates.value.length) wecomTemplateId.value = wecomTemplates.value[0].id
+    }
+  } catch { /* 企微模板加载失败不阻断 */ }
 }
 
 const fieldOptions = ref([
@@ -752,6 +846,18 @@ const selectedSenderProfile = computed(() =>
 const sendForm = reactive({ test_email: '' })
 const testResult = ref('')
 const wizardTestLoading = ref(false)
+
+// 切换演练类型时重置所选通道为该类型第一个可用通道（避免 smtp 通道 id 残留到 social 演练）
+watch(() => form.type, () => {
+  sendChannelId.value = availableChannels.value.length ? availableChannels.value[0].id : 0
+})
+
+/** 向导内企微试发：弹窗选取接收员工（在职且已配置 userid），用演练所选模板发送 */
+const wecomTestVisible = ref(false)
+
+function onWecomTestSent() {
+  testResult.value = '✓ 企微测试消息已发送，请在企业微信查看'
+}
 
 /** 向导内发送测试：走所选 SMTP 通道真实发信 */
 async function sendWizardTest() {
@@ -789,6 +895,7 @@ const triggerForm = reactive({
   end_time: '', // 演练结束时间，留空 = 投递后自动追踪 7 天
   batch: '3-30',
   adv: [true, true, false],
+  jitterSec: 300,
 })
 
 const trainForm = reactive({
@@ -805,18 +912,22 @@ const summaryRows = computed(() => [
   { key: '演练名称', val: form.name },
   { key: '演练类型', val: types.find(t => t.value === form.type)?.label || '邮件钓鱼' },
   { key: '目标人数', val: `${targetCount.value.toLocaleString()} 人` },
-  { key: '邮件模板', val: templates.value.find(t => t.id === tplForm.template_id)?.subject || '-' },
+  ...(form.type === 'social'
+    ? [{ key: '企微消息模板', val: wecomTemplates.value.find(t => t.id === wecomTemplateId.value)?.name || '-' }]
+    : [{ key: '邮件模板', val: templates.value.find(t => t.id === tplForm.template_id)?.subject || '-' }]),
   { key: '落地页', val: landingPages.value.find(p => p.id === landingForm.page_id)?.name || '-' },
-  {
-    key: '邮件附件',
-    val: selectedAttachmentIds.value.length
-      ? `${selectedAttachmentIds.value.length} 个（${selectedAttachmentIds.value
-          .map((id) => attachPayloads.value.find((p) => p.id === id)?.name)
-          .filter(Boolean)
-          .join('、')}）`
-      : '无',
-  },
-  { key: '发送配置', val: sendChannels.value.find((ch) => ch.id === sendChannelId.value)?.name || '-' },
+  ...(form.type === 'social'
+    ? [{ key: '企微授权条款', val: `${wecomAuthChecked.value.length}/${WECOM_AUTH_ITEMS.length} 项已勾选` }]
+    : [{
+      key: '邮件附件',
+      val: selectedAttachmentIds.value.length
+        ? `${selectedAttachmentIds.value.length} 个（${selectedAttachmentIds.value
+            .map((id) => attachPayloads.value.find((p) => p.id === id)?.name)
+            .filter(Boolean)
+            .join('、')}）`
+        : '无',
+    }]),
+  { key: '发送配置', val: availableChannels.value.find((ch) => ch.id === sendChannelId.value)?.name || '-' },
   {
     key: '演练时间范围',
     val: triggerForm.mode === 'schedule'
@@ -848,6 +959,18 @@ function nextStep() {
       ElMessage.warning('请勾选授权确认（未获得授权不可发起演练）')
       return
     }
+    if (form.type === 'social' && wecomAuthChecked.value.length < WECOM_AUTH_ITEMS.length) {
+      ElMessage.warning('请勾选全部企业微信演练专有授权条款（红线）')
+      return
+    }
+  }
+  if (step.value === 2 && form.type === 'social' && !wecomTemplateId.value) {
+    ElMessage.warning('请选择企微消息模板')
+    return
+  }
+  if (step.value === 4 && form.type === 'social' && !sendChannelId.value) {
+    ElMessage.warning('请选择企业微信发送通道')
+    return
   }
   step.value++
 }
@@ -871,6 +994,20 @@ async function submit() {
     ElMessage.warning('请勾选授权确认（未获得授权不可发起演练）')
     return
   }
+  if (form.type === 'social') {
+    if (wecomAuthChecked.value.length < WECOM_AUTH_ITEMS.length) {
+      ElMessage.warning('请勾选全部企业微信演练专有授权条款（红线）')
+      return
+    }
+    if (!wecomTemplateId.value) {
+      ElMessage.warning('请选择企微消息模板')
+      return
+    }
+    if (!sendChannelId.value) {
+      ElMessage.warning('请选择企业微信发送通道')
+      return
+    }
+  }
   // 演练结束时间必须晚于发送开始时间（后端同样硬校验）
   if (triggerForm.end_time) {
     const start = new Date(triggerForm.schedule_time.replace(' ', 'T'))
@@ -893,7 +1030,9 @@ async function submit() {
         tag_ids: checkedTagIds.value,
         emails: csvEmails.value,
       },
-      template_id: tplForm.template_id,
+      template_id: form.type === 'social' ? null : tplForm.template_id,
+      wecom_template_id: form.type === 'social' ? wecomTemplateId.value : null,
+      auth_snapshot: form.type === 'social' ? [...wecomAuthChecked.value] : [],
       attachment_ids: selectedAttachmentIds.value,
       landing_page_id: landingForm.page_id,
       channel_id: sendChannelId.value || null,
@@ -905,6 +1044,7 @@ async function submit() {
       ended_at: triggerForm.end_time || null,
       batch_count: 3,
       pixel_degrade: triggerForm.adv[2],
+      time_jitter_sec: triggerForm.adv[1] ? triggerForm.jitterSec : 0,
       // 前端 mode：train/popup/none/url；后端 policy：redirect/popup/none/url（train→redirect 映射）
       training_policy: trainForm.mode === 'train' ? 'redirect' : trainForm.mode,
       training_redirect_url: trainForm.mode === 'url' ? trainForm.redirect_url.trim() : '',

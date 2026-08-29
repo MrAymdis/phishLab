@@ -43,6 +43,9 @@ class Campaign(Base, TimestampMixin):
     course_ids: Mapped[list | None] = mapped_column(JSON, comment="关联培训课程")
     force_training_rules: Mapped[list | None] = mapped_column(JSON, comment="强制培训触发条件")
     auth_confirmed: Mapped[int] = mapped_column(Integer, default=0, comment="授权确认勾选")
+    auth_snapshot: Mapped[list | None] = mapped_column(
+        JSON, comment="授权勾选项快照（企微演练含 4 项专有条款，红线4）")
+    wecom_template_id: Mapped[int | None] = mapped_column(BigInteger, comment="企微消息模板（social 演练用）")
     started_at: Mapped[datetime | None] = mapped_column(DateTime)
     ended_at: Mapped[datetime | None] = mapped_column(DateTime)
 
@@ -138,7 +141,8 @@ class CampaignAlert(Base):
     id: Mapped[int] = pk()
     campaign_id: Mapped[int] = mapped_column(BigInteger, index=True)
     type: Mapped[str] = mapped_column(
-        String(32), comment="pwd_submit/exec_user/dept_threshold/fast_submit/repeat_n"
+        String(32), comment="pwd_submit/exec_user/dept_threshold/fast_submit/repeat_n/"
+                            "wecom_bounce/wecom_no_userid/wecom_channel_error"
     )
     level: Mapped[int] = mapped_column(Integer, default=2)
     message: Mapped[str] = mapped_column(String(512))
