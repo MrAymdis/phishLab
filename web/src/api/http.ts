@@ -84,16 +84,23 @@ export async function del<T>(url: string): Promise<T> {
 /** 触发浏览器下载：解析 Content-Disposition 文件名（POST 导出 / GET 附件下载共用）。 */
 async function _triggerBlobDownload(res: { data: unknown; headers: Record<string, string> }): Promise<void> {
   const blob = res.data as Blob
-  // 后端错误响应是 JSON 但被按 blob 接收，兜底解析提示
   if (blob.type.includes('json')) {
-    const err = (await blob.text()) as string
+    // 统一响应错误（HTTP 200 送达、code≠0）→ 提示并中断；
+    // 无 code 字段的 JSON 是正常文件内容（如插件引导配置导出），走下载
+    let body: ApiResult | null = null
     try {
-      const body = JSON.parse(err) as ApiResult
-      ElMessage.error(body.message || '导出失败')
+      body = JSON.parse(await blob.text()) as ApiResult
     } catch {
-      ElMessage.error('导出失败')
+      body = null
     }
-    throw new Error('download failed')
+    if (body && typeof body.code === 'number' && body.code !== 0) {
+      ElMessage.error(body.message || '导出失败')
+      throw new Error('download failed')
+    }
+    if (body === null) {
+      ElMessage.error('导出失败')
+      throw new Error('download failed')
+    }
   }
   const disp = res.headers['content-disposition'] || ''
   const m = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(disp)
