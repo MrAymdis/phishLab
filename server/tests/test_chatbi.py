@@ -131,6 +131,41 @@ async def test_unsupported_question_rejected(seeded_db):
 
 
 @pytest.mark.asyncio
+async def test_suggestion_phrasings_supported(seeded_db):
+    """概览/报表页的建议问法与占位示例问法都能命中模板（不再落入兜底报错）。"""
+    db = seeded_db
+    acct = _account(db, _BASE + 1)
+    cases = [
+        ("本月各部门中招率对比", "部门中招对比"),      # 概览页占位示例
+        ("财务部中招率", "部门中招对比"),              # 报表页占位示例（X部中招 问法）
+        ("近7天举报趋势", "举报趋势（按天）"),          # 概览页建议
+        ("高风险人员名单", "高危人员（风险等级 3）"),   # 概览页建议
+        ("培训通过率最低的部门", "培训通过率最低的部门"),  # 概览页建议
+    ]
+    for question, title in cases:
+        result = await chatbi.ask_question(db, acct, question)
+        assert result["title"] == title, f"{question} → {result['title']}"
+
+
+@pytest.mark.asyncio
+async def test_template_first_skips_llm(seeded_db, monkeypatch):
+    """命中模板的问题不经 LLM（推理模型单次调用 20-60s），未命中才走 LLM。"""
+    db = seeded_db
+    calls: list[str] = []
+
+    async def fake_llm(d, a, q, since):
+        calls.append(q)
+        return None
+
+    monkeypatch.setattr(chatbi, "_ask_via_llm", fake_llm)
+    result = await chatbi.ask_question(db, _account(db, _BASE + 1), "各部门中招对比")
+    assert result["title"] == "部门中招对比" and calls == []
+    with pytest.raises(BizError):
+        await chatbi.ask_question(db, _account(db, _BASE + 1), "哪些员工没有打开邮件")
+    assert calls == ["哪些员工没有打开邮件"]
+
+
+@pytest.mark.asyncio
 async def test_audit_logged(seeded_db):
     db = seeded_db
     await chatbi.ask_question(db, _account(db, _BASE + 1), "近7天中招趋势")

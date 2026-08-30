@@ -4,8 +4,8 @@
 禁 INTO / 强制 LIMIT）→ 数据权限注入（与 apply_data_scope 同口径改写）→
 只读连接执行（独立只读账号优先，未配置时主库只读事务兜底）→ 审计留痕。
 
-当前意图由本地规则引擎匹配（LLM Provider 适配层接入后走同一管线，
-规则层作为兜底）；所有结果查询只读，不产生任何写操作。
+当前意图先由本地规则引擎命中（毫秒级、结果确定），未命中的长尾问法由 LLM 生成，
+走同一管线；所有结果查询只读，不产生任何写操作。
 """
 import logging
 import re
@@ -69,14 +69,22 @@ _TEMPLATES: list[tuple[re.Pattern, str, str]] = [
     # 举报类先匹配（"举报…部门"与部门正则存在重叠，优先级高的在前）
     (re.compile(r"举报.*(部门|排行|统计)"),
      "举报最多的部门",
-     """SELECT d.name AS dept, COUNT(m.id) AS reports
+     """SELECT COALESCE(d.name, '未知部门') AS dept, COUNT(m.id) AS reports
        FROM mail_report m
-       JOIN emp_user u ON u.id = m.reporter_user_id
+       LEFT JOIN emp_user u ON u.id = m.reporter_user_id
        LEFT JOIN emp_dept d ON d.id = u.dept_id
       WHERE m.created_at >= :since
-      GROUP BY d.name
+      GROUP BY COALESCE(d.name, '未知部门')
       ORDER BY reports DESC"""),
-    (re.compile(r"部门.*(中招|对比)|中招.*部门"),
+    (re.compile(r"举报.*(趋势|走势|每日|每天)|趋势.*举报"),
+     "举报趋势（按天）",
+     """SELECT DATE(m.created_at) AS day, COUNT(m.id) AS reports
+       FROM mail_report m
+       LEFT JOIN emp_user u ON u.id = m.reporter_user_id
+      WHERE m.created_at >= :since
+      GROUP BY DATE(m.created_at)
+      ORDER BY day"""),
+    (re.compile(r"部门.*(中招|对比)|(?<!全)部(?=中招)|中招.*部门"),
      "部门中招对比",
      """SELECT d.name AS dept,
             COUNT(t.id) AS sent,
@@ -109,7 +117,7 @@ _TEMPLATES: list[tuple[re.Pattern, str, str]] = [
       GROUP BY u.id, u.name, d.name
       ORDER BY victim_count DESC
       LIMIT 10"""),
-    (re.compile(r"高危.*(人员|员工|top)|风险.*最高"),
+    (re.compile(r"(高危|高风险).*(人员|员工|top|名单)|风险.*(最高|名单)"),
      "高危人员（风险等级 3）",
      """SELECT u.name AS name, d.name AS dept,
             p.total_score AS score, p.risk_level AS risk
@@ -129,6 +137,19 @@ _TEMPLATES: list[tuple[re.Pattern, str, str]] = [
        LEFT JOIN campaign_target t ON t.campaign_id = c.id
       GROUP BY c.id, c.name, c.status
       ORDER BY c.id DESC
+      LIMIT 20"""),
+    (re.compile(r"培训.*(通过率|完成率|部门|统计)|(通过率|完成率).*部门"),
+     "培训通过率最低的部门",
+     """SELECT d.name AS dept,
+            COUNT(a.id) AS assigned,
+            SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) AS completed,
+            ROUND(SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END)
+                  / NULLIF(COUNT(a.id), 0) * 100, 1) AS pass_rate
+       FROM training_assignment a
+       JOIN emp_user u ON u.id = a.user_id
+       LEFT JOIN emp_dept d ON d.id = u.dept_id
+      GROUP BY d.name
+      ORDER BY pass_rate
       LIMIT 20"""),
 ]
 
@@ -351,9 +372,11 @@ _CHATBI_SCHEMA_HINT = """可查询的表（仅限以下，禁止任何其他表�
 - emp_dept(id,parent_id,name) 部门
 - emp_risk_profile(user_id,total_score,risk_level,phish_count) 员工风险画像
 - mail_report(id,reporter_user_id,classification,created_at) 邮件举报
-- campaign_stat / stat_daily / training_assignment / course
+- training_assignment(id,task_id,course_id,user_id,progress,status,assigned_at,completed_at) 培训任务（status: pending/learning/completed/overdue）
+- course(id,title,type,duration_min,status) 课程
 
-口径：中招 = submit_flag=1 OR attach_run_count>0。
+口径：中招 = submit_flag=1 OR attach_run_count>0；
+培训通过率/完成率 = training_assignment.status='completed' 的占比。
 约束：只输出一条 SELECT 语句，不得包含其他语句；表名仅限上述；必须带 LIMIT（≤200）；
 时间筛选按给定的时间窗起点用 >= '起点时间' 表达；聚合用 COUNT/SUM/GROUP BY 即可。"""
 
@@ -408,10 +431,16 @@ async def _ask_via_llm(db: Session, account, question: str, since: datetime) -> 
           f"时间窗起点（近30天/近N天/本月/上月按此推算）：{since:%Y-%m-%d %H:%M:%S}\n"
           f"{_CHATBI_SCHEMA_HINT}"}],
         system_prompt=provider.system_prompt or _CHATBI_SYSTEM,
-        temperature=0.1, max_tokens=800,
+        # 推理型模型（deepseek-v4-flash 等）会把思考过程计入输出 token，
+        # 预留足够额度让最终 SQL 落进 content（800 会被 reasoning 耗尽）
+        temperature=0.1, max_tokens=4096,
     )
     raw = _extract_sql_text(result.get("content") or "")
     if not raw:
+        # content 为空（推理被 max_tokens 截断）时，从思考过程兜底提取
+        raw = _extract_sql_text(result.get("reasoning_content") or "")
+    if not raw:
+        logger.warning("chatbi llm unparseable output provider=%s", provider.name)
         return None
     sql = _validate_sql(raw)  # 与规则引擎同一守卫：表白名单/单SELECT/禁INTO/强制LIMIT
     sql = _inject_scope(db, account, sql)
@@ -426,9 +455,10 @@ async def _ask_via_llm(db: Session, account, question: str, since: datetime) -> 
 
 
 async def ask_question(db: Session, account, question: str) -> dict:
-    """ChatBI 问数：LLM 生成优先（同一安全管线），失败/未配置兜底规则引擎。
+    """ChatBI 问数：规则引擎优先（毫秒级、结果确定），长尾问法走 LLM（同一安全管线）。
 
-    管线：意图 → SQL（LLM 或模板）→ sqlglot 校验 → 权限注入 → 只读执行 → 审计。
+    管线：意图 → SQL（模板或 LLM）→ sqlglot 校验 → 权限注入 → 只读执行 → 审计。
+    推理型模型（deepseek-v4-flash 等）单次调用需 20-60s，故已知问法不经 LLM。
     """
     question = (question or "").strip()
     if not question:
@@ -438,7 +468,36 @@ async def ask_question(db: Session, account, question: str) -> dict:
 
     since = _parse_window(question)
 
-    # LLM 路径：任何异常降级规则引擎，不阻断问数
+    # 规则引擎优先：命中模板直接执行，不等待 LLM
+    matched = _match_template(question)
+    if matched is not None:
+        title, raw_sql = matched
+        try:
+            sql = _validate_sql(raw_sql)
+            sql = _inject_scope(db, account, sql)
+        except BizError:
+            raise
+        except Exception as exc:  # 注入层意外失败 fail-closed，不执行
+            logger.exception("chatbi sql guard failed")
+            raise BizError(ErrorCode.PARAM_INVALID, "问数校验失败，已拒绝执行") from exc
+
+        sql = _finalize_sql(sql, since)
+        cols, rows = _execute_readonly(sql)
+
+        record_audit(db, account=account, module="ai", action="chatbi_ask",
+                     target_type="chatbi", detail={"question": question, "sql": sql,
+                                                   "rows": len(rows), "llm": False})
+        logger.info("chatbi ask account=%s rows=%d", account.id, len(rows))
+        return {
+            "question": question,
+            "title": title,
+            "sql": sql,
+            "columns": cols,
+            "rows": rows[: _MAX_ROWS],
+            "total": len(rows),
+        }
+
+    # LLM 路径：未命中模板的长尾问法；任何异常降级为兜底报错，不阻断问数
     llm_result = None
     try:
         llm_result = await _ask_via_llm(db, account, question, since)
@@ -454,34 +513,7 @@ async def ask_question(db: Session, account, question: str) -> dict:
         logger.info("chatbi ask(llm) account=%s rows=%d", account.id, llm_result["total"])
         return {"question": question, **llm_result}
 
-    matched = _match_template(question)
-    if matched is None:
-        raise BizError(ErrorCode.PARAM_INVALID,
-                       "暂不支持该问法，可尝试：各部门中招率、近7天中招趋势、"
-                       "中招最多的员工、高危人员、各演练统计、举报最多的部门")
-    title, raw_sql = matched
-
-    try:
-        sql = _validate_sql(raw_sql)
-        sql = _inject_scope(db, account, sql)
-    except BizError:
-        raise
-    except Exception as exc:  # 注入层意外失败 fail-closed，不执行
-        logger.exception("chatbi sql guard failed")
-        raise BizError(ErrorCode.PARAM_INVALID, "问数校验失败，已拒绝执行") from exc
-
-    sql = _finalize_sql(sql, since)
-    cols, rows = _execute_readonly(sql)
-
-    record_audit(db, account=account, module="ai", action="chatbi_ask",
-                 target_type="chatbi", detail={"question": question, "sql": sql,
-                                               "rows": len(rows), "llm": False})
-    logger.info("chatbi ask account=%s rows=%d", account.id, len(rows))
-    return {
-        "question": question,
-        "title": title,
-        "sql": sql,
-        "columns": cols,
-        "rows": rows[: _MAX_ROWS],
-        "total": len(rows),
-    }
+    raise BizError(ErrorCode.PARAM_INVALID,
+                   "暂不支持该问法，可尝试：各部门中招率、近7天中招/举报趋势、"
+                   "中招最多的员工、高危/高风险人员、各演练统计、举报最多的部门、"
+                   "培训通过率最低的部门")

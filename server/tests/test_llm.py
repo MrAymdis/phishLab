@@ -257,15 +257,17 @@ def _seed_chatbi_data(db):
 
 
 @pytest.mark.asyncio
-async def test_chatbi_llm_bad_sql_falls_back(db, provider, monkeypatch):
-    _patch_llm(monkeypatch, "DROP TABLE campaign;")
-    result = await chatbi.ask_question(db, _account(db), "各部门中招对比")
-    # LLM SQL 被校验层拒绝 → 兜底规则引擎，问数能力不降级
-    assert result["title"] == "部门中招对比"
+async def test_chatbi_llm_bad_sql_rejected(db, provider, monkeypatch):
+    """长尾问法（未命中模板）走 LLM：LLM SQL 被校验层拒绝 → fail-closed 报错。"""
+    _patch_llm(monkeypatch, "SELECT * FROM users LIMIT 10")
+    with pytest.raises(BizError) as exc:
+        await chatbi.ask_question(db, _account(db), "各部门的邮件打开率")
+    assert "暂不支持该问法" in exc.value.message
 
 
 @pytest.mark.asyncio
 async def test_chatbi_llm_valid_sql(db, provider, monkeypatch):
+    """长尾问法（未命中模板）走 LLM：合法 SQL 走同一校验/注入/只读管线。"""
     _seed_chatbi_data(db)
     sql = (
         "SELECT d.name AS dept, COUNT(t.id) AS sent "
@@ -275,7 +277,7 @@ async def test_chatbi_llm_valid_sql(db, provider, monkeypatch):
         "GROUP BY d.name ORDER BY sent DESC LIMIT 10"
     )
     _patch_llm(monkeypatch, sql)
-    result = await chatbi.ask_question(db, _account(db), "各部门中招对比")
+    result = await chatbi.ask_question(db, _account(db), "各部门的邮件打开率")
     assert result["title"] == "AI 问数"
     assert "dept" in result["columns"] and result["total"] >= 1
     assert result["sql"].startswith("SELECT") and "LIMIT" in result["sql"]

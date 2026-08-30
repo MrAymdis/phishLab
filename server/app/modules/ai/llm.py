@@ -118,8 +118,12 @@ class OpenAICompatClient:
         resp = await self._post(self._body(messages, system_prompt, temperature, max_tokens, False))
         data = resp.json()
         usage = data.get("usage") or {}
+        msg = (data.get("choices") or [{}])[0].get("message", {}) or {}
         return {
-            "content": (data.get("choices") or [{}])[0].get("message", {}).get("content") or "",
+            "content": msg.get("content") or "",
+            # 推理型模型（deepseek-reasoner 类）思考过程：内容被 max_tokens 截断时
+            # content 可能为空，调用方可用 reasoning_content 兜底提取
+            "reasoning_content": msg.get("reasoning_content") or "",
             "tokens_in": usage.get("prompt_tokens"),
             "tokens_out": usage.get("completion_tokens"),
         }
