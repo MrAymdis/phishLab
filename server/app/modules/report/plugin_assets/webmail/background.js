@@ -8,7 +8,30 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     doReport(msg.payload).then(sendResponse);
     return true; // 异步响应
   }
+  if (msg && msg.type === 'phishlabFetch') {
+    doFetch(msg.url).then(sendResponse);
+    return true;
+  }
 });
+
+/* 跨域附件抓取：host_permissions 豁免 CORS；单个附件 6MB 上限（与 content 侧 ATT_LIMIT 一致） */
+async function doFetch(url) {
+  try {
+    const r = await fetch(url);
+    if (!r.ok) return { ok: false };
+    const buf = await r.arrayBuffer();
+    if (buf.byteLength > 6 * 1024 * 1024) return { ok: false, message: 'oversize' };
+    const bytes = new Uint8Array(buf);
+    let bin = '';
+    const CH = 0x8000;
+    for (let i = 0; i < bytes.length; i += CH) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CH));
+    }
+    return { ok: true, base64: btoa(bin), contentType: r.headers.get('content-type') || '' };
+  } catch (e) {
+    return { ok: false, message: e.message };
+  }
+}
 
 async function doReport(payload) {
   const stored = await chrome.storage.local.get(CONFIG_KEY);

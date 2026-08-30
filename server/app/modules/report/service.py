@@ -676,8 +676,11 @@ def ingest_from_plugin(db, payload: dict) -> int:
     )
     db.add(report)
     db.flush()
-    # EML 全文归档（新 Outlook getAsFileAsync 提供）：落盘 + 邮件头回填，失败静默降级
+    # EML 全文归档（Outlook getAsFileAsync / 网页邮箱合成提供）：落盘 + 邮件头回填，失败静默降级
     report.eml_path = _save_eml(db, report, payload.get("eml_base64"))
+    degrade = payload.get("degrade")
+    if degrade:
+        report.handle_remark = f"[插件降级] {degrade[:500]}"  # 研判时知情；人工研判备注会覆盖
     points = 0
     if classification == "drill" and reporter_user_id:
         points = _rule_map(db).get("drill", 0)

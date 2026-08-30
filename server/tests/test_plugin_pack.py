@@ -117,6 +117,31 @@ def test_ingest_domain_whitelist_fail_closed():
     assert r.status_code == 200 and r.json()["code"] == 0
 
 
+# ---------- 网页邮箱合成降级信息 ----------
+
+def test_ingest_degrade_annotates_remark():
+    """网页邮箱 L2/L3 降级原因入举报备注，供研判知情；超长截断适配 remark 列容量。"""
+    api_key = _regen_key()
+    r = client.post("/report/v1/mail", headers={"X-Api-Key": api_key}, json={
+        "from_addr": "a@b.com", "subject": "s", "degrade": "附件抓取失败：工资单.xlsx"})
+    assert r.json()["code"] == 0
+    rid = r.json()["data"]["id"]
+    db = SessionLocal()
+    row = db.query(MailReport).get(rid)
+    db.close()
+    assert row.handle_remark == "[插件降级] 附件抓取失败：工资单.xlsx"
+    # 超长降级原因截断（handle_remark 列 512 字符）
+    r = client.post("/report/v1/mail", headers={"X-Api-Key": api_key}, json={
+        "from_addr": "a@b.com", "subject": "s", "message_id": "<degrade-long@x>",
+        "degrade": "原因" * 300})
+    assert r.json()["code"] == 0
+    rid2 = r.json()["data"]["id"]
+    db = SessionLocal()
+    row2 = db.query(MailReport).get(rid2)
+    db.close()
+    assert len(row2.handle_remark) <= 512 and row2.handle_remark.startswith("[插件降级]")
+
+
 # ---------- 重复上报拦截 ----------
 
 def test_ingest_duplicate_message_id_conflict():

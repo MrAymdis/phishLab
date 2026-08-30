@@ -29,6 +29,7 @@ class PluginReport(BaseModel):
     subject: str | None = None
     headers: str | None = None
     eml_base64: str | None = None
+    degrade: str | None = None  # 网页邮箱合成降级原因（L2/L3），入举报备注供研判知情
 
 
 class RewardRulesRequest(BaseModel):

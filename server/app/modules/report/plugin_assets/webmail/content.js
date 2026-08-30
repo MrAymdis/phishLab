@@ -93,7 +93,7 @@
     overlay.querySelector('#f_cancel').addEventListener('click', close);
     overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
 
-    ok.addEventListener('click', () => {
+    ok.addEventListener('click', async () => {
       const em = email.value.trim();
       if (!em || !em.includes('@')) {
         toast(shadow, false, '请填写举报人邮箱');
@@ -103,21 +103,39 @@
       reporterEmail = em;
       chrome.storage.local.set({ [EMAIL_KEY]: em });
       ok.disabled = true;
+      ok.textContent = '采集邮件内容…';
+
+      // 采集当前邮件 → 合成 EML（L1 完整 / L2 仅正文 / L3 元数据，任何失败不阻断举报）
+      let collected = { level: 'L3', fields: {}, eml: null, warnings: [] };
+      try {
+        collected = await Promise.race([
+          PhishLabAdapters.collectCurrentMail(),
+          new Promise((r) => setTimeout(
+            () => r({ level: 'L3', fields: {}, eml: null, warnings: ['采集超时（' + PhishLabAdapters.COLLECT_TIMEOUT_MS / 1000 + 's），已按元数据上报'] }),
+            PhishLabAdapters.COLLECT_TIMEOUT_MS,
+          )),
+        ]);
+      } catch (e) {
+        collected = { level: 'L3', fields: {}, eml: null, warnings: ['采集异常：' + String(e)] };
+      }
+
+      const payload = {
+        channel: 'webmail',
+        reporter_email: em,
+        from_addr: from.value.trim() || collected.fields.from || null,
+        subject: subjectIn.value.trim() || collected.fields.subject || null,
+        message_id: null, // Web 页面取不到 RFC Message-ID，精确匹配由平台二期支持
+      };
+      if (collected.eml) payload.eml_base64 = PhishLabEml.toBase64(collected.eml);
+      if (collected.warnings.length) payload.degrade = collected.warnings.join('；');
+
       ok.textContent = '提交中…';
-      chrome.runtime.sendMessage({
-        type: 'phishlabReport',
-        payload: {
-          channel: 'webmail',
-          reporter_email: em,
-          from_addr: from.value.trim() || null,
-          subject: subjectIn.value.trim() || null,
-          message_id: null, // Web 页面取不到邮件头，精确匹配由平台二期支持
-        },
-      }, (res) => {
+      chrome.runtime.sendMessage({ type: 'phishlabReport', payload }, (res) => {
         ok.disabled = false;
         ok.textContent = '确认举报';
         const r = res || { ok: false, message: '扩展后台无响应，请刷新页面重试' };
-        toast(shadow, r.ok, r.message);
+        const suffix = r.ok && collected.level !== 'L1' ? '（' + collected.level + ' 降级上报）' : '';
+        toast(shadow, r.ok, r.message + suffix);
         if (r.ok) close();
       });
     });

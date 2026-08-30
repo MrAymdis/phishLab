@@ -1,6 +1,6 @@
 # 举报插件：网页邮箱 EML 合成上报方案（二期设计稿）
 
-> 状态：**仅设计，二期动工**。关联文档：`docs/举报插件部署说明.md`。
+> 状态：**已实施（2026-08-30，webmail 插件 v1.1.0）**——合成模块 `eml.js`、适配器框架 + Coremail 适配器 `adapters.js`、content/background 接线、服务端 `degrade` 备注已上线；Gmail/163/QQ 适配器仍待客户真实环境校准后补充。关联文档：`docs/举报插件部署说明.md`。
 > 背景：EML 全文归档能力已上线（服务端解析/预览/下载/邮件头回填），但数据源目前只有 Outlook Web Add-in（`getAsFileAsync`）。Gmail / **Coremail** / 163 / QQ 等网页邮箱只能元数据上报，举报详情无正文、无附件、无邮件头。
 > Coremail 是国内企业/高校/政府邮件的主流部署，是本方案的第一优先级适配对象。
 
