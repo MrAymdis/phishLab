@@ -147,30 +147,351 @@ def _load_policy(token: str) -> tuple[str, list | None, str | None]:
         db.close()
 
 
+# ---------- 学员端培训考试（redirect 模式 302 落点） ----------
+
+_EXAM_DENIED = """<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"><title>链接无效</title></head>
+<body style="margin:0;background:#f5f7fa;font-family:'Microsoft YaHei',sans-serif;display:flex;justify-content:center;padding-top:80px">
+<div style="max-width:480px;background:#fff;border-radius:12px;padding:32px;text-align:center">
+<h2 style="color:#D85A30;margin:0 0 12px">链接无效或已过期</h2>
+<p style="color:#555;line-height:1.7;margin:0">请通过演练邮件中的链接进入培训。</p>
+</div></body></html>"""
+
+
+def _load_exam_paper(db, course_id: int):
+    """课程 → 已发布试卷（多张取最新）；无则 None。"""
+    from app.modules.training.models import ExamPaper
+
+    return (db.query(ExamPaper)
+            .filter(ExamPaper.course_id == course_id, ExamPaper.status == "published")
+            .order_by(ExamPaper.id.desc())
+            .first())
+
+
+def _load_exam_context(db, course_id: int, token: str):
+    """token → (campaign, target)；fail-closed：token 无效或课程不在演练 course_ids → None。"""
+    from app.modules.campaign.models import Campaign, CampaignTarget
+
+    if not token:
+        return None
+    t = db.query(CampaignTarget).filter(CampaignTarget.token == token).first()
+    if t is None:
+        return None
+    c = db.get(Campaign, t.campaign_id)
+    if c is None or course_id not in (c.course_ids or []):
+        return None
+    return c, t
+
+
+def _paper_questions(db, paper):
+    """试卷题目按 question_id 排序：(question, score)。考试页与判分共用，保证顺序一致。"""
+    from app.modules.training.models import ExamPaperQuestion, ExamQuestion
+
+    return (db.query(ExamQuestion, ExamPaperQuestion.score)
+            .join(ExamPaperQuestion, ExamPaperQuestion.question_id == ExamQuestion.id)
+            .filter(ExamPaperQuestion.paper_id == paper.id)
+            .order_by(ExamQuestion.id)
+            .all())
+
+
+def _option_rows(qtype: str, options: list | None) -> list[tuple[str, str]]:
+    """选项 → [(字母, 文本)]。判断题为固定 A 正确/B 错误；
+    单选题选项可能带 "A." 前缀（种子数据形态），按位置剥离。"""
+    letters = "ABCDEFGH"
+    if qtype == "judge":
+        return [("A", "正确"), ("B", "错误")]
+    rows = []
+    for i, opt in enumerate(options or []):
+        letter = letters[i]
+        text = str(opt)
+        if (qtype == "single" and len(text) > 2 and text[1] == "."
+                and text[0].upper() == letter):
+            text = text[2:].lstrip()
+        rows.append((letter, text))
+    return rows
+
+
+def _answer_display(qtype: str, ans: str) -> str:
+    """答案展示：判断题的字母补语义（A→正确/B→错误），其余原样字母。"""
+    ans = (ans or "").strip()
+    if not ans:
+        return "未作答"
+    if qtype == "judge":
+        return f"{ans.upper()}（{'正确' if ans.upper().startswith('A') else '错误'}）"
+    return ans.upper()
+
+
+def _norm_multi(ans: str) -> str:
+    return ",".join(sorted(p.strip().upper() for p in ans.split(",") if p.strip()))
+
+
+def _grade(paper_questions, user_answers: dict) -> tuple[int, list[dict]]:
+    """服务端判分（不信任客户端）：多选按字母集合比较（乱序等价），单选/判断按字母。"""
+    total = 0
+    details = []
+    for q, score in paper_questions:
+        correct = (q.answer or "").strip()
+        user = str(user_answers.get(str(q.id), "") or "").strip()
+        if q.type == "multi":
+            ok = bool(correct) and _norm_multi(user) == _norm_multi(correct)
+        else:
+            ok = bool(correct) and user.upper() == correct.upper()
+        if ok:
+            total += score
+        details.append({
+            "id": q.id, "type": q.type, "content": q.content,
+            "options": q.options or [], "analysis": q.analysis or "",
+            "user_answer": user, "correct": correct, "score": score, "ok": ok,
+        })
+    return total, details
+
+
+def _render_exam_result(paper, total: int, pct: int, passed: bool, details: list[dict],
+                        course_id: int, token: str) -> str:
+    """交卷结果页：得分/是否通过 + 逐题回顾（题面、作答、正确答案、解析）。"""
+    import html
+
+    esc = html.escape
+    verdict = ("<span style='color:#1D9E75'>✅ 通过</span>"
+               if passed else "<span style='color:#D85A30'>❌ 未通过（及格线 {0}%）</span>".format(paper.pass_score))
+    rows = []
+    for i, d in enumerate(details, 1):
+        rows.append(f"""
+<div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;margin:10px 0;text-align:left">
+  <p style="margin:0 0 8px;color:#333;font-weight:600">{i}. {esc(d['content'])}</p>
+  <p style="margin:0 0 4px;color:#888;font-size:12px">你的作答：{esc(_answer_display(d['type'], d['user_answer']))}
+     ｜ 正确答案：{esc(_answer_display(d['type'], d['correct']))} ｜ 得分：{d['score'] if d['ok'] else 0}/{d['score']}</p>
+  {f"<p style='margin:0;color:#555;font-size:13px;line-height:1.7'>解析：{esc(d['analysis'])}</p>" if d['analysis'] else ""}
+</div>""")
+    return f"""<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"><title>考试结果</title></head>
+<body style="margin:0;background:#f5f7fa;font-family:'Microsoft YaHei',sans-serif;display:flex;justify-content:center;padding:40px 0">
+<div style="width:680px;max-width:94%;background:#fff;border-radius:12px;padding:28px 32px">
+  <h2 style="text-align:center;color:#333;margin:0 0 4px">{esc(paper.title)} · 考试结果</h2>
+  <p style="text-align:center;margin:0 0 16px">得分 <b style="font-size:22px;color:#378ADD">{total}</b> 分（{pct}%）　{verdict}</p>
+  {''.join(rows)}
+  <p style="text-align:center;margin:16px 0 0"><a href="/learn/{course_id}?token={quote(token)}"
+     style="color:#378ADD;text-decoration:none">← 返回课程</a></p>
+</div></body></html>"""
+
+
 @app.get("/learn/{course_id}", response_class=HTMLResponse)
-def learn(course_id: int):
-    """员工端培训学习页（redirect 模式 302 落点）。TODO(三期)：接入真实课件。"""
+def learn(course_id: int, token: str = ""):
+    """员工端培训学习页（redirect 模式 302 落点）：课程信息 + 已发布试卷考试入口。
+
+    token 有效且课程在演练 course_ids 内才展示考试卡片（fail-closed）。"""
+    import html
+
     from app.db.session import SessionLocal
     from app.modules.training.models import Course
 
-    title = "安全培训课程"
-    desc = ""
+    esc = html.escape
     db = SessionLocal()
     try:
         c = db.get(Course, course_id)
-        if c is not None:
-            title = c.title
-            desc = c.description or f"课件形态：{c.material or c.type} · 时长 {c.duration_min} 分钟"
+        ctx = _load_exam_context(db, course_id, token)
+        paper = _load_exam_paper(db, course_id) if ctx else None
     finally:
         db.close()
+    if c is None:
+        return HTMLResponse("Not Found", status_code=404)
+    desc = c.description or f"课件形态：{c.material or c.type} · 时长 {c.duration_min} 分钟"
+    if paper is not None:
+        exam_card = f"""
+<div style="margin-top:20px;padding:16px;border:1px solid #d6e7f7;border-radius:10px;background:#f2f8fe;text-align:left">
+  <p style="margin:0 0 6px;font-weight:600;color:#333">📝 {esc(paper.title)}</p>
+  <p style="margin:0 0 12px;color:#888;font-size:12px">及格线 {paper.pass_score}%（按卷面得分换算）· 限时 {paper.duration_min} 分钟</p>
+  <a href="/learn/{course_id}/exam?token={quote(token)}"
+     style="display:inline-block;padding:8px 26px;background:#378ADD;color:#fff;border-radius:6px;text-decoration:none;font-size:14px">开始考试</a>
+</div>"""
+    else:
+        hint = ("课程学习中，考试暂未开放。" if ctx
+                else "请通过演练邮件中的链接进入培训。")
+        exam_card = f'<p style="color:#999;font-size:12px;margin-top:20px">{hint}</p>'
     return HTMLResponse(f"""<!DOCTYPE html>
-<html lang="zh"><head><meta charset="utf-8"><title>{title}</title></head>
+<html lang="zh"><head><meta charset="utf-8"><title>{esc(c.title)} · 安全培训</title></head>
 <body style="margin:0;background:#f5f7fa;font-family:'Microsoft YaHei',sans-serif;display:flex;justify-content:center;padding-top:80px">
-<div style="max-width:520px;background:#fff;border-radius:12px;padding:32px;text-align:center">
+<div style="max-width:520px;width:92%;background:#fff;border-radius:12px;padding:32px">
 <h2 style="color:#1D9E75;margin:0 0 8px">✅ 您已进入安全培训</h2>
-<p style="color:#555;margin:0 0 20px">{title}</p>
-<p style="color:#999;font-size:12px;line-height:1.7">{desc or "培训课件接入中，敬请期待。"}</p>
+<p style="color:#333;font-size:16px;font-weight:600;margin:0 0 8px">{esc(c.title)}</p>
+<p style="color:#555;font-size:13px;line-height:1.7;margin:0">{esc(desc)}</p>
+{exam_card}
 </div></body></html>""")
+
+
+@app.get("/learn/{course_id}/exam", response_class=HTMLResponse)
+def exam_page(course_id: int, token: str = ""):
+    """在线答题页：题目（不含答案）嵌入 JS 变量，倒计时交卷。
+
+    题目内容走 textContent 渲染 + JSON 中 </ 转义，杜绝 XSS。"""
+    from app.db.session import SessionLocal
+
+    db = SessionLocal()
+    try:
+        ctx = _load_exam_context(db, course_id, token)
+        paper = _load_exam_paper(db, course_id) if ctx else None
+        questions = (_paper_questions(db, paper) if paper is not None else [])
+        exam_json = None
+        if paper is not None:
+            exam_json = json.dumps({
+                "paper_id": paper.id, "title": paper.title,
+                "pass_score": paper.pass_score, "duration_min": paper.duration_min,
+                "questions": [
+                    {"id": q.id, "type": q.type, "content": q.content,
+                     "options": _option_rows(q.type, q.options), "score": score}
+                    for q, score in questions
+                ],
+            }, ensure_ascii=False).replace("</", "<\\/")
+    finally:
+        db.close()
+    if ctx is None or paper is None or exam_json is None:
+        return HTMLResponse(_EXAM_DENIED, status_code=403)
+    import html
+
+    esc = html.escape
+    token_json = json.dumps(token, ensure_ascii=False).replace("</", "<\\/")
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="zh"><head><meta charset="utf-8"><title>{esc(paper.title)}</title></head>
+<body style="margin:0;background:#f5f7fa;font-family:'Microsoft YaHei',sans-serif;display:flex;justify-content:center;padding:32px 0">
+<div style="width:680px;max-width:94%;background:#fff;border-radius:12px;padding:28px 32px">
+  <h2 style="margin:0 0 4px;color:#333">{esc(paper.title)}</h2>
+  <p style="margin:0 0 18px;color:#888;font-size:13px">及格线 {paper.pass_score}% · 倒计时 <b id="clock" style="color:#D85A30">--:--</b></p>
+  <div id="questions"></div>
+  <button id="submit-btn" style="display:block;margin:18px auto 0;padding:10px 44px;background:#378ADD;color:#fff;border:none;border-radius:6px;font-size:15px;cursor:pointer">交 卷</button>
+</div>
+<script>
+window.EXAM = {exam_json};
+window.EXAM_SUBMIT_URL = "/learn/{course_id}/exam/submit";
+window.EXAM_TOKEN = {token_json};
+(function(){{
+  var letters = "ABCDEFGH";
+  var typeNames = {{single: "单选题", multi: "多选题", judge: "判断题"}};
+  var answers = {{}};
+  var remain = EXAM.duration_min * 60;
+  function fmt(s) {{ var m = Math.floor(s / 60), ss = s % 60; return (m < 10 ? "0" : "") + m + ":" + (ss < 10 ? "0" : "") + ss; }}
+  document.getElementById("clock").textContent = fmt(remain);
+  EXAM.questions.forEach(function(q, idx){{
+    var box = document.createElement("div");
+    box.style.cssText = "border:1px solid #e5e7eb;border-radius:8px;padding:14px 16px;margin:10px 0";
+    var head = document.createElement("p");
+    head.style.cssText = "margin:0 0 8px;color:#333;font-weight:600";
+    head.textContent = (idx + 1) + ". [" + (typeNames[q.type] || q.type) + "] " + q.content + "（" + q.score + " 分）";
+    box.appendChild(head);
+    q.options.forEach(function(opt){{
+      var label = document.createElement("label");
+      label.style.cssText = "display:block;padding:6px 10px;margin:4px 0;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;color:#555;font-size:14px";
+      var input = document.createElement("input");
+      input.type = q.type === "multi" ? "checkbox" : "radio";
+      input.name = "q" + q.id;
+      input.value = opt[0];
+      input.style.marginRight = "8px";
+      input.addEventListener("change", function(){{
+        if (q.type === "multi") {{
+          var picked = box.querySelectorAll("input:checked");
+          var arr = []; picked.forEach(function(p) {{ arr.push(p.value); }});
+          answers[q.id] = arr.sort().join(",");
+        }} else {{
+          answers[q.id] = input.value;
+        }}
+      }});
+      label.appendChild(input);
+      label.appendChild(document.createTextNode(opt[0] + ". " + opt[1]));
+      box.appendChild(label);
+    }});
+    document.getElementById("questions").appendChild(box);
+  }});
+  function submit(){{
+    var form = document.createElement("form");
+    form.method = "post";
+    form.action = EXAM_SUBMIT_URL;
+    var fields = {{token: EXAM_TOKEN, answers: JSON.stringify(answers), started_at: new Date().toISOString()}};
+    Object.keys(fields).forEach(function(k){{
+      var h = document.createElement("input");
+      h.type = "hidden"; h.name = k; h.value = fields[k];
+      form.appendChild(h);
+    }});
+    document.body.appendChild(form);
+    form.submit();
+  }}
+  var timer = setInterval(function(){{
+    remain -= 1;
+    document.getElementById("clock").textContent = fmt(Math.max(remain, 0));
+    if (remain <= 0) {{ clearInterval(timer); submit(); }}
+  }}, 1000);
+  document.getElementById("submit-btn").addEventListener("click", submit);
+}})();
+</script>
+</body></html>""")
+
+
+@app.post("/learn/{course_id}/exam/submit", response_class=HTMLResponse)
+async def exam_submit(course_id: int, request: Request):
+    """交卷判分：服务端按答案字母判分（多选乱序等价）→ ExamRecord 入库；
+    首次通过写回风险画像（培训完成度 100、风险分 -10 钳制 ≥0）。"""
+    import html
+    from datetime import datetime, timezone
+
+    from app.db.session import SessionLocal
+    from app.modules.org.models import EmpRiskProfile
+    from app.modules.org.service import _risk_level_of
+    from app.modules.training.models import ExamRecord
+    from sqlalchemy import select
+
+    form = await request.form()
+    token = str(form.get("token") or "")
+    db = SessionLocal()
+    try:
+        ctx = _load_exam_context(db, course_id, token)
+        paper = _load_exam_paper(db, course_id) if ctx else None
+        questions = _paper_questions(db, paper) if paper is not None else []
+        if ctx is None or paper is None:
+            return HTMLResponse(_EXAM_DENIED, status_code=403)
+        _, target = ctx
+        try:
+            user_answers = json.loads(str(form.get("answers") or "{}"))
+            if not isinstance(user_answers, dict):
+                user_answers = {}
+            user_answers = {str(k): str(v)[:16] for k, v in user_answers.items()}
+        except (json.JSONDecodeError, TypeError):
+            user_answers = {}
+        total, details = _grade(questions, user_answers)
+        # 及格判定：pass_score 为百分比（列表 API 同名 passPct），卷面总分随题目数变化
+        max_score = sum(score for _, score in questions) or 0
+        pct = round(total * 100 / max_score) if max_score else 0
+        passed = max_score > 0 and pct >= paper.pass_score
+        started_at = None
+        try:
+            started_at = datetime.fromisoformat(
+                str(form.get("started_at") or "").replace("Z", "+00:00")).replace(tzinfo=None)
+        except ValueError:
+            pass
+        db.add(ExamRecord(
+            paper_id=paper.id, user_id=target.user_id, score=total, passed=1 if passed else 0,
+            answers=user_answers, started_at=started_at,
+            submitted_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        ))
+        if passed:
+            prior_pass = db.scalar(select(ExamRecord.id).where(
+                ExamRecord.paper_id == paper.id, ExamRecord.user_id == target.user_id,
+                ExamRecord.passed == 1).limit(1))
+            if prior_pass is None:  # 仅首次通过减风险分，重复通过不叠加
+                from decimal import Decimal
+
+                profile = db.get(EmpRiskProfile, target.user_id)
+                if profile is None:
+                    profile = EmpRiskProfile(user_id=target.user_id)
+                    db.add(profile)
+                    db.flush()
+                profile.total_score = max(profile.total_score - 10, 0)
+                profile.training_completion = Decimal("100.00")
+                profile.risk_level = _risk_level_of(profile.total_score)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+    return HTMLResponse(_render_exam_result(paper, total, pct, passed, details, course_id, token))
 
 
 @app.get("/health")
