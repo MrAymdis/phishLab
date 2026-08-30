@@ -97,6 +97,21 @@ def list_sessions(db, account):
     ]
 
 
+def list_messages(db, account, session_id: int):
+    """会话消息明细（按时间正序）。仅本人会话可见——账号数据隔离，越权按不存在处理。"""
+    session = db.get(AiSession, session_id)
+    if session is None or session.account_id != account.id:
+        raise BizError(ErrorCode.NOT_FOUND, "会话不存在")
+    rows = db.scalars(
+        select(AiMessage).where(AiMessage.session_id == session_id)
+        .order_by(AiMessage.id.asc())
+    ).all()
+    return [
+        {"id": m.id, "role": m.role, "content": m.content or "", "time": _fmt_time(m.created_at)}
+        for m in rows
+    ]
+
+
 def _local_reply(db, message: str) -> str:
     """本地回复引擎：基于数据库真实统计的关键词应答（三期接 LLM）。"""
     from app.modules.campaign.models import Campaign, CampaignStat, CampaignTarget
@@ -349,6 +364,309 @@ async def generate_template(db, account, payload: dict) -> int:
     return draft.id
 
 
+_LANDING_SYSTEM = (
+    "你是 PhishLab 钓鱼演练平台的仿冒登录页创作专家。根据用户要求生成一个演示用登录页面。"
+    "只输出一个 JSON 对象，不要输出任何其他文字。JSON 字段："
+    '{"name": 页面名称, "html_content": 完整 HTML 文档（<!DOCTYPE html> 开头，样式全用内联 style，'
+    "移动端可加 meta viewport，不得引用外部脚本/样式/图片资源）, "
+    '"fields": [{"label": 表单字段名, "input_type": "text|password", "sensitive_flag": 0|1}]}。'
+    "页面仿照企业内部系统（邮箱/OA/网盘/认证门户）风格，含登录表单与提交按钮；"
+    "口令字段用 input_type=password 且 sensitive_flag=1；不含任何真实恶意代码。"
+)
+
+_WECOM_SYSTEM = (
+    "你是 PhishLab 钓鱼演练平台的企业微信消息模板创作专家。根据用户要求生成一条 textcard 卡片消息。"
+    "只输出一个 JSON 对象，不要输出任何其他文字。JSON 字段："
+    '{"name": 模板名, "title": 卡片标题（可含 {{.FirstName}}/{{.Department}} 变量）, '
+    '"description": 卡片摘要（可含 {{.ResetURL}} 变量）, "btn_text": 按钮文案}。'
+    "以内部部门名义（IT 部/HR/行政部）行文，严禁出现「微信安全中心/官方通知」等冒充官方字样。"
+)
+
+_ATTACH_SYSTEM = (
+    "你是 PhishLab 钓鱼演练平台的诱饵文档创作专家。根据用户要求生成一份企业办公文档正文"
+    "（如通知/明细/会议邀请/培训材料）。只输出一个 JSON 对象，不要输出任何其他文字。JSON 字段："
+    '{"name": 文件名（不含扩展名）, "title": 文档标题, '
+    '"paragraphs": ["正文段落1（可含 {{.FirstName}}/{{.Department}} 变量占位符）", "正文段落2"], '
+    '"table": {"headers": ["列名"], "rows": [["单元格"]]} 或 null}。'
+    "内容可信、符合中文企业文档习惯，不含真实恶意内容与外部链接。"
+)
+
+_LANDING_TYPE_MAP = {"mail": "mail_login", "oa": "oa_login", "pan": "pan_auth", "pay": "custom"}
+
+_DEFAULT_LANDING_HTML = (
+    "<!DOCTYPE html><html><head><meta charset=\"utf-8\">"
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">"
+    "<title>{{TITLE}}</title></head>"
+    "<body style=\"font-family:Segoe UI,Arial,sans-serif;background:#f3f6fb;margin:0;padding:40px\">"
+    "<div style=\"max-width:380px;margin:80px auto;background:#fff;border-radius:8px;"
+    "padding:40px 32px;box-shadow:0 4px 20px rgba(0,0,0,.08)\">"
+    "<div style=\"text-align:center;font-size:20px;font-weight:600;color:#0078d4;"
+    "margin-bottom:8px\">🔒 {{TITLE}}</div>"
+    "<div style=\"text-align:center;color:#666;font-size:13px;margin-bottom:28px\">请登录以继续</div>"
+    "<form>"
+    "<label style=\"display:block;font-size:13px;color:#333;margin-bottom:6px\">用户名 / 邮箱</label>"
+    "<input type=\"text\" placeholder=\"请输入用户名\" "
+    "style=\"width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:4px;margin-bottom:16px;"
+    "box-sizing:border-box\">"
+    "<label style=\"display:block;font-size:13px;color:#333;margin-bottom:6px\">密码</label>"
+    "<input type=\"password\" placeholder=\"请输入密码\" "
+    "style=\"width:100%;padding:10px 12px;border:1px solid #ddd;border-radius:4px;margin-bottom:16px;"
+    "box-sizing:border-box\">"
+    "<button type=\"submit\" style=\"width:100%;background:#0078d4;color:#fff;border:none;padding:11px;"
+    "border-radius:4px;font-size:15px;cursor:pointer\">登 录</button>"
+    "</form><div style=\"text-align:center;margin-top:24px;font-size:11px;color:#999\">© 2026 {{TITLE}}</div>"
+    "</div></body></html>"
+)
+
+_DEFAULT_LANDING_FIELDS = [
+    {"label": "用户名", "input_type": "text", "sensitive_flag": 0, "sort": 0},
+    {"label": "密码", "input_type": "password", "sensitive_flag": 1, "sort": 1},
+    {"label": "验证码", "input_type": "text", "sensitive_flag": 0, "sort": 2},
+]
+
+_DEFAULT_EDU_TEXT = (
+    "⚠️ 您刚刚中招了！\n\n这是一次公司组织的安全演练。您刚刚在仿冒页面输入了账号密码，"
+    "如果在真实场景中，您的凭据已被攻击者窃取。\n\n请牢记：\n1. 认准官方域名，不轻信邮件中的链接\n"
+    "2. 输入密码前核对网址是否为 HTTPS 且域名正确\n3. 可疑邮件请及时通过举报通道上报安全团队"
+)
+
+
+async def generate_landing(db, account, payload: dict) -> int:
+    """AI 落地页生成 → ai_draft(biz_type=landing_page)。
+
+    场景为视图类型（mail/oa/pan/…），映射到后端 type 枚举；LLM 不可用/输出非法时降级默认登录页。
+    """
+    scene = payload.get("scene") or "custom"
+    page_type = _LANDING_TYPE_MAP.get(scene, scene)
+    if page_type not in ("mail_login", "oa_login", "pan_auth", "custom"):
+        page_type = "custom"
+    company = (payload.get("company") or "企业内部系统").strip() or "企业内部系统"
+    audience = payload.get("audience") or "全体员工"
+    tone = payload.get("tone") or "正式"
+
+    meta = None
+    fallback_reason = None
+    provider = get_provider(db)
+    if provider is not None:
+        try:
+            client = get_client(db, provider)
+            result = await client.chat(
+                [{"role": "user", "content":
+                  f"场景：{_SCENE_CN.get(scene, scene)}；企业：{company}；目标人群：{audience}；"
+                  f"语气：{tone}。生成一个仿冒登录页面。"}],
+                system_prompt=provider.system_prompt or _LANDING_SYSTEM,
+                temperature=float(provider.temperature or 0.7),
+                max_tokens=provider.max_tokens or 2048,
+            )
+            raw = _extract_json_meta(result["content"])
+            if raw and raw.get("name") and raw.get("html_content"):
+                fields = []
+                for i, f in enumerate(raw.get("fields") or []):
+                    if isinstance(f, dict) and f.get("label"):
+                        fields.append({
+                            "label": str(f["label"])[:32],
+                            "input_type": f.get("input_type") or "text",
+                            "sensitive_flag": 1 if f.get("sensitive_flag") else 0,
+                            "sort": i,
+                        })
+                meta = {
+                    "name": str(raw["name"])[:64],
+                    "type": page_type,
+                    "html_content": str(raw["html_content"]),
+                    "form_schema": {"fields": fields or _DEFAULT_LANDING_FIELDS,
+                                    "edu": _DEFAULT_EDU_TEXT, "redirect": "edu"},
+                    "scene": scene, "tone": tone, "audience": audience,
+                }
+                record_usage(db, provider, result.get("tokens_in"), result.get("tokens_out"))
+            else:
+                fallback_reason = "LLM 输出非预期 JSON，降级本地默认页"
+        except BizError as exc:
+            fallback_reason = f"LLM 调用失败降级：{exc.message}"
+        except Exception:
+            logger.exception("generate_landing llm failed")
+            fallback_reason = "LLM 调用异常降级"
+
+    if meta is None:
+        html = _DEFAULT_LANDING_HTML.replace("{{TITLE}}", company)
+        meta = {
+            "name": f"{company}登录页·AI生成",
+            "type": page_type,
+            "html_content": html,
+            "form_schema": {"fields": _DEFAULT_LANDING_FIELDS,
+                            "edu": _DEFAULT_EDU_TEXT, "redirect": "edu"},
+            "scene": scene, "tone": tone, "audience": audience,
+        }
+    draft = AiDraft(
+        biz_type="landing_page",
+        title=meta["name"],
+        content=json.dumps(meta, ensure_ascii=False),
+        status="draft",
+        created_by=account.id,
+    )
+    db.add(draft)
+    db.commit()
+    record_audit(db, account=account, module="ai", action="generate_landing",
+                 target_type="ai_draft", target_id=str(draft.id),
+                 detail={"llm": provider is not None, "fallback": fallback_reason})
+    return draft.id
+
+
+async def generate_wecom(db, account, payload: dict) -> int:
+    """AI 企微消息模板生成 → ai_draft(biz_type=wecom_template)。
+
+    产出 textcard（title/description/btn_text），审核入库时过合规红线校验。
+    """
+    scene = payload.get("scene", "system")
+    scene_cn = _SCENE_CN.get(scene, scene)
+    audience = payload.get("audience") or "全体员工"
+    tone = payload.get("tone") or "正式"
+
+    meta = None
+    fallback_reason = None
+    provider = get_provider(db)
+    if provider is not None:
+        try:
+            client = get_client(db, provider)
+            result = await client.chat(
+                [{"role": "user", "content":
+                  f"场景：{scene_cn}；目标人群：{audience}；语气：{tone}。生成一条企微 textcard 卡片消息。"}],
+                system_prompt=provider.system_prompt or _WECOM_SYSTEM,
+                temperature=float(provider.temperature or 0.7),
+                max_tokens=provider.max_tokens or 2048,
+            )
+            raw = _extract_json_meta(result["content"])
+            if raw and raw.get("title") and raw.get("description"):
+                meta = {
+                    "name": str(raw.get("name") or f"{scene_cn}·AI生成企微模板")[:64],
+                    "msg_type": "textcard",
+                    "title": str(raw["title"])[:128],
+                    "description": str(raw["description"])[:512],
+                    "btn_text": str(raw.get("btn_text") or "查看详情")[:16],
+                    "url_mode": "track",
+                    "scene": scene, "tone": tone, "audience": audience,
+                }
+                record_usage(db, provider, result.get("tokens_in"), result.get("tokens_out"))
+            else:
+                fallback_reason = "LLM 输出非预期 JSON，降级本地模板"
+        except BizError as exc:
+            fallback_reason = f"LLM 调用失败降级：{exc.message}"
+        except Exception:
+            logger.exception("generate_wecom llm failed")
+            fallback_reason = "LLM 调用异常降级"
+
+    if meta is None:
+        meta = {
+            "name": f"{scene_cn}·AI生成企微模板",
+            "msg_type": "textcard",
+            "title": f"【{scene_cn}】请及时确认您的信息",
+            "description": f"{audience}您好：{scene_cn}相关事项需要您确认，"
+                           f"请点击下方按钮查看详情。如有疑问请联系 IT 部。",
+            "btn_text": "查看详情",
+            "url_mode": "track",
+            "scene": scene, "tone": tone, "audience": audience,
+        }
+    draft = AiDraft(
+        biz_type="wecom_template",
+        title=meta["title"],
+        content=json.dumps(meta, ensure_ascii=False),
+        status="draft",
+        created_by=account.id,
+    )
+    db.add(draft)
+    db.commit()
+    record_audit(db, account=account, module="ai", action="generate_wecom",
+                 target_type="ai_draft", target_id=str(draft.id),
+                 detail={"llm": provider is not None, "fallback": fallback_reason})
+    return draft.id
+
+
+async def generate_attachment(db, account, payload: dict) -> int:
+    """AI 诱饵文档生成 → ai_draft(biz_type=attachment)。
+
+    仅良性文档（docx/xlsx）；宏/EXE 载荷属红线 6 默认关闭，不提供 AI 产出。
+    确认入库时由 approve_draft 渲染真实文件写入附件库；
+    docx 版可被投递链路注入 /pa/ beacon（附件运行追踪）并做占位符个性化。
+    """
+    scene = payload.get("scene", "通知")
+    scene_cn = _SCENE_CN.get(scene, scene)
+    audience = payload.get("audience") or "全体员工"
+    tone = payload.get("tone") or "正式"
+    doc_type = (payload.get("doc_type") or "docx").lower()
+    if doc_type not in ("docx", "xlsx"):
+        raise BizError(ErrorCode.PARAM_INVALID, "doc_type 仅支持 docx/xlsx（宏/EXE 载荷不开放）")
+
+    meta = None
+    fallback_reason = None
+    provider = get_provider(db)
+    if provider is not None:
+        try:
+            client = get_client(db, provider)
+            result = await client.chat(
+                [{"role": "user", "content":
+                  f"场景：{scene_cn}；目标人群：{audience}；语气：{tone}；"
+                  f"输出格式：{'Excel 表格（含 table）' if doc_type == 'xlsx' else 'Word 通知文档'}。"
+                  f"生成一份诱饵文档正文。"}],
+                system_prompt=provider.system_prompt or _ATTACH_SYSTEM,
+                temperature=float(provider.temperature or 0.7),
+                max_tokens=provider.max_tokens or 2048,
+            )
+            raw = _extract_json_meta(result["content"])
+            paragraphs = [str(p) for p in (raw.get("paragraphs") or []) if p] if raw else []
+            table = raw.get("table") if raw and isinstance(raw.get("table"), dict) else None
+            if raw and raw.get("title") and (paragraphs or table):
+                meta = {
+                    "name": str(raw.get("name") or f"{scene_cn}通知")[:48],
+                    "doc_type": doc_type,
+                    "title": str(raw["title"])[:128],
+                    "paragraphs": paragraphs[:30],
+                    "table": table,
+                    "scene": scene, "tone": tone, "audience": audience,
+                }
+                record_usage(db, provider, result.get("tokens_in"), result.get("tokens_out"))
+            else:
+                fallback_reason = "LLM 输出非预期 JSON，降级本地文档"
+        except BizError as exc:
+            fallback_reason = f"LLM 调用失败降级：{exc.message}"
+        except Exception:
+            logger.exception("generate_attachment llm failed")
+            fallback_reason = "LLM 调用异常降级"
+
+    if meta is None:
+        doc_name = scene_cn if scene_cn.endswith(("通知", "明细", "邀请", "材料", "公告")) \
+            else f"{scene_cn}通知"
+        meta = {
+            "name": doc_name,
+            "doc_type": doc_type,
+            "title": doc_name,
+            "paragraphs": [
+                "{{.FirstName}}，您好：",
+                f"根据公司近期工作安排，现就「{scene_cn}」相关事项通知如下：",
+                "1. 请于今日 18:00 前完成信息确认；",
+                "2. 相关明细详见通知邮件正文，点击邮件内链接即可查看；",
+                "3. 如有疑问，请联系本部门行政负责人。",
+                "特此通知。",
+            ],
+            "table": {"headers": ["事项", "说明"],
+                      "rows": [[f"{scene_cn}确认", "今日 18:00 前"],
+                               ["咨询渠道", "本部门行政负责人"]]} if doc_type == "xlsx" else None,
+            "scene": scene, "tone": tone, "audience": audience,
+        }
+    draft = AiDraft(
+        biz_type="attachment",
+        title=meta["title"],
+        content=json.dumps(meta, ensure_ascii=False),
+        status="draft",
+        created_by=account.id,
+    )
+    db.add(draft)
+    db.commit()
+    record_audit(db, account=account, module="ai", action="generate_attachment",
+                 target_type="ai_draft", target_id=str(draft.id),
+                 detail={"doc_type": doc_type, "llm": provider is not None,
+                         "fallback": fallback_reason})
+    return draft.id
+
+
 _ANALYSIS_SYSTEM = (
     "你是 PhishLab 安全演练平台的安全分析师。根据提供的平台真实指标数据撰写分析报告。"
     "只输出 Markdown 格式报告，包含：执行摘要、关键发现、改进建议。中文输出。"
@@ -450,10 +768,169 @@ def list_drafts(db, account, status: str | None = None):
     return result
 
 
-def approve_draft(db, account, draft_id: int) -> dict:
-    """确认入库：按 biz_type 写入目标表，回填 biz_id，记录审核人/时间。"""
-    import json
+def _parse_draft_content(draft: AiDraft) -> dict:
+    """草稿 content 解析为 dict，损坏内容按空对象处理（不阻断审核流）。"""
+    try:
+        meta = json.loads(draft.content or "{}")
+        return meta if isinstance(meta, dict) else {}
+    except (json.JSONDecodeError, TypeError):
+        return {}
 
+
+def _build_minimal_docx(meta: dict) -> bytes:
+    """诱饵文档渲染为最小合法 docx（纯 zip 内 OOXML，无第三方依赖）。
+
+    结构含 word/_rels/document.xml.rels（空关系集）——投递链路 _render_docx_variant
+    依赖该文件追加 /pa/ beacon 外链关系；无该文件时 beacon 注入会被静默跳过。
+    正文保留 {{.Xxx}} 占位符由投递链路按目标个性化。
+    """
+    import io
+    import zipfile
+    from xml.sax.saxutils import escape
+
+    title = str(meta.get("title") or "通知")[:128]
+    paragraphs = [str(p) for p in (meta.get("paragraphs") or []) if str(p).strip()]
+    table = meta.get("table") if isinstance(meta.get("table"), dict) else None
+
+    def _run(text: str, bold: bool = False) -> str:
+        rpr = "<w:rPr><w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\" " \
+              "w:eastAsia=\"宋体\"/><w:sz w:val=\"21\"/>" \
+              + ("<w:b/><w:szCs w:val=\"21\"/>" if bold else "") + "</w:rPr>"
+        return f'<w:r>{rpr}<w:t xml:space="preserve">{escape(str(text))}</w:t></w:r>'
+
+    def _para(text: str, *, bold: bool = False, center: bool = False,
+              size: int = 21, right: bool = False) -> str:
+        jc = '<w:jc w:val="center"/>' if center else ('<w:jc w:val="right"/>' if right else "")
+        ppr = f"<w:pPr>{jc}</w:pPr>" if jc else ""
+        rpr = (f"<w:rPr><w:rFonts w:ascii=\"Calibri\" w:hAnsi=\"Calibri\" w:eastAsia=\"宋体\"/>"
+               f"<w:sz w:val=\"{size}\"/><w:szCs w:val=\"{size}\"/>"
+               + ("<w:b/>" if bold else "") + "</w:rPr>")
+        return (f"<w:p>{ppr}<w:r>{rpr}"
+                f"<w:t xml:space=\"preserve\">{escape(str(text))}</w:t></w:r></w:p>")
+
+    body = [_para(title, bold=True, center=True, size=28), _para("")]
+    body += [_para(p) for p in paragraphs]
+    if table and (table.get("rows") or table.get("headers")):
+        headers = [str(h) for h in (table.get("headers") or [])][:10] or ["内容"]
+        grid = "".join(f'<w:gridCol w:w="{max(1200, 2400 // max(len(headers), 1))}"/>'
+                       for _ in headers)
+        trs = ["<w:tr>" + "".join(
+            f'<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>'
+            f"<w:p>{_run(h, bold=True)}</w:p></w:tc>" for h in headers) + "</w:tr>"]
+        for r in (table.get("rows") or [])[:60]:
+            cells = (list(r) if isinstance(r, list) else [r])[:10]
+            trs.append("<w:tr>" + "".join(
+                f'<w:tc><w:tcPr><w:tcW w:w="0" w:type="auto"/></w:tcPr>'
+                f"<w:p>{_run(c)}</w:p></w:tc>" for c in cells) + "</w:tr>")
+        borders = "".join(
+            f'<w:{side} w:val="single" w:sz="4" w:space="0" w:color="auto"/>'
+            for side in ("top", "left", "bottom", "right", "insideH", "insideV"))
+        tbl = (f"<w:p/><w:tbl><w:tblPr><w:tblW w:w=\"0\" w:type=\"auto\"/>"
+               f"<w:tblBorders>{borders}</w:tblBorders></w:tblPr>"
+               f"<w:tblGrid>{grid}</w:tblGrid>{''.join(trs)}</w:tbl>")
+        body.append(tbl)
+    footer = " · ".join(filter(None, [str(meta.get("audience") or ""),
+                                      f"{date.today().strftime('%Y年%m月%d日')} · IT 部"]))
+    body += [_para(""), _para(footer, right=True)]
+    body.append(
+        '<w:sectPr><w:pgSz w:w="11906" w:h="16838"/>'
+        '<w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/></w:sectPr>')
+
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        f"<w:body>{''.join(body)}</w:body></w:document>"
+    )
+    content_types = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+        '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+        '<Default Extension="xml" ContentType="application/xml"/>'
+        '<Override PartName="/word/document.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+        "</Types>"
+    )
+    root_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        '<Relationship Id="rId1" '
+        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
+        'Target="word/document.xml"/></Relationships>'
+    )
+    doc_rels = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+        "</Relationships>"
+    )
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("[Content_Types].xml", content_types)
+        z.writestr("_rels/.rels", root_rels)
+        z.writestr("word/document.xml", document_xml)
+        z.writestr("word/_rels/document.xml.rels", doc_rels)
+    return out.getvalue()
+
+
+def _render_ai_attachment(meta: dict) -> tuple[str, bytes]:
+    """诱饵文档草稿渲染为真实文件：docx（自建 OOXML）/ xlsx（openpyxl）。
+
+    返回 (文件名, 文件字节)。仅良性文档——宏/EXE 载荷属红线 6，AI 不产出。
+    """
+    import re
+
+    doc_type = (meta.get("doc_type") or "docx").lower()
+    paragraphs = [str(p) for p in (meta.get("paragraphs") or []) if str(p).strip()]
+    table = meta.get("table") if isinstance(meta.get("table"), dict) else None
+    if not paragraphs and not (table and (table.get("rows") or table.get("headers"))):
+        raise BizError(ErrorCode.PARAM_INVALID, "文档内容为空，无法入库")
+    name = re.sub(r"[\\/:*?\"<>|\s]+", "_", str(meta.get("name") or "AI文档"))[:48] or "AI文档"
+    name = re.sub(r"\.(docx|xlsx)$", "", name, flags=re.I)
+    title = str(meta.get("title") or "通知")[:128]
+
+    if doc_type == "xlsx":
+        import io
+        import openpyxl
+        from openpyxl.styles import Font
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "明细"
+        ws["A1"] = title
+        ws["A1"].font = Font(bold=True, size=14)
+        row = 3
+        for p in paragraphs:
+            ws.cell(row=row, column=1, value=p)
+            row += 1
+        if table:
+            headers = [str(h) for h in (table.get("headers") or [])][:10] or ["内容"]
+            row += 1
+            for col, h in enumerate(headers, start=1):
+                c = ws.cell(row=row, column=col, value=h)
+                c.font = Font(bold=True)
+            row += 1
+            for r in (table.get("rows") or [])[:60]:
+                for col, v in enumerate((list(r) if isinstance(r, list) else [r])[:10], start=1):
+                    ws.cell(row=row, column=col, value=str(v))
+                row += 1
+            for col, h in enumerate(headers, start=1):
+                ws.column_dimensions[openpyxl.utils.get_column_letter(col)].width = max(14, len(h) * 2 + 8)
+        ws.column_dimensions["A"].width = 60
+        ws.sheet_view.showGridLines = False
+        buf = io.BytesIO()
+        wb.save(buf)
+        return f"{name}.xlsx", buf.getvalue()
+
+    # docx（默认）：自建最小 OOXML（含 document.xml.rels，投递链路可注入 /pa/ beacon）
+    return f"{name}.docx", _build_minimal_docx(meta)
+
+
+def approve_draft(db, account, draft_id: int) -> dict:
+    """确认入库：按 biz_type 写入目标表，回填 biz_id，记录审核人/时间。
+
+    支持 email_template / landing_page / wecom_template / attachment；
+    后三者经素材模块 service 层落库（含合规校验与审计），来源标记 ai。
+    """
+    from app.modules.template import service as tpl_service
     from app.modules.template.models import EmailTemplate
 
     draft = db.get(AiDraft, draft_id)
@@ -464,11 +941,7 @@ def approve_draft(db, account, draft_id: int) -> dict:
 
     biz_id = None
     if draft.biz_type == "email_template":
-        meta = {}
-        try:
-            meta = json.loads(draft.content or "{}")
-        except (json.JSONDecodeError, TypeError):
-            meta = {}
+        meta = _parse_draft_content(draft)
         tpl = EmailTemplate(
             name=meta.get("name") or (draft.title or "AI模板")[:128],
             scene=meta.get("scene") or "security",
@@ -484,7 +957,37 @@ def approve_draft(db, account, draft_id: int) -> dict:
         db.add(tpl)
         db.flush()
         biz_id = tpl.id
-    # TODO(三期)：landing_page/course 类型草稿入库
+    elif draft.biz_type == "landing_page":
+        meta = _parse_draft_content(draft)
+        if not (meta.get("name") and meta.get("html_content")):
+            raise BizError(ErrorCode.PARAM_INVALID, "草稿缺少页面名称或 HTML 内容，无法入库")
+        page_type = meta.get("type") or "custom"
+        if page_type not in ("mail_login", "oa_login", "pan_auth", "custom"):
+            page_type = "custom"
+        biz_id = tpl_service.create_landing_page(db, account, {
+            "name": meta["name"],
+            "type": page_type,
+            "html_content": meta["html_content"],
+            "form_schema": meta.get("form_schema") or {"fields": []},
+        }, source="ai")
+    elif draft.biz_type == "wecom_template":
+        meta = _parse_draft_content(draft)
+        if not (meta.get("title") and meta.get("description")):
+            raise BizError(ErrorCode.PARAM_INVALID, "草稿缺少卡片标题或摘要，无法入库")
+        biz_id = tpl_service.create_wecom_template(db, account, {
+            "name": meta.get("name") or (draft.title or "AI企微模板")[:128],
+            "msg_type": "textcard",
+            "title": str(meta["title"])[:128],
+            "description": str(meta["description"])[:512],
+            "btn_text": str(meta.get("btn_text") or "查看详情")[:16],
+            "url_mode": "track",
+        })
+        # AI 草稿经人工确认入库，直接置为 approved（审核人/时间留痕）
+        tpl_service.set_wecom_template_status(db, account, biz_id, "approved")
+    elif draft.biz_type == "attachment":
+        meta = _parse_draft_content(draft)
+        filename, content = _render_ai_attachment(meta)
+        biz_id = tpl_service.upload_attachment(db, account, filename, content, platform="AI生成")
 
     draft.status = "approved"
     draft.biz_id = biz_id

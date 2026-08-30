@@ -45,6 +45,17 @@
             clearable
           />
           <el-button type="primary" size="small" :icon="Plus" @click="openEmailDialog()">新建模板</el-button>
+          <el-button type="success" size="small" :icon="MagicStick" @click="aiGenVisible = true">AI生成</el-button>
+        </div>
+
+        <!-- AI 生成草稿（审核通过后自动入库） -->
+        <div class="card ai-draft-strip" v-if="emailDrafts.length">
+          <div class="card-title">
+            ✨ AI 生成草稿
+            <span class="ai-draft-hint">审核通过后自动成为模板，无需复制粘贴</span>
+          </div>
+          <AiDraftCard v-for="d in emailDrafts" :key="d.id" :draft="d"
+            @preview="previewAiDraft" @approve="approveAiDraft" @discard="discardAiDraft" />
         </div>
 
         <!-- 模板卡片网格 -->
@@ -150,6 +161,17 @@
           />
           <el-button size="small" :icon="Link" @click="cloneDialogVisible = true">克隆页面</el-button>
           <el-button type="primary" size="small" :icon="Plus" @click="openLandingDialog()">新建页面</el-button>
+          <el-button type="success" size="small" :icon="MagicStick" @click="aiLandingVisible = true">AI生成</el-button>
+        </div>
+
+        <!-- AI 生成草稿（审核通过后自动入库） -->
+        <div class="card ai-draft-strip" v-if="landingDrafts.length">
+          <div class="card-title">
+            ✨ AI 生成草稿
+            <span class="ai-draft-hint">审核通过后自动成为落地页，无需复制粘贴</span>
+          </div>
+          <AiDraftCard v-for="d in landingDrafts" :key="d.id" :draft="d"
+            @preview="previewAiDraft" @approve="approveAiDraft" @discard="discardAiDraft" />
         </div>
 
         <!-- 落地页卡片网格 -->
@@ -246,7 +268,18 @@
           />
           <el-button size="small" :icon="Iphone" disabled>生成二维码</el-button>
           <el-button type="primary" size="small" :icon="Upload" @click="openUploadDialog()">上传附件</el-button>
+          <el-button type="success" size="small" :icon="MagicStick" @click="aiPayloadVisible = true">AI生成</el-button>
           <el-tag size="small" type="info" effect="plain">支持 docx/xlsx/pdf/zip 文档附件，宏/EXE 载荷未开放</el-tag>
+        </div>
+
+        <!-- AI 生成草稿（审核通过后渲染真实文件入库） -->
+        <div class="card ai-draft-strip" v-if="payloadDrafts.length">
+          <div class="card-title">
+            ✨ AI 生成草稿
+            <span class="ai-draft-hint">审核通过后渲染为 docx/xlsx 文件写入附件库（投递自动注入运行追踪）</span>
+          </div>
+          <AiDraftCard v-for="d in payloadDrafts" :key="d.id" :draft="d"
+            @preview="previewAiDraft" @approve="approveAiDraft" @discard="discardAiDraft" />
         </div>
 
         <!-- 数据表格 -->
@@ -339,8 +372,20 @@
       <el-tab-pane label="企微消息模板" name="wecom">
         <div class="toolbar" style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
           <el-button type="primary" @click="openWecomTplDialog()">+ 新建消息模板</el-button>
+          <el-button type="success" :icon="MagicStick" @click="aiWecomVisible = true">AI生成</el-button>
           <span class="muted" style="font-size:12px;">企微演练（社交媒体）投递的 textcard 卡片素材；需审核通过后才能被演练选用</span>
         </div>
+
+        <!-- AI 生成草稿（审核通过后自动入库） -->
+        <div class="card ai-draft-strip" v-if="wecomDrafts.length">
+          <div class="card-title">
+            ✨ AI 生成草稿
+            <span class="ai-draft-hint">审核通过后自动成为企微消息模板</span>
+          </div>
+          <AiDraftCard v-for="d in wecomDrafts" :key="d.id" :draft="d"
+            @preview="previewAiDraft" @approve="approveAiDraft" @discard="discardAiDraft" />
+        </div>
+
         <el-table :data="wecomTplRows" size="small" v-loading="wecomTplLoading">
           <el-table-column prop="name" label="模板名称" min-width="140" />
           <el-table-column prop="title" label="卡片标题" min-width="160" show-overflow-tooltip />
@@ -512,6 +557,200 @@
         <el-button @click="emailDialogVisible = false">取消</el-button>
         <el-button @click="saveEmail('draft')">保存草稿</el-button>
         <el-button type="primary" @click="saveEmail('test')">保存并测试</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ====== 弹窗：AI 生成邮件模板 ====== -->
+    <el-dialog v-model="aiGenVisible" title="AI 生成邮件模板" width="480px">
+      <el-form label-width="90px" size="small">
+        <el-form-item label="场景">
+          <el-select v-model="aiGenForm.scene" filterable allow-create default-first-option style="width: 100%">
+            <el-option label="财务报销" value="finance" />
+            <el-option label="HR通知" value="hr" />
+            <el-option label="系统升级" value="system" />
+            <el-option label="中奖通知" value="lottery" />
+            <el-option label="节假日问候" value="holiday" />
+            <el-option label="安全告警" value="security" />
+            <el-option label="其他" value="other" />
+          </el-select>
+          <div class="form-hint">可直接输入自定义场景，如「供应商对账」「年终奖发放」</div>
+        </el-form-item>
+        <el-form-item label="目标人群">
+          <el-input v-model="aiGenForm.audience" placeholder="例如：全体员工 / 财务部" />
+        </el-form-item>
+        <el-form-item label="语气">
+          <el-select v-model="aiGenForm.tone" style="width: 100%">
+            <el-option label="正式" value="正式" />
+            <el-option label="轻松" value="轻松" />
+            <el-option label="紧迫" value="紧迫" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="识别难度">
+          <el-slider v-model="aiGenForm.difficulty" :min="1" :max="5" show-stops
+            :marks="{ 1: '易', 3: '中', 5: '难' }" />
+        </el-form-item>
+      </el-form>
+      <div class="form-hint">生成结果先进入草稿审核，确认入库后自动出现在模板列表中（AI 产出草稿制为硬约束）。</div>
+      <template #footer>
+        <el-button @click="aiGenVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aiGenerating" @click="submitAiGen">生成草稿</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ====== 弹窗：AI 生成落地页 ====== -->
+    <el-dialog v-model="aiLandingVisible" title="AI 生成落地页" width="480px">
+      <el-form label-width="90px" size="small">
+        <el-form-item label="页面类型">
+          <el-select v-model="aiLandingForm.scene" style="width: 100%">
+            <el-option label="邮箱登录" value="mail" />
+            <el-option label="OA系统" value="oa" />
+            <el-option label="网盘认证" value="pan" />
+            <el-option label="自定义" value="custom" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="企业名称">
+          <el-input v-model="aiLandingForm.company" placeholder="用于页面标题/LOGO，如：某某科技" />
+        </el-form-item>
+        <el-form-item label="目标人群">
+          <el-input v-model="aiLandingForm.audience" placeholder="例如：全体员工 / 财务部" />
+        </el-form-item>
+        <el-form-item label="语气">
+          <el-select v-model="aiLandingForm.tone" style="width: 100%">
+            <el-option label="正式" value="正式" />
+            <el-option label="轻松" value="轻松" />
+            <el-option label="紧迫" value="紧迫" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div class="form-hint">生成结果先进入草稿审核，确认入库后自动出现在落地页列表中（AI 产出草稿制为硬约束）。</div>
+      <template #footer>
+        <el-button @click="aiLandingVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aiLandingGenerating" @click="submitAiLanding">生成草稿</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ====== 弹窗：AI 生成企微消息模板 ====== -->
+    <el-dialog v-model="aiWecomVisible" title="AI 生成企微消息模板" width="480px">
+      <el-form label-width="90px" size="small">
+        <el-form-item label="场景">
+          <el-select v-model="aiWecomForm.scene" filterable allow-create default-first-option style="width: 100%">
+            <el-option label="系统升级" value="system" />
+            <el-option label="HR通知" value="hr" />
+            <el-option label="财务报销" value="finance" />
+            <el-option label="中奖通知" value="lottery" />
+            <el-option label="节假日问候" value="holiday" />
+            <el-option label="安全告警" value="security" />
+            <el-option label="其他" value="other" />
+          </el-select>
+          <div class="form-hint">可直接输入自定义场景，如「门禁系统升级」</div>
+        </el-form-item>
+        <el-form-item label="目标人群">
+          <el-input v-model="aiWecomForm.audience" placeholder="例如：全体员工 / 财务部" />
+        </el-form-item>
+        <el-form-item label="语气">
+          <el-select v-model="aiWecomForm.tone" style="width: 100%">
+            <el-option label="正式" value="正式" />
+            <el-option label="轻松" value="轻松" />
+            <el-option label="紧迫" value="紧迫" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <div class="form-hint">产出 textcard 卡片（标题+摘要+按钮），审核通过自动入库；文案以内部部门名义行文，禁用冒充官方字样（合规红线）。</div>
+      <template #footer>
+        <el-button @click="aiWecomVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aiWecomGenerating" @click="submitAiWecom">生成草稿</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ====== 弹窗：AI 生成诱饵文档 ====== -->
+    <el-dialog v-model="aiPayloadVisible" title="AI 生成诱饵文档" width="480px">
+      <el-form label-width="90px" size="small">
+        <el-form-item label="文档场景">
+          <el-select v-model="aiPayloadForm.scene" filterable allow-create default-first-option style="width: 100%">
+            <el-option label="通知公告" value="通知" />
+            <el-option label="工资明细" value="工资明细" />
+            <el-option label="补贴通知" value="补贴通知" />
+            <el-option label="会议邀请" value="会议邀请" />
+            <el-option label="培训材料" value="培训材料" />
+            <el-option label="其他" value="其他" />
+          </el-select>
+          <div class="form-hint">可直接输入自定义场景，如「办公软件续费通知」</div>
+        </el-form-item>
+        <el-form-item label="文档格式">
+          <el-radio-group v-model="aiPayloadForm.doc_type">
+            <el-radio value="docx">Word 文档（打开可追踪）</el-radio>
+            <el-radio value="xlsx">Excel 明细（打开可追踪）</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="目标人群">
+          <el-input v-model="aiPayloadForm.audience" placeholder="例如：全体员工 / 财务部" />
+        </el-form-item>
+        <el-form-item label="语气">
+          <el-select v-model="aiPayloadForm.tone" style="width: 100%">
+            <el-option label="正式" value="正式" />
+            <el-option label="轻松" value="轻松" />
+            <el-option label="紧迫" value="紧迫" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <!-- v-pre：提示含字面量模板变量 {{.FirstName}}，跳过 Vue 插值解析 -->
+      <div v-pre class="form-hint">仅良性文档（docx/xlsx），宏/EXE 载荷未开放（红线 6）。确认入库时渲染真实文件写入附件库；投递时自动注入附件运行追踪 beacon 并做 {{.FirstName}} 等变量个性化。</div>
+      <template #footer>
+        <el-button @click="aiPayloadVisible = false">取消</el-button>
+        <el-button type="primary" :loading="aiPayloadGenerating" @click="submitAiPayload">生成草稿</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ====== 弹窗：AI 草稿预览（按类型渲染） ====== -->
+    <el-dialog v-model="aiPreviewVisible" title="草稿预览" width="720px">
+      <template v-if="aiPreview">
+        <!-- 邮件模板 -->
+        <template v-if="aiPreview.kind === 'email_template'">
+          <el-descriptions :column="2" size="small" border style="margin-bottom: 12px">
+            <el-descriptions-item label="主题">{{ aiPreview.subject }}</el-descriptions-item>
+            <el-descriptions-item label="发件人">{{ aiPreview.sender }}</el-descriptions-item>
+          </el-descriptions>
+          <div class="tpl-preview-box" v-html="aiPreview.body"></div>
+        </template>
+        <!-- 落地页 -->
+        <template v-else-if="aiPreview.kind === 'landing_page'">
+          <el-descriptions :column="2" size="small" border style="margin-bottom: 12px">
+            <el-descriptions-item label="页面名称">{{ aiPreview.name }}</el-descriptions-item>
+            <el-descriptions-item label="表单字段">{{ aiPreview.fieldsText }}</el-descriptions-item>
+          </el-descriptions>
+          <iframe
+            v-if="aiPreview.html_content"
+            :srcdoc="aiPreview.html_content"
+            class="email-preview-iframe"
+            sandbox="allow-scripts"
+          />
+        </template>
+        <!-- 企微卡片 -->
+        <template v-else-if="aiPreview.kind === 'wecom_template'">
+          <div class="wecom-preview-box">
+            <div class="wecom-preview-title">{{ aiPreview.title }}</div>
+            <div class="wecom-preview-desc">{{ aiPreview.description }}</div>
+            <div class="wecom-preview-btn">{{ aiPreview.btn_text || '查看详情' }}</div>
+          </div>
+        </template>
+        <!-- 诱饵文档 -->
+        <template v-else-if="aiPreview.kind === 'attachment'">
+          <div class="tpl-preview-box">
+            <h2 style="text-align:center;font-size:18px;margin:0 0 16px">{{ aiPreview.title }}</h2>
+            <p v-for="(p, i) in aiPreview.paragraphs" :key="i" style="line-height:1.8;margin:6px 0">{{ p }}</p>
+            <table v-if="aiPreview.table" class="doc-preview-table">
+              <thead>
+                <tr><th v-for="(h, i) in aiPreview.table.headers" :key="i">{{ h }}</th></tr>
+              </thead>
+              <tbody>
+                <tr v-for="(r, i) in aiPreview.table.rows" :key="i">
+                  <td v-for="(c, j) in r" :key="j">{{ c }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+        <el-empty v-else description="该类型草稿暂不支持预览" />
       </template>
     </el-dialog>
 
@@ -768,9 +1007,10 @@
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile, UploadInstance } from 'element-plus'
-import { Plus, Search, Upload, Link, UploadFilled, Iphone, Picture } from '@element-plus/icons-vue'
+import { Plus, Search, Upload, Link, UploadFilled, Iphone, Picture, MagicStick } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
-import { attachmentApi, templateApi } from '@/api'
+import AiDraftCard, { type AiDraft } from '@/components/ai/AiDraftCard.vue'
+import { aiApi, attachmentApi, templateApi } from '@/api'
 
 // ===== 类型定义 =====
 type TabName = 'email' | 'landing' | 'payload' | 'wecom'
@@ -1408,9 +1648,175 @@ async function loadTemplates() {
   }
 }
 
+// ============ AI 生成（草稿审核流：邮件模板/落地页/诱饵文档/企微消息） ============
+const aiDrafts = ref<AiDraft[]>([])
+// 各 Tab 只展示本类草稿，审核确认后统一刷新素材列表
+const emailDrafts = computed(() => aiDrafts.value.filter(d => d.biz_type === 'email_template'))
+const landingDrafts = computed(() => aiDrafts.value.filter(d => d.biz_type === 'landing_page'))
+const payloadDrafts = computed(() => aiDrafts.value.filter(d => d.biz_type === 'attachment'))
+const wecomDrafts = computed(() => aiDrafts.value.filter(d => d.biz_type === 'wecom_template'))
+
+async function loadAiDrafts() {
+  try {
+    const list = await aiApi.drafts('draft')
+    aiDrafts.value = list as AiDraft[]
+  } catch {
+    // 无 ai 菜单权限或加载失败时不打扰主流程（拦截器已提示）
+  }
+}
+
+// ---- 邮件模板 ----
+const aiGenVisible = ref(false)
+const aiGenerating = ref(false)
+const aiGenForm = reactive({ scene: 'finance', audience: '', tone: '正式', difficulty: 3 })
+
+async function submitAiGen() {
+  aiGenerating.value = true
+  try {
+    await aiApi.generateTemplate({ ...aiGenForm })
+    aiGenVisible.value = false
+    ElMessage.success('已生成草稿，审核通过后自动入库为模板')
+    loadAiDrafts()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出，保持弹窗打开可重试
+  } finally {
+    aiGenerating.value = false
+  }
+}
+
+// ---- 落地页 ----
+const aiLandingVisible = ref(false)
+const aiLandingGenerating = ref(false)
+const aiLandingForm = reactive({ scene: 'mail', company: '', audience: '', tone: '正式' })
+
+async function submitAiLanding() {
+  aiLandingGenerating.value = true
+  try {
+    await aiApi.generateLanding({ ...aiLandingForm })
+    aiLandingVisible.value = false
+    ElMessage.success('已生成落地页草稿，审核通过后自动入库')
+    loadAiDrafts()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出，保持弹窗打开可重试
+  } finally {
+    aiLandingGenerating.value = false
+  }
+}
+
+// ---- 企微消息模板 ----
+const aiWecomVisible = ref(false)
+const aiWecomGenerating = ref(false)
+const aiWecomForm = reactive({ scene: 'system', audience: '', tone: '正式' })
+
+async function submitAiWecom() {
+  aiWecomGenerating.value = true
+  try {
+    await aiApi.generateWecom({ ...aiWecomForm })
+    aiWecomVisible.value = false
+    ElMessage.success('已生成企微消息草稿，审核通过后自动入库')
+    loadAiDrafts()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出，保持弹窗打开可重试
+  } finally {
+    aiWecomGenerating.value = false
+  }
+}
+
+// ---- 诱饵文档 ----
+const aiPayloadVisible = ref(false)
+const aiPayloadGenerating = ref(false)
+const aiPayloadForm = reactive({ scene: '通知', audience: '', tone: '正式', doc_type: 'docx' })
+
+async function submitAiPayload() {
+  aiPayloadGenerating.value = true
+  try {
+    await aiApi.generateAttachment({ ...aiPayloadForm })
+    aiPayloadVisible.value = false
+    ElMessage.success('已生成诱饵文档草稿，审核通过后渲染文件入库')
+    loadAiDrafts()
+  } catch {
+    // 失败提示由 http 拦截器统一弹出，保持弹窗打开可重试
+  } finally {
+    aiPayloadGenerating.value = false
+  }
+}
+
+// ---- 草稿预览（按 biz_type 渲染） ----
+interface AiPreviewItem {
+  kind: string
+  title: string
+  name: string
+  subject: string
+  sender: string
+  body: string
+  html_content: string
+  fieldsText: string
+  description: string
+  btn_text: string
+  paragraphs: string[]
+  table: { headers: string[]; rows: string[][] } | null
+}
+const aiPreviewVisible = ref(false)
+const aiPreview = ref<AiPreviewItem | null>(null)
+
+function parseAiDraft(d: AiDraft): AiPreviewItem | null {
+  try {
+    const m = JSON.parse(d.content || '{}')
+    const fields = (m.form_schema?.fields || []) as { label?: string }[]
+    return {
+      kind: d.biz_type,
+      title: m.title || m.name || d.title || '',
+      name: m.name || '',
+      subject: m.subject || d.title || '',
+      sender: m.sender || '',
+      body: m.body || '',
+      html_content: m.html_content || '',
+      fieldsText: fields.map(f => f.label || '').filter(Boolean).join(' / '),
+      description: m.description || '',
+      btn_text: m.btn_text || '查看详情',
+      paragraphs: Array.isArray(m.paragraphs) ? m.paragraphs.map(String) : [],
+      table: (m.table as { headers: string[]; rows: string[][] } | null) || null,
+    }
+  } catch {
+    return null
+  }
+}
+
+function previewAiDraft(d: AiDraft) {
+  const p = parseAiDraft(d)
+  if (!p) {
+    ElMessage.warning('草稿内容解析失败')
+    return
+  }
+  aiPreview.value = p
+  aiPreviewVisible.value = true
+}
+
+async function approveAiDraft(d: AiDraft) {
+  try {
+    await aiApi.approveDraft(d.id)
+    ElMessage.success('已确认入库')
+    loadAiDrafts()
+    loadTemplates()
+    loadWecomTpls()
+  } catch {
+    // 无 ai:review 权限等由拦截器提示
+  }
+}
+
+async function discardAiDraft(d: AiDraft) {
+  try {
+    await aiApi.discardDraft(d.id)
+    loadAiDrafts()
+  } catch {
+    // 拦截器已提示
+  }
+}
+
 onMounted(() => {
   loadTemplates()
   loadWecomTpls()
+  loadAiDrafts()
 })
 
 // ============ 企业微信消息模板 ============
@@ -2245,5 +2651,68 @@ async function submitUpload() {
 .tpl-tabs :deep(.el-tabs__nav-wrap::after) {
   height: 1px;
   background-color: var(--color-border-tertiary);
+}
+
+// ===== AI 生成草稿 =====
+.ai-draft-strip {
+  margin-bottom: 14px;
+  border: 1px dashed rgba(29, 158, 117, 0.35);
+}
+.ai-draft-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-tertiary);
+  margin-left: 8px;
+}
+.tpl-preview-box {
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 6px;
+  padding: 16px;
+  max-height: 480px;
+  overflow: auto;
+  background: #fff;
+}
+// 企微 textcard 卡片预览
+.wecom-preview-box {
+  background: #fff;
+  border: 1px solid var(--color-border-tertiary);
+  border-radius: 6px;
+  padding: 16px;
+  max-width: 480px;
+  margin: 0 auto;
+}
+.wecom-preview-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 8px;
+}
+.wecom-preview-desc {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.wecom-preview-btn {
+  margin-top: 12px;
+  text-align: center;
+  border-top: 1px solid var(--color-background-tertiary);
+  padding-top: 10px;
+  color: #576b95;
+  font-size: 13px;
+}
+// 诱饵文档表格预览
+.doc-preview-table {
+  border-collapse: collapse;
+  margin: 12px auto;
+  th, td {
+    border: 1px solid #ccc;
+    padding: 4px 10px;
+    font-size: 12px;
+  }
+  th {
+    background: var(--color-background-secondary);
+    font-weight: 500;
+  }
 }
 </style>

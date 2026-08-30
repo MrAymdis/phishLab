@@ -29,6 +29,29 @@ class GenerateTemplateRequest(BaseModel):
     difficulty: int = 2
 
 
+class GenerateLandingRequest(BaseModel):
+    scene: str  # 视图类型 mail/oa/pan/custom，服务端映射后端枚举
+    company: str | None = None
+    audience: str | None = None
+    tone: str | None = None
+    difficulty: int = 2
+
+
+class GenerateWecomRequest(BaseModel):
+    scene: str
+    audience: str | None = None
+    tone: str | None = None
+    difficulty: int = 2
+
+
+class GenerateAttachmentRequest(BaseModel):
+    scene: str
+    company: str | None = None
+    audience: str | None = None
+    doc_type: str = "docx"  # docx/xlsx（宏/EXE 载荷属红线 6，不开放）
+    tone: str | None = None
+
+
 class AnalysisRequest(BaseModel):
     kind: str  # campaign_effect/dept_risk/trend_forecast/training_recommend
     target: dict = {}
@@ -94,6 +117,11 @@ def sessions(account=Depends(get_current_account), db: Session = Depends(get_db)
     return resp.ok(service.list_sessions(db, account))
 
 
+@ai.get("/sessions/{sid}/messages", summary="会话消息明细")
+def session_messages(sid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.list_messages(db, account, sid))
+
+
 @ai.post("/chat/stream", summary="Copilot 对话（SSE 流式）")
 async def chat_stream(req: ChatRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
     # 注意：service.chat_stream 在生成器开始前完成 DB 持久化，不跨 SSE 持有请求 session
@@ -103,6 +131,21 @@ async def chat_stream(req: ChatRequest, account=Depends(get_current_account), db
 @ai.post("/templates/generate", summary="AI 模板生成（进草稿审核）")
 async def gen_template(req: GenerateTemplateRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
     return resp.ok({"draft_id": await service.generate_template(db, account, req.model_dump())})
+
+
+@ai.post("/landings/generate", summary="AI 落地页生成（进草稿审核）")
+async def gen_landing(req: GenerateLandingRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"draft_id": await service.generate_landing(db, account, req.model_dump())})
+
+
+@ai.post("/wecoms/generate", summary="AI 企微消息模板生成（进草稿审核）")
+async def gen_wecom(req: GenerateWecomRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"draft_id": await service.generate_wecom(db, account, req.model_dump())})
+
+
+@ai.post("/attachments/generate", summary="AI 诱饵文档生成（进草稿审核，仅良性 docx/xlsx）")
+async def gen_attachment(req: GenerateAttachmentRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok({"draft_id": await service.generate_attachment(db, account, req.model_dump())})
 
 
 @ai.post("/analysis/generate", summary="智能分析报告（进草稿审核）")

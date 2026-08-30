@@ -731,6 +731,7 @@ _WECOM_ERRMAP = {
     60011: ("failed", "应用无发消息权限", "fail"),
     60020: ("failed", "应用未启用/不可用", "fail"),
     60111: ("bounced", "接收人 userid 不存在", "bounced"),
+    81013: ("bounced", "接收人 userid/部门/标签均无效（不在应用可见范围或未加入通讯录）", "bounced"),
     40008: ("failed", "消息体格式错误", "fail"),
     41005: ("failed", "缺少多媒体文件数据", "fail"),
     48001: ("failed", "应用 API 无权限", "fail"),

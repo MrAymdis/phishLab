@@ -12,8 +12,9 @@
         <el-tab-pane label="AI对话助手" name="chat">
           <div class="chat-layout">
             <div class="chat-sidebar">
-              <el-button type="primary" style="width: 100%; margin-bottom: 12px" :icon="Plus">新对话</el-button>
-              <div class="history-item active" v-for="h in chatHistory" :key="h.id">
+              <el-button type="primary" style="width: 100%; margin-bottom: 12px" :icon="Plus" @click="newChat">新对话</el-button>
+              <div class="history-item" :class="{ active: activeHistoryId === h.id }"
+                v-for="h in chatHistory" :key="h.id" @click="openSession(h)">
                 <div class="history-title">{{ h.title }}</div>
                 <div class="history-time">{{ h.time }}</div>
               </div>
@@ -428,8 +429,9 @@ const quickQuestions = [
   '分析演练效果', '生成钓鱼模板', '风险评估建议', '培训推荐', '查询员工画像',
 ]
 
+const GREETING = { role: 'assistant' as const, content: '您好！我是PhishLab智能助手，擅长钓鱼演练数据分析、模板生成和安全建议。有什么可以帮您的？' }
 const messages = ref<{ role: 'user' | 'assistant'; content: string }[]>([
-  { role: 'assistant', content: '您好！我是PhishLab智能助手，擅长钓鱼演练数据分析、模板生成和安全建议。有什么可以帮您的？' },
+  { ...GREETING },
   { role: 'user', content: '帮我分析一下Q3全员演练的效果如何？' },
   { role: 'assistant', content: '根据数据，**Q3全员防钓鱼演练**整体表现：\n\n- 📊 参与人数：<strong>3,580 人</strong>\n- 📧 投递率：<strong>100%</strong> | 打开率：<strong>71.3%</strong>\n- 🔗 点击率：<strong>27.0%</strong> | 中招率：<strong>15.6%</strong>\n- 🛡️ 举报率：<strong>22.3%</strong>\n\n**与上季度对比**：中招率下降 <span style="color:#1d9e75">4.2%</span> 个百分点，培训效果显著。但 <span style="color:#a32d2d">财务部(32%)</span> 仍为高风险部门，建议开展 <strong>专项培训</strong>。需要生成完整分析报告吗？' },
 ])
@@ -461,6 +463,14 @@ function sendMessage() {
         messages.value[aiIdx].content += frame.content
       } else if (frame.type === 'error') {
         messages.value[aiIdx].content += `\n\n> ${frame.message || '生成失败，请重试'}`
+      } else if (frame.type === 'done') {
+        // done 帧携带 session.id：新会话首次回复后回填，后续消息续接同一会话
+        const sid = Number(frame.content)
+        if (Number.isInteger(sid) && sid > 0) {
+          sessionId.value = sid
+          activeHistoryId.value = sid
+          loadHistory(true)
+        }
       }
     },
     onError: (err) => {
@@ -477,6 +487,41 @@ function stopStream() {
   abort?.()
   streaming.value = false
   ElMessage.info('已停止生成')
+}
+
+const activeHistoryId = ref<number | null>(null)
+
+async function loadHistory(quiet = false) {
+  try {
+    const list = await aiApi.sessions()
+    if (Array.isArray(list) && list.length) chatHistory.value = list
+  } catch {
+    if (!quiet) ElMessage.warning('接口数据加载失败，已展示演示数据')
+  }
+}
+
+function newChat() {
+  abort?.()
+  streaming.value = false
+  sessionId.value = null
+  activeHistoryId.value = null
+  messages.value = [{ ...GREETING }]
+  inputMsg.value = ''
+}
+
+async function openSession(h: { id: number; title: string; time: string }) {
+  if (streaming.value) return
+  abort?.()
+  activeHistoryId.value = h.id
+  sessionId.value = h.id
+  try {
+    const msgs = await aiApi.sessionMessages(h.id)
+    const list = (msgs || []).filter(m => m.role === 'user' || m.role === 'assistant')
+      .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+    messages.value = list.length ? list : [{ ...GREETING }]
+  } catch {
+    ElMessage.error('聊天记录加载失败')
+  }
 }
 
 const tmplCfg = reactive({
@@ -765,12 +810,7 @@ function removeProvider(p: AiProviderItem) {
 
 onMounted(() => {
   // 历史会话
-  aiApi.sessions()
-    .then((data) => {
-      const list = data as { id: number; title: string; time: string }[]
-      if (Array.isArray(list) && list.length) chatHistory.value = list
-    })
-    .catch(() => ElMessage.warning('接口数据加载失败，已展示演示数据'))
+  loadHistory()
   // AI 生成草稿（待审核列表）
   loadDrafts()
   // LLM Provider 列表
