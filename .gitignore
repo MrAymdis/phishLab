@@ -1,2 +1,5 @@
 # 发布包构建产物
 release/
+
+# 授权签发材料：vendor 私钥与已签发 .lic 严禁入仓（入仓即泄密）
+deploy/license/

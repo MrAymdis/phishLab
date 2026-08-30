@@ -103,7 +103,10 @@ def seed_rbac(db):
 
     # 接口/按钮级操作权限（require_perm 校验；写操作默认拒绝，红线相关）
     # parent_id 挂到对应菜单权限点（前端树状展示：菜单 → 功能）
+    # op_perms 为 (perm_code, 所属菜单名, 权限点名称)：按菜单名定位父节点，
+    # 节点 name 用第三项（与权限树迁移 20260827/20260830 播种口径一致）
     menu_id = {f"menu:{p}": i + 1 for i, (_n, p) in enumerate(menus)}
+    menu_id_by_name = {f"menu:{n}": i + 1 for i, (n, _p) in enumerate(menus)}
     op_perms = [
         ("campaign:create", "演练管理", "创建/复制演练"),
         ("campaign:control", "演练管理", "启动/暂停/恢复/终止/暂存/测试发送"),
@@ -117,13 +120,15 @@ def seed_rbac(db):
         ("org:manage", "用户和组", "部门/员工/标签增删改"),
         ("training:manage", "安全培训", "课程/培训任务增删改"),
         ("ai:review", "智能助手", "AI 草稿审核（入库/丢弃）"),
+        ("ai:manage", "智能助手", "LLM Provider 接入/管理"),
         ("openapi:manage", "API开放平台", "开放平台应用创建/管理"),
     ]
     op_rows = [
         SysPermission(
-            parent_id=menu_id[f"menu:{n}"], name=n, perm_code=code, type=3, route="", sort=1000 + i,
+            parent_id=menu_id_by_name[f"menu:{menu_name}"], name=node_name,
+            perm_code=code, type=3, route="", sort=1000 + i,
         )
-        for i, (code, n, _remark) in enumerate(op_perms)
+        for i, (code, menu_name, node_name) in enumerate(op_perms)
     ]
     db.add_all(op_rows)
     db.flush()
@@ -134,6 +139,7 @@ def seed_rbac(db):
     operator_codes = {
         c for c, _n, _r in op_perms
         if c.startswith(("campaign:", "channel:", "template:", "org:", "training:", "report:", "ai:"))
+        and c != "ai:manage"  # Provider/API Key 属敏感配置，operator 演示角色不授予
     }
     db.add_all(
         SysRolePermission(role_id=2, permission_id=p.id)
@@ -228,12 +234,15 @@ def seed_org(db):
 
 
 def seed_license(db):
-    """3. License：trial + 月度用量。"""
+    """3. License：trial + 月度用量（绑定本机机器码，fail-closed 强制下仍生效）。"""
+    from app.modules.license.fingerprint import get_machine_code
+
     db.add(LicenseInfo(
         id=1, license_key="PL-TRIAL-1DEMO2026", edition="trial", customer_name="演示客户",
         user_quota=5000, mail_quota=300000, sms_quota=10000, campaign_quota=200,
-        activate_mode="online", activated_at=NOW - timedelta(days=90),
+        activate_mode="offline", activated_at=NOW - timedelta(days=90),
         expire_at=NOW + timedelta(days=14), status="active",
+        machine_code=get_machine_code(),
     ))
     for i in range(3):
         db.add(LicenseUsage(

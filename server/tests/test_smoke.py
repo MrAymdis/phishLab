@@ -59,8 +59,8 @@ def test_menus():
     assert r.status_code == 200
     body = r.json()
     assert body["code"] == 0
-    # 无 license 行 → 全量 11 项菜单
-    assert len(body["data"]) == 11
+    # 无 license 行 → 演示模式：API 开放平台菜单被 feature 门控，10 项菜单
+    assert len(body["data"]) == 10
     assert body["data"][0]["path"] == "/dashboard"
 
 
@@ -115,9 +115,13 @@ def test_list_endpoints_contract():
         "/api/v1/mail-reports", "/api/v1/overview/metrics?range=month",
         "/api/v1/roles", "/api/v1/audit-logs", "/api/v1/login-logs",
         "/api/v1/webhooks", "/api/v1/siem", "/api/v1/ai/sessions",
-        "/api/v1/open-apps", "/api/v1/groups", "/api/v1/tags",
+        "/api/v1/groups", "/api/v1/tags",
     ]
     for path in endpoints:
         r = client.get(path, headers=_auth_headers())
         assert r.status_code == 200, f"{path} -> {r.status_code}"
         assert r.json()["code"] == 0, f"{path} -> {r.json()}"
+    # 旗舰专属功能（开放平台）在演示模式（无 license 行）下路由级 fail-closed 拒绝
+    r = client.get("/api/v1/open-apps", headers=_auth_headers())
+    assert r.status_code == 403, f"演示模式应拒绝开放平台: {r.status_code}"
+    assert r.json()["code"] == 40302

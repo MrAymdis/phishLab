@@ -523,16 +523,26 @@
           <div class="card card-orange" style="margin: 12px 0 0 0">
             <div class="card-title">激活管理</div>
             <el-row :gutter="12" style="margin-top: 10px">
-              <el-col :span="8">
+              <el-col :span="6">
                 <div class="activate-card">
-                  <div class="act-title"><el-icon :size="16"><Link /></el-icon> 在线激活</div>
-                  <el-input v-model="actCode" placeholder="请输入激活码" style="margin-top: 10px" @keyup.enter="activateByCode" />
-                  <el-button type="primary" style="width: 100%; margin-top: 10px" :icon="Check" :loading="actLoading" @click="activateByCode">验证激活</el-button>
+                  <div class="act-title"><el-icon :size="16"><Cpu /></el-icon> 本机机器码</div>
+                  <div class="machine-code">{{ machineCode || '加载中…' }}</div>
+                  <el-button size="small" style="width: 100%; margin-top: 10px" :icon="CopyDocument" @click="copyMachineCode">复制机器码</el-button>
+                  <div style="font-size: 11px; color: var(--color-text-tertiary); margin-top: 6px; line-height: 1.6">
+                    激活时把机器码提交给供应商签发 .lic，授权与本机强绑定——代码或数据库拷贝到其他机器部署将无法使用
+                  </div>
                 </div>
               </el-col>
-              <el-col :span="8">
+              <el-col :span="6">
                 <div class="activate-card">
-                  <div class="act-title"><el-icon :size="16"><UploadFilled /></el-icon> 离线激活</div>
+                  <div class="act-title"><el-icon :size="16"><EditPen /></el-icon> 粘贴 .lic 激活</div>
+                  <el-input v-model="licText" type="textarea" :rows="4" placeholder="粘贴 .lic 授权文件内容（JSON 文本）" style="margin-top: 10px" />
+                  <el-button type="primary" style="width: 100%; margin-top: 10px" :icon="Check" :loading="actLoading" @click="activateByText">验证激活</el-button>
+                </div>
+              </el-col>
+              <el-col :span="6">
+                <div class="activate-card">
+                  <div class="act-title"><el-icon :size="16"><UploadFilled /></el-icon> 上传 .lic 文件</div>
                   <el-upload
                     action="#"
                     :show-file-list="false"
@@ -549,7 +559,7 @@
                   </el-upload>
                 </div>
               </el-col>
-              <el-col :span="8">
+              <el-col :span="6">
                 <div class="activate-card">
                   <div class="act-title"><el-icon :size="16"><Phone /></el-icon> 联系销售</div>
                   <div style="font-size: 12px; color: var(--color-text-secondary); margin-top: 10px; line-height: 1.8">
@@ -571,7 +581,8 @@
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from 'vue'
 import {
-  Plus, Picture, Link, Check, UploadFilled, FolderOpened, Phone,
+  Plus, Picture, Check, UploadFilled, FolderOpened, Phone,
+  Cpu, CopyDocument, EditPen,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { accountApi, systemApi } from '@/api'
@@ -685,9 +696,28 @@ const whTesting = ref(false)
 const dataScope = ref('dept')
 const sensitiveFields = ref(['phone', 'risk_detail'])
 const customDepts = ref<string[]>([])
-const actCode = ref('')
+const licText = ref('')
 const actLoading = ref(false)
 const actUploading = ref(false)
+const machineCode = ref('')
+
+// 本机机器码：授权与本机强绑定的唯一凭据（激活时提交给供应商签发）
+async function loadMachineCode() {
+  try {
+    const res = (await systemApi.machineCode()) as { machine_code?: string }
+    machineCode.value = res?.machine_code ?? ''
+  } catch { loadWarning() }
+}
+
+async function copyMachineCode() {
+  if (!machineCode.value) return
+  try {
+    await navigator.clipboard.writeText(machineCode.value)
+    ElMessage.success('机器码已复制')
+  } catch {
+    ElMessage.warning('复制失败，请手动选择复制')
+  }
+}
 
 // 授权状态加载：配额进度 + 版本卡片（上传/激活成功后重调）
 async function loadLicense() {
@@ -695,11 +725,26 @@ async function loadLicense() {
     const lic = (await systemApi.license()) as any
     if (lic && typeof lic === 'object') {
       const editionLabel: Record<string, string> = { trial: '试用版 Trial', standard: '标准版', flagship: '旗舰版' }
+      const statusLabel: Record<string, string> = {
+        demo: '未激活 · 演示模式', expired: '授权已过期', invalid: '授权与本机不匹配', revoked: '授权已吊销',
+      }
       const stats = [...mockLicenseStats]
       if (lic.edition) {
-        stats[0] = {
-          title: '授权状态', value: editionLabel[lic.edition] ?? lic.edition, accent: 'orange',
-          sub: `剩余 ${lic.remaining_days ?? '-'} 天 · 到期 ${lic.expire_at ?? '-'}`,
+        if (lic.status === 'demo') {
+          stats[0] = {
+            title: '授权状态', value: '演示模式 Trial', accent: 'orange',
+            sub: '未激活：演示小配额评估，旗舰功能关闭 · 请导入 .lic 激活',
+          }
+        } else if (lic.status !== 'active') {
+          stats[0] = {
+            title: '授权状态', value: statusLabel[lic.status] ?? lic.status, accent: 'red',
+            sub: '禁止新建演练与投递 · 请重新激活或联系供应商续期/重签发',
+          }
+        } else {
+          stats[0] = {
+            title: '授权状态', value: editionLabel[lic.edition] ?? lic.edition, accent: 'orange',
+            sub: `剩余 ${lic.remaining_days ?? '-'} 天 · 到期 ${lic.expire_at ?? '-'}`,
+          }
         }
       }
       if (lic.expire_at) stats[1] = { title: '到期时间', value: lic.expire_at, accent: 'red', sub: '请提前 30 天完成续期' }
@@ -726,15 +771,15 @@ async function loadLicense() {
   } catch { loadWarning() }
 }
 
-// 在线激活：提交激活码，成功后刷新授权状态
-async function activateByCode() {
-  const code = actCode.value.trim()
-  if (!code) { ElMessage.warning('请输入激活码'); return }
+// 粘贴 .lic 内容激活：验签 + 机器码绑定 fail-closed，错误由拦截器统一提示
+async function activateByText() {
+  const text = licText.value.trim()
+  if (!text) { ElMessage.warning('请粘贴 .lic 授权文件内容'); return }
   actLoading.value = true
   try {
-    await systemApi.activateLicense(code)
+    await systemApi.activateLicense(text)
     ElMessage.success('激活成功')
-    actCode.value = ''
+    licText.value = ''
     await loadLicense()
   } finally {
     actLoading.value = false
@@ -1085,8 +1130,9 @@ onMounted(async () => {
     }
   } catch { loadWarning() }
 
-  // 授权信息（复用 loadLicense，激活/上传成功后重调刷新）
+  // 授权信息（复用 loadLicense，激活/上传成功后重调刷新）+ 本机机器码
   await loadLicense()
+  await loadMachineCode()
 
   // Webhook 告警推送（onMounted 开头已由 loadWebhook() 加载，此处为重构前冗余代码，已删除）
 
@@ -1164,6 +1210,18 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 6px;
+}
+.machine-code {
+  font-family: var(--font-mono, 'JetBrains Mono', Consolas, monospace);
+  font-size: 12px;
+  word-break: break-all;
+  line-height: 1.5;
+  margin-top: 10px;
+  color: var(--color-text-secondary);
+  background: var(--color-background);
+  border: 1px solid var(--color-border-secondary);
+  border-radius: 6px;
+  padding: 8px;
 }
 .upload-btn {
   border: 1px dashed var(--color-border-secondary);

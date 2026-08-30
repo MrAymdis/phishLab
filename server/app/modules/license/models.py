@@ -20,6 +20,7 @@ class LicenseInfo(Base, TimestampMixin):
     campaign_quota: Mapped[int] = mapped_column(Integer, nullable=False)
     activate_mode: Mapped[str | None] = mapped_column(String(8), comment="online/offline")
     signature: Mapped[str | None] = mapped_column(Text, comment="离线lic RSA签名")
+    machine_code: Mapped[str | None] = mapped_column(String(64), comment="部署机器指纹（部署绑定）")
     activated_at: Mapped[datetime | None] = mapped_column(DateTime)
     expire_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     status: Mapped[str] = mapped_column(String(12), default="active", comment="active/expired/revoked")

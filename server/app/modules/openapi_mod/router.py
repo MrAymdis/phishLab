@@ -9,10 +9,16 @@ from app.core.deps import get_current_account, require_perm
 from app.core.errors import BizError
 from app.db.session import get_db
 from app.modules.campaign.schemas import CampaignCreate
+from app.modules.license.deps import require_license_feature
 
 from . import biz, service
 
-open_apps = APIRouter(prefix="/api/v1/open-apps", tags=["API开放平台"], dependencies=[Depends(get_current_account), Depends(require_perm("menu:/openapi"))])
+# 开放平台为旗舰版专属功能：管理路由与网关一律挂 license 门控（fail-closed），
+# 拷贝部署后绕过前端直调 API 同样被拒，菜单隐藏仅是导航层体验
+open_apps = APIRouter(prefix="/api/v1/open-apps", tags=["API开放平台"],
+                      dependencies=[Depends(get_current_account),
+                                    Depends(require_perm("menu:/openapi")),
+                                    Depends(require_license_feature("openapi"))])
 gateway = APIRouter(prefix="/openapi/v1", tags=["API开放平台-网关"])
 routers = [open_apps, gateway]
 
@@ -67,7 +73,57 @@ def create_app(payload: AppCreate, account=Depends(get_current_account), db: Ses
     return resp.ok(service.create_app(db, account, payload.model_dump()))
 
 
-@gateway.post("/oauth/token", summary="client_credentials 换取 access_token")
+@open_apps.put("/{app_id}", summary="更新应用配置", dependencies=[Depends(require_perm("openapi:manage"))])
+def update_app(app_id: int, payload: AppCreate, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.update_app(db, account, app_id, payload.model_dump()))
+
+
+@open_apps.post("/{app_id}/secret", summary="重新生成 AppSecret（仅本次返回明文）",
+                dependencies=[Depends(require_perm("openapi:manage"))])
+def regen_secret(app_id: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.regen_secret(db, account, app_id))
+
+
+class StatusPayload(BaseModel):
+    status: str  # active/disabled
+
+
+@open_apps.post("/{app_id}/status", summary="启用/禁用应用", dependencies=[Depends(require_perm("openapi:manage"))])
+def toggle_app(app_id: int, payload: StatusPayload, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.toggle_app(db, account, app_id, payload.status))
+
+
+@open_apps.delete("/{app_id}", summary="删除应用（连带调用日志）", dependencies=[Depends(require_perm("openapi:manage"))])
+def delete_app(app_id: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    service.delete_app(db, account, app_id)
+    return resp.ok()
+
+
+@open_apps.get("/logs", summary="调用日志（分页/过滤）")
+def list_logs(
+    app_id: str | None = Query(None, description="AppID 精确过滤"),
+    method: str | None = Query(None),
+    status: str | None = Query(None, description="2xx/4xx/5xx"),
+    kw: str | None = Query(None, description="路径/IP 模糊"),
+    start: str | None = Query(None, description="开始时间 ISO"),
+    end: str | None = Query(None, description="结束时间 ISO"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    account=Depends(get_current_account),
+    db: Session = Depends(get_db),
+):
+    return resp.ok(service.list_logs(
+        db, app_id=app_id, method=method, status=status, kw=kw,
+        start=start, end=end, page=page, page_size=page_size))
+
+
+@open_apps.get("/stats", summary="API概览统计（总量/成功率/延迟/近7天趋势）")
+def stats(account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.stats(db))
+
+
+@gateway.post("/oauth/token", summary="client_credentials 换取 access_token",
+              dependencies=[Depends(require_license_feature("openapi"))])
 def token(req: TokenRequest, db: Session = Depends(get_db)):
     return resp.ok(service.issue_token(db, req.app_id, req.app_secret))
 

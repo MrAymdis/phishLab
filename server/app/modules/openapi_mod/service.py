@@ -37,6 +37,12 @@ def _client_ip(request: Request) -> str:
 
 def authenticate(request: Request, db, scope: str) -> OpenApp:
     """网关鉴权（fail-closed）：任一校验不通过即 401/403，不进入业务层。"""
+    # 旗舰版功能门控：授权失效/未开通时网关整体关闭（与 /oauth/token 路由级门控双保险）
+    from app.modules.license.service import feature_enabled
+
+    if not feature_enabled(db, "openapi"):
+        raise BizError(ErrorCode.PERM_DENIED,
+                       "当前授权不包含开放平台功能（旗舰版），网关已关闭")
     auth = request.headers.get("authorization", "")
     if not auth.startswith("Bearer "):
         raise BizError(ErrorCode.UNAUTHORIZED, "缺少 Bearer access_token")
@@ -162,6 +168,176 @@ def create_app(db, account, payload: dict) -> dict:
     )
     # Secret 仅创建时返回一次
     return {"id": app.id, "app_id": app_id, "app_secret": app_secret}
+
+
+def update_app(db, account, app_id: int, payload: dict) -> dict:
+    """更新应用（名称/描述/scope/白名单/回调/限流）；写审计。"""
+    app = db.get(OpenApp, app_id)
+    if app is None:
+        raise BizError(ErrorCode.NOT_FOUND, "应用不存在")
+    scopes = payload.get("scopes") or []
+    for s in scopes:
+        if s not in SCOPES:
+            raise BizError(ErrorCode.PARAM_INVALID, f"scope 仅支持 {SCOPES}")
+    for field in ("name", "description", "scopes", "ip_whitelist", "callback_url", "rate_limit"):
+        if field in payload:
+            setattr(app, field, payload[field])
+    db.commit()
+
+    from app.core.audit import record_audit
+
+    record_audit(
+        db, account=account, module="openapi", action="update_app",
+        target_type="open_app", target_id=app.app_id,
+        detail={"name": app.name, "scopes": app.scopes},
+    )
+    return {"id": app.id}
+
+
+def regen_secret(db, account, app_id: int) -> dict:
+    """重新生成 AppSecret（旧密文作废），仅本次返回明文；写审计。"""
+    app = db.get(OpenApp, app_id)
+    if app is None:
+        raise BizError(ErrorCode.NOT_FOUND, "应用不存在")
+    app_secret = "sk_live_" + secrets.token_hex(24)
+    app.app_secret_enc = encrypt_secret(app_secret)
+    db.commit()
+
+    from app.core.audit import record_audit
+
+    record_audit(
+        db, account=account, module="openapi", action="regen_secret",
+        target_type="open_app", target_id=app.app_id, detail=None,
+    )
+    return {"app_secret": app_secret}
+
+
+def toggle_app(db, account, app_id: int, status: str) -> dict:
+    """启用/禁用应用；禁用后旧 access_token 立即失效（authenticate 校验 status）。"""
+    if status not in ("active", "disabled"):
+        raise BizError(ErrorCode.PARAM_INVALID, "status 仅支持 active/disabled")
+    app = db.get(OpenApp, app_id)
+    if app is None:
+        raise BizError(ErrorCode.NOT_FOUND, "应用不存在")
+    app.status = status
+    db.commit()
+
+    from app.core.audit import record_audit
+
+    record_audit(
+        db, account=account, module="openapi", action="toggle_app",
+        target_type="open_app", target_id=app.app_id, detail={"status": status},
+    )
+    return {"id": app.id, "status": app.status}
+
+
+def delete_app(db, account, app_id: int) -> None:
+    """删除应用及其调用日志（日志按 app_id 关联，孤儿行无展示价值）；写审计。"""
+    app = db.get(OpenApp, app_id)
+    if app is None:
+        raise BizError(ErrorCode.NOT_FOUND, "应用不存在")
+    from sqlalchemy import delete as sa_delete
+
+    db.execute(sa_delete(OpenApiLog).where(OpenApiLog.app_id == app.app_id))
+    db.delete(app)
+    db.commit()
+
+    from app.core.audit import record_audit
+
+    record_audit(
+        db, account=account, module="openapi", action="delete_app",
+        target_type="open_app", target_id=app.app_id, detail={"name": app.name},
+    )
+
+
+def list_logs(db, *, app_id: str | None = None, method: str | None = None,
+              status: str | None = None, kw: str | None = None,
+              start: str | None = None, end: str | None = None,
+              page: int = 1, page_size: int = 20) -> dict:
+    """调用日志分页查询（管理端）：按应用/方法/状态段/路径或 IP 关键字/时间范围过滤。
+
+    应用名 outerjoin（应用已删时回退 app_id）。status 取 2xx/4xx/5xx 段。
+    """
+    from sqlalchemy import or_
+    from app.modules.openapi_mod.models import OpenApp as _OpenApp
+
+    base = select(OpenApiLog, _OpenApp.name).outerjoin(
+        _OpenApp, _OpenApp.app_id == OpenApiLog.app_id)
+    conds = []
+    if app_id:
+        conds.append(OpenApiLog.app_id == app_id)
+    if method:
+        conds.append(OpenApiLog.method == method)
+    if status in ("2xx", "4xx", "5xx"):
+        lo, hi = int(status[0]) * 100, int(status[0]) * 100 + 99
+        conds.append(OpenApiLog.status_code.between(lo, hi))
+    if kw:
+        like = f"%{kw}%"
+        conds.append(or_(OpenApiLog.path.like(like), OpenApiLog.ip.like(like)))
+    if start:
+        conds.append(OpenApiLog.created_at >= datetime.fromisoformat(start))
+    if end:
+        conds.append(OpenApiLog.created_at < datetime.fromisoformat(end))
+    if conds:
+        base = base.where(*conds)
+
+    total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
+    rows = db.execute(
+        base.order_by(OpenApiLog.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    ).all()
+    items = [
+        {
+            "id": row.id,
+            "time": row.created_at.strftime("%Y-%m-%d %H:%M:%S") if row.created_at else "",
+            "app_name": name or row.app_id,
+            "method": row.method,
+            "path": row.path,
+            "status_code": row.status_code,
+            "response_ms": row.latency_ms,
+            "ip": row.ip or "",
+            "error": row.error_msg or "",
+        }
+        for row, name in rows
+    ]
+    return {"list": items, "total": total, "page": page, "pageSize": page_size}
+
+
+def stats(db) -> dict:
+    """API概览统计：调用总量/活跃应用/成功率/平均延迟 + 近7天调用趋势。"""
+    from sqlalchemy import case
+
+    total = int(db.scalar(select(func.count()).select_from(OpenApiLog)) or 0)
+    active_apps = int(db.scalar(
+        select(func.count()).select_from(OpenApp).where(OpenApp.status == "active")) or 0)
+    ok_cnt = int(db.scalar(
+        select(func.count()).select_from(OpenApiLog).where(
+            OpenApiLog.status_code.between(200, 299))) or 0)
+    avg_latency = int(db.scalar(
+        select(func.coalesce(func.avg(OpenApiLog.latency_ms), 0)).select_from(OpenApiLog)) or 0)
+    # 近 7 天趋势：按天聚合（SQLite func.date 兼容 MySQL DATE()）
+    since = datetime.now() - timedelta(days=6)
+    trend_rows = db.execute(
+        select(
+            func.date(OpenApiLog.created_at).label("day"),
+            func.count().label("calls"),
+            func.sum(case((OpenApiLog.status_code.between(200, 299), 1), else_=0)).label("ok"),
+        )
+        .where(OpenApiLog.created_at >= since)
+        .group_by(func.date(OpenApiLog.created_at))
+        .order_by(func.date(OpenApiLog.created_at))
+    ).all()
+    trend = [
+        {"date": str(day), "calls": int(calls), "success_rate":
+         round(int(ok) / int(calls) * 100, 2) if calls else 100.0}
+        for day, calls, ok in trend_rows
+    ]
+    return {
+        "total_calls": total,
+        "active_apps": active_apps,
+        "success_rate": round(ok_cnt / total * 100, 2) if total else 100.0,
+        "avg_latency": avg_latency,
+        "trend": trend,
+    }
 
 
 def issue_token(db, app_id: str, app_secret: str) -> dict:

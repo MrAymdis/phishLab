@@ -67,19 +67,14 @@ _MAX_PAYLOAD_MB = 20
 
 
 def payload_enabled(db) -> bool:
-    """宏/EXE 载荷功能开关（红线 6 默认关闭）：仅旗舰版授权且未过期开放。
+    """宏/EXE 载荷功能开关（红线 6 默认关闭）：仅旗舰版授权（有效且本机绑定）开放。
 
-    与其他功能不同，不享受"无 license 放行"的开发便利——高危载荷必须显式授权。
-    与 license 模块 EDITION_FEATURES["flagship"]["payload"] 保持一致。
+    单一事实源在 license 模块：授权状态/到期/机器码绑定统一由 feature_enabled 裁决，
+    避免两处逻辑漂移。
     """
-    from app.modules.license.models import LicenseInfo
+    from app.modules.license.service import feature_enabled
 
-    lic = db.scalar(select(LicenseInfo).order_by(LicenseInfo.id.desc()))
-    if lic is None or lic.status != "active":
-        return False
-    if lic.expire_at and lic.expire_at < datetime.now():
-        return False
-    return lic.edition == "flagship"
+    return feature_enabled(db, "payload")
 
 _VAR_RE = re.compile(r"\{\{\.\w+\}\}")
 
@@ -1295,8 +1290,11 @@ def _check_custom_path_taken(db, custom_path: str, exclude_id: int | None = None
         raise BizError(ErrorCode.BIZ_CONFLICT, "该自定义路径已被其他落地页占用")
 
 
-def create_landing_page(db, account, payload: dict) -> int:
-    """新建落地页：slug 随机生成，form_schema.fields 落 landing_form_field。"""
+def create_landing_page(db, account, payload: dict, source: str = "custom") -> int:
+    """新建落地页：slug 随机生成，form_schema.fields 落 landing_form_field。
+
+    source 供 AI 草稿入库传 "ai"（AI 产出一律先草稿、人工确认后入库，来源留痕）。
+    """
     from sqlalchemy.exc import IntegrityError
 
     form_schema = payload.get("form_schema") or {}
@@ -1310,7 +1308,7 @@ def create_landing_page(db, account, payload: dict) -> int:
         custom_path=custom_path,
         html_content=payload.get("html_content"),
         form_schema=form_schema or None,
-        source="custom",
+        source=source,
         status="approved",
         created_by=account.id,
     )

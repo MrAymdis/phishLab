@@ -1,7 +1,12 @@
-"""License 服务：激活/校验/配额前置检查。
+"""License 服务：激活/校验/配额前置检查（fail-closed 强制）。
 
-所有资源创建入口（演练/员工/发送）前必须调用 check_quota。
-离线 .lic：RSA-SHA256 签名验签 + license_no 防重放（红线：伪造/重放即拒绝）。
+授权模型：
+- 无授权行 → 演示模式（demo）：试用版功能 + 演示小配额兜底，不再全量放行；
+- 授权有效 → 按版本（trial/standard/flagship）开放功能与配额；
+- 授权过期/吊销/机器码不匹配 → 禁止新建资源、gated 功能全关（禁止新建/投递，查看不受限）。
+
+激活只有一条路：离线 .lic（RSA-SHA256 签名 + license_no 防重放 + 机器码部署绑定）。
+在线 PL- 前缀激活码已移除（可被随意伪造，见历史演示实现 _parse_key）。
 """
 import base64
 import json
@@ -16,68 +21,89 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.errors import BizError, ErrorCode
 
+from .fingerprint import get_machine_code
 from .models import LicenseInfo, LicenseUsage
 
-# 功能模块按版本开关：flagship 才有高级 AI / 开放平台
+# 功能模块按版本开关：flagship 才有高级 AI / 开放平台 / 宏 EXE 载荷（红线 6）
 EDITION_FEATURES = {
     "trial": {"ai": True, "openapi": False, "payload": False},
     "standard": {"ai": True, "openapi": False, "payload": False},
     "flagship": {"ai": True, "openapi": True, "payload": True},
 }
 
-_PREFIX_EDITION = {"PL-TRIAL-": "trial", "PL-STD-": "standard", "PL-FLAG-": "flagship"}
+_EDITIONS = set(EDITION_FEATURES)
 _QUOTA_BY_EDITION = {
     "trial": {"user": 5000, "mail": 300000, "sms": 10000, "campaign": 200},
     "standard": {"user": 20000, "mail": 1000000, "sms": 50000, "campaign": 1000},
     "flagship": {"user": 100000, "mail": 10000000, "sms": 500000, "campaign": 10000},
 }
+# 演示模式配额（未激活兜底）：足够评估，但与正式授权拉开量级
+_DEMO_QUOTA = {"user": 500, "mail": 5000, "sms": 500, "campaign": 20}
+
+_STATE_CN = {"demo": "未激活（演示模式）", "expired": "授权已过期",
+             "invalid": "授权与本机不匹配", "revoked": "授权已被吊销"}
 
 
 def _get_license(db: Session) -> LicenseInfo | None:
     return db.scalar(select(LicenseInfo).order_by(LicenseInfo.id.desc()))
 
 
-def _parse_key(license_key: str) -> dict:
-    for prefix, edition in _PREFIX_EDITION.items():
-        if license_key.startswith(prefix):
-            code = license_key[len(prefix):]
-            if len(code) < 4:
-                raise BizError(ErrorCode.PARAM_INVALID, "激活码格式不正确")
-            # 演示实现：code 第 1 位决定有效期月数（1/6/12），其余位为签名占位
-            months = {"1": 1, "6": 6, "0": 12}.get(code[0], 1)
-            return {"edition": edition, "months": months}
-    raise BizError(ErrorCode.PARAM_INVALID, "激活码格式不正确（需以 PL-TRIAL-/PL-STD-/PL-FLAG- 开头）")
+def _license_state(db: Session) -> str:
+    """运行时授权状态：demo / active / expired / invalid / revoked（fail-closed）。"""
+    lic = _get_license(db)
+    if lic is None:
+        return "demo"
+    if lic.status == "revoked":
+        return "revoked"
+    if not lic.expire_at or lic.expire_at < datetime.now():
+        return "expired"
+    if not lic.machine_code or lic.machine_code != get_machine_code():
+        return "invalid"
+    if lic.status != "active":
+        return "invalid"
+    return "active"
 
 
 def get_status(db: Session) -> dict:
-    """授权状态概览：版本/到期/配额用量进度。无 license 行时返回 trial 默认。"""
+    """授权状态概览：版本/到期/配额用量进度 + 部署绑定信息。"""
     lic = _get_license(db)
+    state = _license_state(db)
+    used = _usage(db)
+
     if lic is None:
+        edition, features, quotas = "trial", EDITION_FEATURES["trial"], _DEMO_QUOTA
         return {
-            "edition": "trial",
+            "edition": edition,
             "customer_name": "未激活客户",
-            "status": "active",
+            "status": "demo",
+            "demo_mode": True,
             "activated_at": None,
             "expire_at": None,
-            "remaining_days": 30,
-            "features": EDITION_FEATURES["trial"],
-            "quotas": {k: {"used": 0, "total": v} for k, v in _QUOTA_BY_EDITION["trial"].items()},
+            "remaining_days": None,
+            "features": features,
+            "quotas": {k: {"used": used.get(k, 0), "total": v} for k, v in quotas.items()},
+            "machine_code": get_machine_code(),
+            "bound_machine_code": None,
         }
+
     edition = lic.edition or "trial"
-    quotas = dict(_QUOTA_BY_EDITION.get(edition, _QUOTA_BY_EDITION["trial"]))
-    used = _usage(db)
+    blocked = state not in ("active", "demo")
     remaining = (lic.expire_at.date() - datetime.now().date()).days if lic.expire_at else 0
     return {
         "edition": edition,
         "customer_name": lic.customer_name,
-        "status": lic.status,
+        "status": state if state != "active" else lic.status,
+        "demo_mode": False,
         "activated_at": lic.activated_at,
         "expire_at": lic.expire_at,
         "remaining_days": max(remaining, 0),
-        "features": EDITION_FEATURES.get(edition, EDITION_FEATURES["trial"]),
+        "features": {} if blocked else EDITION_FEATURES.get(edition, EDITION_FEATURES["trial"]),
         "quotas": {
-            k: {"used": used.get(k, 0), "total": v} for k, v in quotas.items()
+            k: {"used": used.get(k, 0), "total": v}
+            for k, v in _QUOTA_BY_EDITION.get(edition, _QUOTA_BY_EDITION["trial"]).items()
         },
+        "machine_code": get_machine_code(),
+        "bound_machine_code": lic.machine_code,
     }
 
 
@@ -91,13 +117,6 @@ def _usage(db: Session) -> dict:
     mails = db.scalar(select(func.coalesce(func.sum(LicenseUsage.mails_sent), 0))) or 0
     sms = db.scalar(select(func.coalesce(func.sum(LicenseUsage.sms_sent), 0))) or 0
     return {"user": user_cnt, "mail": int(mails), "sms": int(sms), "campaign": campaign_cnt}
-
-
-def activate_online(db: Session, license_key: str) -> dict:
-    parsed = _parse_key(license_key)
-    _apply_license(db, license_key=license_key, edition=parsed["edition"],
-                   months=parsed["months"], customer=None, mode="online")
-    return get_status(db)
 
 
 def _canonical_json(payload: dict) -> str:
@@ -117,11 +136,12 @@ def _load_public_key():
 
 
 def _verify_offline(data: dict) -> dict:
-    """.lic 验签 + 字段校验，通过返回归一化 payload（fail-closed）。"""
-    payload = {k: data.get(k) for k in ("license_no", "customer", "edition", "months", "issued_at")}
+    """.lic 验签 + 字段校验 + 机器码绑定校验，通过返回归一化 payload（fail-closed）。"""
+    payload = {k: data.get(k) for k in ("license_no", "customer", "edition", "months",
+                                        "issued_at", "machine_code")}
     if not payload["license_no"] or not payload["customer"]:
         raise BizError(ErrorCode.PARAM_INVALID, ".lic 字段缺失（license_no/customer）")
-    if payload["edition"] not in _PREFIX_EDITION.values():
+    if payload["edition"] not in _EDITIONS:
         raise BizError(ErrorCode.PARAM_INVALID, ".lic edition 非法（trial/standard/flagship）")
     try:
         payload["months"] = int(payload["months"])
@@ -131,6 +151,14 @@ def _verify_offline(data: dict) -> dict:
         raise BizError(ErrorCode.PARAM_INVALID, ".lic months 需在 1-36 之间")
     if not payload["issued_at"]:
         raise BizError(ErrorCode.PARAM_INVALID, ".lic 缺少 issued_at")
+    if not payload["machine_code"]:
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       ".lic 缺少 machine_code（部署绑定字段），请向供应商申请重新签发")
+    if payload["machine_code"] != get_machine_code():
+        raise BizError(ErrorCode.PERM_DENIED,
+                       f"授权文件与当前部署机器不匹配（绑定机器码 "
+                       f"{payload['machine_code'][:12]}…，本机 {get_machine_code()[:12]}…），"
+                       f"请向供应商申请重签发")
     try:
         signature = base64.b64decode(data.get("signature") or "", validate=True)
     except Exception:
@@ -145,8 +173,9 @@ def _verify_offline(data: dict) -> dict:
 
 
 def _apply_license(db: Session, *, license_key: str, edition: str, months: int,
-                   customer: str, mode: str, signature: str | None = None) -> None:
-    """激活写库（在线/离线共用）：配额按版本映射，到期 = 激活日 + 月数*30 天。"""
+                   customer: str, mode: str, machine_code: str,
+                   signature: str | None = None) -> None:
+    """激活写库：配额按版本映射，到期 = 激活日 + 月数*30 天，绑定机器码。"""
     expire_at = datetime.now() + timedelta(days=30 * months)
     lic = _get_license(db)
     if lic is None:
@@ -161,6 +190,7 @@ def _apply_license(db: Session, *, license_key: str, edition: str, months: int,
     lic.campaign_quota = _QUOTA_BY_EDITION[edition]["campaign"]
     lic.activate_mode = mode
     lic.signature = signature
+    lic.machine_code = machine_code
     lic.activated_at = datetime.now()
     lic.expire_at = expire_at
     lic.status = "active"
@@ -168,7 +198,7 @@ def _apply_license(db: Session, *, license_key: str, edition: str, months: int,
 
 
 def activate_offline(db: Session, lic_bytes: bytes) -> dict:
-    """离线 .lic：RSA-SHA256 验签 → 防重放（license_no 唯一）→ 激活。"""
+    """离线 .lic：RSA-SHA256 验签 + 机器码绑定 → 防重放（license_no 唯一）→ 激活。"""
     try:
         data = json.loads(lic_bytes.decode("utf-8", errors="ignore").strip())
         if not isinstance(data, dict):
@@ -183,23 +213,39 @@ def activate_offline(db: Session, lic_bytes: bytes) -> dict:
                        f"授权文件 {payload['license_no']} 已激活（防重放），如需升级请使用新授权文件")
     _apply_license(db, license_key=payload["license_no"], edition=payload["edition"],
                    months=payload["months"], customer=payload["customer"],
-                   mode="offline", signature=data["signature"])
+                   mode="offline", machine_code=payload["machine_code"],
+                   signature=data["signature"])
     return get_status(db)
 
 
 def check_quota(db: Session, resource: str, amount: int = 1) -> None:
-    """resource: user/mail/sms/campaign；超限抛 LICENSE_EXCEEDED。无 license 行放行。"""
+    """resource: user/mail/sms/campaign；超限抛 LICENSE_EXCEEDED。
+
+    演示模式走小配额兜底；过期/吊销/机器不匹配直接禁止新建（fail-closed）。
+    """
     lic = _get_license(db)
-    if lic is None or resource not in _QUOTA_BY_EDITION.get(lic.edition or "trial", {}):
+    state = _license_state(db)
+    if state == "demo":
+        quotas = _DEMO_QUOTA
+    elif state == "active":
+        quotas = _QUOTA_BY_EDITION.get(lic.edition or "trial", _QUOTA_BY_EDITION["trial"])
+    else:
+        raise BizError(ErrorCode.LICENSE_INVALID,
+                       f"{_STATE_CN[state]}，禁止新建资源/投递，请联系供应商续期或重签发授权")
+    if resource not in quotas:
         return
-    quota = _QUOTA_BY_EDITION[lic.edition][resource]
     used = _usage(db).get(resource, 0)
-    if used + amount > quota:
-        raise BizError(ErrorCode.LICENSE_EXCEEDED, f"{resource} 配额已用尽（{used}/{quota}）")
+    if used + amount > quotas[resource]:
+        raise BizError(ErrorCode.LICENSE_EXCEEDED,
+                       f"{resource} 配额已用尽（{used}/{quotas[resource]}）")
 
 
 def feature_enabled(db: Session, feature: str) -> bool:
+    """功能门控（fail-closed）：演示模式=试用版能力；失效=全关。"""
     lic = _get_license(db)
-    if lic is None:  # 未激活：开发环境全量放行，避免空导航
-        return True
+    state = _license_state(db)
+    if state == "demo":
+        return EDITION_FEATURES["trial"].get(feature, False)
+    if state != "active":
+        return False
     return EDITION_FEATURES.get(lic.edition or "trial", {}).get(feature, False)
