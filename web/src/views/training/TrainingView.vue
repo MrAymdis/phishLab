@@ -212,6 +212,12 @@
                     <el-link type="primary" @click="previewPaper(row)">{{ row.name }}</el-link>
                   </template>
                 </el-table-column>
+                <el-table-column label="关联课程" min-width="130">
+                  <template #default="{ row }">
+                    <el-tag v-if="row.courseName" size="small" effect="plain">{{ row.courseName }}</el-tag>
+                    <span v-else style="color: var(--color-text-tertiary)">—</span>
+                  </template>
+                </el-table-column>
                 <el-table-column label="题数（单/多/判）" width="160" align="center">
                   <template #default="{ row }">
                     {{ row.single }} + {{ row.multi }} + {{ row.judge }}
@@ -490,6 +496,12 @@
             </el-form-item>
           </el-col>
         </el-row>
+        <el-form-item label="关联课程">
+          <el-select v-model="paperForm.course_id" placeholder="中招员工将按课程参加本试卷考试（可不选）"
+            clearable filterable style="width: 100%">
+            <el-option v-for="c in courses" :key="c.id" :label="c.title" :value="c.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="选择题目">
           <el-table :data="questionBankForPaper" size="small" max-height="260" @selection-change="onPaperQuestionSelect">
             <el-table-column type="selection" width="42" />
@@ -1076,6 +1088,7 @@ interface PaperRow {
   name: string; single: number; multi: number; judge: number; total: number
   pass: number; passPct: number; publishCount: number; status: string
   audience?: string; audienceCount?: number
+  courseId?: number | null; courseName?: string
 }
 const paperRows = ref<PaperRow[]>([])
 
@@ -1088,7 +1101,8 @@ async function loadPapers() {
 
 const paperDialogVisible = ref(false)
 const paperForm = reactive({
-  id: 0, title: '', pass_score: 60, duration_min: 30, questions: [] as { id: number; score: number }[],
+  id: 0, title: '', pass_score: 60, duration_min: 30, course_id: undefined as number | undefined,
+  questions: [] as { id: number; score: number }[],
 })
 const questionBankForPaper = ref<{ id: number; type: string; content: string; diff: string; _score: number }[]>([])
 const paperSelectedIds = ref<number[]>([])
@@ -1096,8 +1110,9 @@ const paperTotalScore = computed(() => paperForm.questions.reduce((s, q) => s + 
 
 function openPaperDialog(p?: PaperRow) {
   Object.assign(paperForm, p
-    ? { id: p.id, title: p.name, pass_score: p.pass, duration_min: 30, questions: [] }
-    : { id: 0, title: '', pass_score: 60, duration_min: 30, questions: [] })
+    ? { id: p.id, title: p.name, pass_score: p.pass, duration_min: 30,
+        course_id: p.courseId ?? undefined, questions: [] }
+    : { id: 0, title: '', pass_score: 60, duration_min: 30, course_id: undefined, questions: [] })
   paperSelectedIds.value = []
   paperDialogVisible.value = true
   loadPaperQuestionBank()
@@ -1146,6 +1161,7 @@ async function savePaper() {
         title: paperForm.title,
         pass_score: paperForm.pass_score,
         duration_min: paperForm.duration_min,
+        course_id: paperForm.course_id || null,
         questions: paperForm.questions,
       })
       ElMessage.success('试卷已更新')
@@ -1154,6 +1170,7 @@ async function savePaper() {
         title: paperForm.title,
         pass_score: paperForm.pass_score,
         duration_min: paperForm.duration_min,
+        course_id: paperForm.course_id || undefined,
         questions: paperForm.questions,
       })
       ElMessage.success('试卷已创建')

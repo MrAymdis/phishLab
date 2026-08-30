@@ -656,7 +656,7 @@ def seed_training(db):
     ]
     for pid, title, pass_score, publish in papers:
         db.add(ExamPaper(id=pid, title=title, pass_score=pass_score, duration_min=30,
-                         status="published", created_by=1))
+                         status="published", course_id=2, created_by=1))  # 挂课程2：中招员工考试
         for qid in [1, 2, 3, 4, 5][:3 + pid % 3]:
             db.add(ExamPaperQuestion(paper_id=pid, question_id=qid, score=5))
         for i in range(publish):

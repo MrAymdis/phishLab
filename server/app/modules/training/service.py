@@ -385,6 +385,8 @@ def list_papers(db, account):
     stmt = apply_data_scope(db, stmt, account, self_owner_col=ExamPaper.created_by,
                             allow_null_owner=True)
     papers = db.scalars(stmt).all()
+    courses = {c.id: c for c in db.scalars(select(Course).where(
+        Course.id.in_({p.course_id for p in papers if p.course_id}))).all()}
     items = []
     for p in papers:
         rows = db.execute(
@@ -401,6 +403,8 @@ def list_papers(db, account):
         items.append({
             "id": p.id,
             "name": p.title,
+            "courseId": p.course_id,
+            "courseName": courses[p.course_id].title if p.course_id in courses else "",
             "single": type_cnt.get("single", 0),
             "multi": type_cnt.get("multi", 0),
             "judge": type_cnt.get("judge", 0),
@@ -618,7 +622,10 @@ def delete_question(db, account, question_id: int) -> None:
 # ---------- 试卷 CRUD ----------
 
 def create_paper(db, account, payload: dict) -> int:
-    """创建试卷：名称/分数线/时长 + 题目列表[{id, score}]。"""
+    """创建试卷：名称/分数线/时长/关联课程 + 题目列表[{id, score}]。
+
+    挂课程后，中招员工经落地页 redirect 可按课程定位该试卷在线考试。
+    """
     title = (payload.get("title") or "").strip()
     if not title:
         raise BizError(ErrorCode.PARAM_INVALID, "试卷名称不能为空")
@@ -630,11 +637,15 @@ def create_paper(db, account, payload: dict) -> int:
     missing = [i for i in qids if i not in exist]
     if missing:
         raise BizError(ErrorCode.PARAM_INVALID, f"题目不存在：{missing}")
+    course_id = payload.get("course_id")
+    if course_id and db.get(Course, int(course_id)) is None:
+        raise BizError(ErrorCode.PARAM_INVALID, f"课程不存在：{course_id}")
 
     paper = ExamPaper(
         title=title,
         pass_score=int(payload.get("pass_score") or 60),
         duration_min=int(payload.get("duration_min") or 30),
+        course_id=int(course_id) if course_id else None,
         status="draft",
         created_by=account.id,
     )
@@ -664,12 +675,15 @@ def get_paper(db, account, paper_id: int) -> dict:
         .order_by(ExamPaperQuestion.question_id)
     ).all()
     total = int(sum(r[1] or 0 for r in rows))
+    course = db.get(Course, p.course_id) if p.course_id else None
     return {
         "id": p.id,
         "name": p.title,
         "pass": int(p.pass_score or 0),
         "duration": int(p.duration_min or 0),
         "status": p.status,
+        "course_id": p.course_id,
+        "course_name": course.title if course else "",
         "total": total,
         "audience": p.publish_audience or {},
         "audience_label": _audience_label(p.publish_audience or {}),
@@ -701,6 +715,11 @@ def update_paper(db, account, paper_id: int, payload: dict) -> None:
         p.pass_score = int(payload["pass_score"])
     if payload.get("duration_min"):
         p.duration_min = int(payload["duration_min"])
+    if "course_id" in payload:
+        course_id = payload.get("course_id")
+        if course_id and db.get(Course, int(course_id)) is None:
+            raise BizError(ErrorCode.PARAM_INVALID, f"课程不存在：{course_id}")
+        p.course_id = int(course_id) if course_id else None
 
     questions = payload.get("questions")
     if questions is not None:

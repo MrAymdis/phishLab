@@ -77,6 +77,8 @@ class ExamPaper(Base, TimestampMixin):
     pass_score: Mapped[int] = mapped_column(Integer, default=60)
     duration_min: Mapped[int] = mapped_column(Integer, default=30)
     status: Mapped[str] = mapped_column(String(12), default="draft")
+    course_id: Mapped[int | None] = mapped_column(
+        BigInteger, index=True, comment="关联课程（中招后培训考试按课程定位试卷）")
     publish_audience: Mapped[dict | None] = mapped_column(JSON, comment="发布对象人群快照:all/dept_ids/user_ids+labels")
     created_by: Mapped[int | None] = mapped_column(BigInteger)
 
