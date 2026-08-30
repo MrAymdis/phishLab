@@ -24,7 +24,8 @@ start_port() { # 名称 端口 工作目录 启动命令...
     return 0
   fi
   local lf="/tmp/phishlab-$name.log"
-  (cd "$dir" && nohup "$@" >> "$lf" 2>&1 &)
+  # setsid 新会话 + stdio 全断：长驻子进程不拖住脚本退出（曾出现 nohup 后脚本挂起不结束）
+  (cd "$dir" && setsid nohup "$@" >> "$lf" 2>&1 < /dev/null &)
   log "$name（:${port}）" "$lf"
 }
 
@@ -35,7 +36,7 @@ start_proc() { # 名称 匹配串 工作目录 启动命令...
     return 0
   fi
   local lf="/tmp/phishlab-$name.log"
-  (cd "$dir" && nohup "$@" >> "$lf" 2>&1 &)
+  (cd "$dir" && setsid nohup "$@" >> "$lf" 2>&1 < /dev/null &)
   log "$name" "$lf"
 }
 
@@ -80,8 +81,8 @@ echo "== 监听端口 =="
 ss -ltn 2>/dev/null | grep -E ":(8080|8081|8082|443|5173) " || true
 echo ""
 echo "== 冒烟检查 =="
-curl -s -o /dev/null -w "core    http://127.0.0.1:8080  → %{http_code}\n" http://127.0.0.1:8080/api/v1/open-apps/stats || true
-curl -s -o /dev/null -w "landing https://127.0.0.1       → %{http_code}\n" -k https://127.0.0.1/ || true
-curl -s -o /dev/null -w "web     http://127.0.0.1:5173  → %{http_code}\n" http://127.0.0.1:5173/ || true
+curl -s --max-time 5 -o /dev/null -w "core    http://127.0.0.1:8080  → %{http_code}\n" http://127.0.0.1:8080/api/v1/open-apps/stats || true
+curl -s --max-time 5 -o /dev/null -w "landing https://127.0.0.1       → %{http_code}\n" -k https://127.0.0.1/ || true
+curl -s --max-time 5 -o /dev/null -w "web     http://127.0.0.1:5173  → %{http_code}\n" http://127.0.0.1:5173/ || true
 echo ""
 echo "日志：/tmp/phishlab-{core,track,landing,landing-tls,worker,beat,web}.log"

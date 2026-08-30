@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -129,9 +130,53 @@ def test_webhook(req: dict | None = None, account=Depends(get_current_account), 
     return resp.ok(service.test_plugin_webhook(db, webhook))
 
 
+@mail_reports.get("/plugin-config/export", summary="导出插件引导配置（含明文 API Key，下载 JSON）",
+                  dependencies=[Depends(require_perm("report:classify"))])
+def export_plugin_config(request: Request, base: str | None = Query(default=None),
+                         account=Depends(get_current_account), db: Session = Depends(get_db)):
+    """配置文件直出（非统一响应包裹）：Content-Disposition 附件供插件客户端导入。
+
+    base 由前端传 location.origin：反代（vite/nginx）改写 Host 时 request.base_url 不可达。
+    """
+    base_url = (base or str(request.base_url)).strip()
+    if not base_url.startswith(("http://", "https://")):
+        raise BizError(ErrorCode.PARAM_INVALID, "base 参数必须是 http(s) 绝对地址")
+    cfg = service.export_plugin_config(db, account, base_url)
+    return JSONResponse(cfg, headers={
+        "Content-Disposition": 'attachment; filename="phishlab-plugin-config.json"',
+    })
+
+
 @plugin.post("/mail", summary="举报插件上报（Outlook/Webmail，X-Api-Key 鉴权）")
 def plugin_report(payload: PluginReport, x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
                   db: Session = Depends(get_db)):
     if not service.verify_plugin_key(db, x_api_key):
         raise BizError(ErrorCode.UNAUTHORIZED, "插件 API Key 无效或未配置")
     return resp.ok({"id": service.ingest_from_plugin(db, payload.model_dump())})
+
+
+# ---------- 插件资产托管（公开：taskpane/图标/安装包须无鉴权可达） ----------
+
+@plugin.get("/plugin/outlook/manifest.xml", summary="Outlook Web Add-in manifest（动态注入 base URL）")
+def outlook_manifest(request: Request, base: str | None = Query(default=None)):
+    """base 由前端传 location.origin：反代改写 Host 时 request.base_url 对客户不可达。"""
+    base_url = (base or str(request.base_url)).strip()
+    if not base_url.startswith(("http://", "https://")):
+        raise BizError(ErrorCode.PARAM_INVALID, "base 参数必须是 http(s) 绝对地址")
+    return Response(service.build_outlook_manifest(base_url), media_type="application/xml")
+
+
+@plugin.get("/plugin/webmail.zip", summary="Web 邮箱举报扩展安装包（zip 运行时打包）")
+def webmail_zip():
+    return Response(service.build_webmail_zip(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="phishlab-webmail-plugin.zip"'})
+
+
+@plugin.get("/plugin/{file_path:path}", include_in_schema=False)
+def plugin_static(file_path: str):
+    root = service.PLUGIN_ASSETS_DIR.resolve()
+    target = (root / file_path).resolve()
+    # 路径穿越防护：目标必须位于插件资产目录内
+    if root not in target.parents or not target.is_file():
+        return JSONResponse({"detail": "Not Found"}, status_code=404)
+    return FileResponse(str(target), headers={"Cache-Control": "no-cache"})

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<!-- PhishLab 举报任务窗格：Outlook 2016 起 webview 可能为 IE11，JS 走 ES5 + XHR -->
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>PhishLab 邮件举报</title>
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; font-size: 13px; color: #1f2937; background: #f7f9fc; }
+    .wrap { padding: 14px; }
+    .head { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; padding-bottom: 10px; border-bottom: 1px solid #e5e7eb; }
+    .head img { width: 24px; height: 24px; }
+    .row { margin-top: 12px; }
+    .muted { color: #6b7280; font-size: 12px; }
+    .primary {
+      width: 100%; margin-top: 12px; padding: 9px 0; font-size: 14px; color: #fff;
+      background: #378ADD; border: none; border-radius: 6px; cursor: pointer;
+    }
+    .primary:disabled { background: #a5c8e8; cursor: not-allowed; }
+    .result { display: none; margin-top: 10px; padding: 8px 10px; border-radius: 6px; font-size: 12px; line-height: 1.5; }
+    .result.ok { display: block; background: #e8f7ef; color: #0e9f6e; }
+    .result.err { display: block; background: #fdeaea; color: #e02424; }
+    details { margin-top: 14px; }
+    summary { cursor: pointer; color: #378ADD; font-size: 12px; }
+    textarea {
+      width: 100%; margin-top: 8px; padding: 8px; font-size: 11px; font-family: Consolas, monospace;
+      border: 1px solid #d1d5db; border-radius: 6px; resize: vertical;
+    }
+    .btn2 {
+      margin-top: 8px; padding: 6px 14px; font-size: 12px; color: #378ADD;
+      background: #fff; border: 1px solid #378ADD; border-radius: 6px; cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="head"><img src="icon-32.png" alt=""/>PhishLab 邮件举报</div>
+    <div class="row">
+      服务器：<b id="serverLabel">未配置</b>
+      <div class="muted" style="margin-top: 4px">举报后由安全团队研判：演练邮件可获积分，真实钓鱼即时告警</div>
+    </div>
+    <button id="btnReport" class="primary" disabled>举报当前邮件</button>
+    <div id="result" class="result"></div>
+    <details>
+      <summary>导入引导配置 JSON（管理员下发）</summary>
+      <textarea id="cfgJson" rows="6" placeholder='粘贴 phishlab-plugin-config.json 文件内容'></textarea>
+      <button id="btnSaveCfg" class="btn2">保存配置</button>
+    </details>
+  </div>
+  <script src="taskpane.js"></script>
+</body>
+</html>

@@ -5,9 +5,12 @@
 演练命中（drill）自动分类即时发基础分；真实钓鱼研判后 TODO(二期) 联动 SIEM。
 插件 API Key AES-GCM 加密入库（敏感配置红线），接口只回显掩码。
 """
+import io
 import json
 import secrets
+import zipfile
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from sqlalchemy import func, or_, select
 
@@ -395,14 +398,19 @@ def _mask_key(key: str) -> str:
     return f"{key[:4]}****{key[-4:]}" if len(key) > 8 else "****"
 
 
+def _plugin_domains(db) -> list[str]:
+    """插件允许域名列表（平台设置 JSON，未配置/脏数据回空列表）。"""
+    try:
+        return json.loads(get_setting(db, _SETTING_DOMAINS, "[]") or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
 def get_plugin_config(db) -> dict:
     """插件 API 配置回显：Key 只回显掩码，其余为平台设置。"""
     enc = get_setting(db, _SETTING_API_KEY, None)
     key = decrypt_secret(enc.encode("latin1")) if enc else ""
-    try:
-        domains = json.loads(get_setting(db, _SETTING_DOMAINS, "[]") or "[]")
-    except (json.JSONDecodeError, TypeError):
-        domains = []
+    domains = _plugin_domains(db)
     try:
         notify = json.loads(get_setting(db, _SETTING_NOTIFY, '{"wecom":1,"dingtalk":0,"feishu":1}') or "{}")
     except (json.JSONDecodeError, TypeError):
@@ -435,6 +443,25 @@ def update_plugin_config(db, account, payload: dict) -> dict:
     record_audit(db, account=account, module="report", action="update_plugin_config",
                  target_type="report_plugin", detail={"domains": domains, "webhook": webhook})
     return get_plugin_config(db)
+
+
+def export_plugin_config(db, account, base_url: str) -> dict:
+    """导出插件引导配置（serverUrl + 明文 API Key）：敏感出库走审计（红线 2 取证口径）。
+
+    插件客户端首次使用时导入该 JSON（不随安装包分发 Key，每客户独立导出）。
+    """
+    enc = get_setting(db, _SETTING_API_KEY, None)
+    if not enc:
+        raise BizError(ErrorCode.NOT_FOUND, "插件 API Key 尚未生成，请先在「插件配置」中重生成")
+    cfg = {
+        "serverUrl": (base_url or "").rstrip("/"),
+        "apiKey": decrypt_secret(enc.encode("latin1")),
+        "allowedDomains": _plugin_domains(db),
+        "version": "1.0",
+    }
+    record_audit(db, account=account, module="report", action="export_plugin_config",
+                 target_type="report_plugin", detail={"domains": cfg["allowedDomains"]})
+    return cfg
 
 
 def regenerate_plugin_key(db, account) -> dict:
@@ -474,12 +501,48 @@ def test_plugin_webhook(db, webhook: str | None = None) -> dict:
         return {"ok": False, "status": 0, "message": f"连接失败：{err}"}
 
 
+# ---------- 插件资产托管 ----------
+
+PLUGIN_ASSETS_DIR = Path(__file__).resolve().parent / "plugin_assets"
+
+
+def build_outlook_manifest(base_url: str) -> str:
+    """Outlook Web Add-in manifest 动态生成：SourceLocation/图标必须客户可达，注入 base URL。"""
+    base = base_url.rstrip("/")
+    tpl = (PLUGIN_ASSETS_DIR / "outlook" / "manifest.template.xml").read_text(encoding="utf-8")
+    return tpl.replace("{BASE}", base + "/")
+
+
+def build_webmail_zip() -> bytes:
+    """webmail/ 目录运行时打包 zip：MV3 扩展安装包（API Key 由配置 JSON 导入，不进包）。"""
+    buf = io.BytesIO()
+    root = PLUGIN_ASSETS_DIR / "webmail"
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for f in sorted(root.rglob("*")):
+            if f.is_file():
+                zf.write(f, f.relative_to(root).as_posix())
+    return buf.getvalue()
+
+
 # ---------- 插件上报 ----------
 
 def ingest_from_plugin(db, payload: dict) -> int:
     """插件上报入口（API Key 鉴权在路由层）：落库 → 自动分类 → 演练命中即时发基础分。"""
     from_addr = payload.get("from_addr")
     reporter_email = payload.get("reporter_email")
+
+    # 域名白名单：配置后强制校验（fail-closed，防 Key 泄漏后冒用任意邮箱上报），未配置放行
+    domains = _plugin_domains(db)
+    if domains and not (
+        reporter_email and any(reporter_email.lower().endswith("@" + d.lower()) for d in domains)
+    ):
+        raise BizError(ErrorCode.PARAM_INVALID, "举报人邮箱域名未在插件允许列表中，请联系管理员")
+    # 重复上报：同 message_id 只收一次（插件端幂等友好提示）
+    message_id = payload.get("message_id")
+    if message_id and db.scalar(
+        select(MailReport.id).where(MailReport.message_id == message_id).limit(1)
+    ):
+        raise BizError(ErrorCode.BIZ_CONFLICT, "该邮件已举报过，感谢您的反馈")
 
     # 自动分类：演练域名后缀或已配置伪装发件人 → drill；其余默认真实钓鱼待研判
     classification = "real_phishing"
@@ -503,7 +566,7 @@ def ingest_from_plugin(db, payload: dict) -> int:
         channel=payload.get("channel") or "outlook_plugin",
         reporter_user_id=reporter_user_id,
         reporter_email=reporter_email,
-        message_id=payload.get("message_id"),
+        message_id=message_id,
         from_addr=from_addr,
         subject=payload.get("subject"),
         headers=payload.get("headers"),

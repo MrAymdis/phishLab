@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- PhishLab 邮件举报 Web Add-in manifest 模板：{BASE} 由服务端按客户可达地址注入 -->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+           xsi:type="MailApp">
+  <Id>b9f6d3a1-2c4e-4f58-8a7b-0e1d2c3b4a5f</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>PhishLab</ProviderName>
+  <DefaultLocale>zh-CN</DefaultLocale>
+  <DisplayName DefaultValue="钓鱼邮件举报"/>
+  <Description DefaultValue="一键将可疑邮件提交至 PhishLab 安全演练平台"/>
+  <IconUrl DefaultValue="{BASE}report/v1/plugin/outlook/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="{BASE}report/v1/plugin/outlook/icon-80.png"/>
+  <SupportUrl DefaultValue="{BASE}"/>
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.1"/>
+    </Sets>
+  </Requirements>
+  <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="{BASE}report/v1/plugin/outlook/taskpane.html"/>
+        <RequestedHeight>250</RequestedHeight>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+  <Permissions>ReadWriteItem</Permissions>
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
+  </Rule>
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.3">
+          <bt:Set Name="Mailbox"/>
+        </bt:Sets>
+      </Requirements>
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <DesktopFormFactor>
+            <FunctionFile resid="funcFile"/>
+            <ExtensionPoint xsi:type="MessageReadCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="phishlabReportGroup">
+                  <Label resid="groupLabel"/>
+                  <Control xsi:type="Button" id="phishlabReportButton">
+                    <Label resid="reportBtnLabel"/>
+                    <Supertip>
+                      <Title resid="reportBtnLabel"/>
+                      <Description resid="reportBtnTip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="icon16"/>
+                      <bt:Image size="32" resid="icon32"/>
+                      <bt:Image size="80" resid="icon80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <TaskpaneId>phishlabReportPane</TaskpaneId>
+                      <SourceLocation resid="taskpaneUrl"/>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+          </DesktopFormFactor>
+        </Host>
+      </Hosts>
+      <Resources>
+        <bt:Images>
+          <bt:Image id="icon16" DefaultValue="{BASE}report/v1/plugin/outlook/icon-16.png"/>
+          <bt:Image id="icon32" DefaultValue="{BASE}report/v1/plugin/outlook/icon-32.png"/>
+          <bt:Image id="icon80" DefaultValue="{BASE}report/v1/plugin/outlook/icon-80.png"/>
+        </bt:Images>
+        <bt:Urls>
+          <bt:Url id="funcFile" DefaultValue="{BASE}report/v1/plugin/outlook/function-file.html"/>
+          <bt:Url id="taskpaneUrl" DefaultValue="{BASE}report/v1/plugin/outlook/taskpane.html"/>
+        </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="groupLabel" DefaultValue="安全举报"/>
+          <bt:String id="reportBtnLabel" DefaultValue="举报可疑邮件"/>
+          <bt:String id="reportBtnTip" DefaultValue="将当前邮件提交至 PhishLab 安全平台研判"/>
+        </bt:ShortStrings>
+      </Resources>
+    </VersionOverrides>
+  </VersionOverrides>
+</OfficeApp>

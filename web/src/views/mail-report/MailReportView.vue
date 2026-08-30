@@ -2,8 +2,8 @@
   <div class="page-container">
     <PageHeader title="邮件举报">
       <template #actions>
-        <el-button size="small" :icon="Download" @click="pluginComingSoon">下载 Outlook 插件</el-button>
-        <el-button size="small" :icon="Picture" @click="pluginComingSoon">下载 Web 邮箱按钮</el-button>
+        <el-button size="small" :icon="Download" @click="downloadOutlookManifest">下载 Outlook 插件</el-button>
+        <el-button size="small" :icon="Picture" @click="downloadWebmailZip">下载 Web 邮箱按钮</el-button>
         <el-button size="small" :icon="Setting" @click="activeTab = 'plugin'">API 配置说明</el-button>
         <el-button size="small" :icon="Refresh" @click="refreshAll">刷新</el-button>
       </template>
@@ -21,29 +21,29 @@
                   <div class="plugin-title">Outlook 桌面客户端插件</div>
                   <div class="plugin-sub">支持一键举报可疑邮件到安全运营中心</div>
                 </div>
-                <el-button type="primary" :icon="Download" @click="pluginComingSoon">下载</el-button>
+                <el-button type="primary" :icon="Download" @click="downloadOutlookManifest">下载</el-button>
               </div>
               <el-descriptions :column="2" size="small" border style="margin-top: 12px">
-                <el-descriptions-item label="版本号">v2.4.1</el-descriptions-item>
-                <el-descriptions-item label="更新日期">2026-08-01</el-descriptions-item>
-                <el-descriptions-item label="下载次数">2,860 次</el-descriptions-item>
-                <el-descriptions-item label="SHA256">8f3a...c29d</el-descriptions-item>
+                <el-descriptions-item label="版本号">v1.0.0</el-descriptions-item>
+                <el-descriptions-item label="更新日期">2026-08-30</el-descriptions-item>
+                <el-descriptions-item label="形态">Office Web Add-in</el-descriptions-item>
+                <el-descriptions-item label="部署方式">加载项 / 集中部署</el-descriptions-item>
               </el-descriptions>
               <div class="plugin-section">
                 <div class="section-title">安装指引</div>
                 <ol class="step-list">
-                  <li>关闭所有 Outlook 窗口</li>
-                  <li>双击运行 <code>PhishLab-Outlook-v2.4.1.msi</code></li>
-                  <li>按向导完成安装，重启 Outlook</li>
-                  <li>在 Outlook 功能区会出现「一键举报」按钮</li>
-                  <li>首次使用输入企业域名完成激活</li>
+                  <li>下载 <code>manifest.xml</code> 与「引导配置 JSON」（下方 API 配置区）</li>
+                  <li>Outlook：文件 → 管理加载项 → 我的加载项 → <b>添加自定义加载项</b>，选择 manifest.xml；企业可走 Microsoft 365 管理中心集中部署</li>
+                  <li>打开任意邮件，功能区出现「安全举报」按钮</li>
+                  <li>点击「举报可疑邮件」打开任务窗格，首次使用导入引导配置 JSON</li>
+                  <li>之后一键提交至平台举报中心</li>
                 </ol>
               </div>
               <div class="plugin-section">
                 <div class="section-title">支持的邮箱客户端</div>
                 <div class="tag-list">
                   <el-tag size="small">Outlook 2016+（Windows）</el-tag>
-                  <el-tag size="small">Outlook 2019+（Mac）</el-tag>
+                  <el-tag size="small">Outlook 2016+（Mac）</el-tag>
                   <el-tag size="small">Outlook 365 桌面版</el-tag>
                 </div>
               </div>
@@ -57,21 +57,21 @@
                   <div class="plugin-title">Web 邮箱举报按钮</div>
                   <div class="plugin-sub">通过浏览器书签/扩展在网页版邮箱举报</div>
                 </div>
-                <el-button type="primary" :icon="Picture" @click="pluginComingSoon">下载</el-button>
+                <el-button type="primary" :icon="Picture" @click="downloadWebmailZip">下载</el-button>
               </div>
               <el-descriptions :column="2" size="small" border style="margin-top: 12px">
-                <el-descriptions-item label="版本号">v1.8.0</el-descriptions-item>
-                <el-descriptions-item label="更新日期">2026-07-20</el-descriptions-item>
-                <el-descriptions-item label="安装次数">1,240 次</el-descriptions-item>
+                <el-descriptions-item label="版本号">v1.0.0</el-descriptions-item>
+                <el-descriptions-item label="更新日期">2026-08-30</el-descriptions-item>
+                <el-descriptions-item label="形态">浏览器扩展（MV3）</el-descriptions-item>
                 <el-descriptions-item label="支持浏览器">Chrome / Edge / Firefox</el-descriptions-item>
               </el-descriptions>
               <div class="plugin-section">
                 <div class="section-title">安装指引</div>
                 <ol class="step-list">
-                  <li>将「一键举报」按钮拖拽到浏览器书签栏</li>
-                  <li>或下载对应的浏览器扩展包（crx/xpi）</li>
-                  <li>在扩展管理页开启开发者模式并加载</li>
-                  <li>登录 Web 邮箱，打开邮件后点击按钮即可举报</li>
+                  <li>下载 <code>phishlab-webmail-plugin.zip</code> 并解压</li>
+                  <li>Chrome/Edge：<code>chrome://extensions</code> 开启开发者模式 → 加载已解压的扩展程序（Firefox：about:debugging 临时载入）</li>
+                  <li>点击工具栏 PhishLab 图标 → 导入「引导配置 JSON」</li>
+                  <li>登录 Web 邮箱打开邮件，点击页面悬浮「举报」按钮一键提交</li>
                 </ol>
               </div>
               <div class="plugin-section">
@@ -108,6 +108,10 @@
                     </template>
                   </el-input>
                   <span style="margin-left: 10px; font-size: 11px; color: var(--color-text-tertiary)">插件鉴权密钥，加密存储仅回显掩码</span>
+                </el-form-item>
+                <el-form-item label="插件引导配置">
+                  <el-button size="small" type="primary" :icon="Download" @click="downloadPluginConfig">下载引导配置 JSON</el-button>
+                  <span style="margin-left: 10px; font-size: 11px; color: var(--color-text-tertiary)">含 serverUrl + 明文 API Key，插件首次使用导入；下载行为已记审计</span>
                 </el-form-item>
                 <el-form-item label="允许的域名列表">
                   <div class="domain-editor">
@@ -464,9 +468,16 @@ import { Download, Picture, Setting, Refresh, CopyDocument, RefreshRight } from 
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 import { reportApi, orgApi } from '@/api'
+import { downloadFile } from '@/api/http'
 
 const activeTab = ref('plugin')
-const pluginComingSoon = () => ElMessage.info('安装包托管二期提供，可联系管理员获取')
+// 插件资产公开托管；base 传浏览器可见 origin（反代改写 Host 时 request.base_url 不可达）
+const downloadOutlookManifest = () =>
+  downloadFile(`/report/v1/plugin/outlook/manifest.xml?base=${encodeURIComponent(location.origin)}`)
+const downloadWebmailZip = () =>
+  downloadFile('/report/v1/plugin/webmail.zip')
+const downloadPluginConfig = () =>
+  downloadFile(`/api/v1/mail-reports/plugin-config/export?base=${encodeURIComponent(location.origin)}`)
 
 // ============ 举报插件管理 ============
 const apiEndpoint = computed(() => `${location.origin}/report/v1/mail`)
