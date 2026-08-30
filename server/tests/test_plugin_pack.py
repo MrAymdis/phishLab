@@ -185,3 +185,107 @@ def test_export_config_base_param_override():
     assert r.json()["serverUrl"] == "https://phish.example.com"
     r = client.get("/api/v1/mail-reports/plugin-config/export?base=ftp://bad", headers=_auth())
     assert r.json()["code"] == 10001
+
+
+# ---------- EML 归档（任务 #12） ----------
+
+import base64 as b64_mod
+
+from app.modules.report import service as report_service
+
+
+def _make_eml() -> bytes:
+    """多部分测试邮件：text/plain 正文 + 1 个附件。"""
+    from email.message import EmailMessage
+
+    msg = EmailMessage()
+    msg["From"] = "Phisher <phish@evil.com>"
+    msg["To"] = "victim@corp.com"
+    msg["Subject"] = "紧急：账号验证"
+    msg["Date"] = "Tue, 25 Aug 2026 10:00:00 +0800"
+    msg["Message-ID"] = "<eml-test-1@evil.com>"
+    msg.set_content("请立即点击链接验证您的账号。")
+    msg.add_attachment(b"binary payload content", maintype="application",
+                       subtype="octet-stream", filename="payload.bin")
+    return msg.as_bytes()
+
+
+def _ingest(eml: bytes | None = None, **extra) -> dict:
+    """上报一封邮件（带 EML），返回响应体。"""
+    api_key = _regen_key()
+    payload = {"from_addr": "phish@evil.com", "reporter_email": "victim@corp.com",
+               "subject": "紧急：账号验证", "message_id": "<eml-test-1@evil.com>", **extra}
+    if eml is not None:
+        payload["eml_base64"] = b64_mod.b64encode(eml).decode()
+    r = client.post("/report/v1/mail", headers={"X-Api-Key": api_key}, json=payload)
+    assert r.status_code == 200 and r.json()["code"] == 0
+    return r.json()
+
+
+def _list_report(rid: int) -> dict:
+    r = client.get("/api/v1/mail-reports", headers=_auth())
+    assert r.status_code == 200 and r.json()["code"] == 0
+    return next(x for x in r.json()["data"]["list"] if x["id"] == rid)
+
+
+def test_ingest_eml_archives_preview_download(tmp_path, monkeypatch):
+    """Outlook 上报 EML：落盘 + 邮件头回填 + 预览解析 + 原件下载。"""
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))  # 测试绝不写生产 static 目录
+    eml = _make_eml()
+    rid = _ingest(eml)["data"]["id"]
+
+    # 落盘路径正确
+    assert (tmp_path / "report_eml" / f"{rid}.eml").read_bytes() == eml
+
+    # 列表 hasEml + 邮件头由 EML 回填（payload 未带 headers）
+    row = _list_report(rid)
+    assert row["hasEml"] is True
+    assert "From:" in (row.get("headers") or "") and "phish@evil.com" in row["headers"]
+
+    # 预览：元信息/正文/附件
+    r = client.get(f"/api/v1/mail-reports/{rid}/preview", headers=_auth())
+    assert r.status_code == 200 and r.json()["code"] == 0
+    p = r.json()["data"]
+    assert p["hasEml"] is True and p["emlSize"] == len(eml)
+    assert "phish@evil.com" in p["from"] and "victim@corp.com" in p["to"]
+    assert p["subject"] == "紧急：账号验证" and p["date"].startswith("Tue")
+    assert "账号" in p["body"]
+    assert p["attachments"] == [{"name": "payload.bin", "size": 22}]
+
+    # EML 原件下载（字节一致）
+    r = client.get(f"/api/v1/mail-reports/{rid}/eml", headers=_auth())
+    assert r.status_code == 200 and r.headers["content-type"].startswith("message/rfc822")
+    assert f"report-{rid}.eml" in r.headers["content-disposition"]
+    assert r.content == eml
+
+
+def test_ingest_eml_oversize_skips_archive(tmp_path, monkeypatch):
+    """EML 超限静默跳过归档，上报本身不受影响。"""
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    monkeypatch.setattr(report_service, "_EML_MAX_BYTES", 64)
+    rid = _ingest(_make_eml())["data"]["id"]
+    row = _list_report(rid)
+    assert row["hasEml"] is False
+    assert not (tmp_path / "report_eml").exists()
+    r = client.get(f"/api/v1/mail-reports/{rid}/preview", headers=_auth())
+    assert r.json()["data"]["hasEml"] is False
+    assert client.get(f"/api/v1/mail-reports/{rid}/eml", headers=_auth()).status_code == 404
+
+
+def test_ingest_eml_invalid_base64_and_garbage(tmp_path, monkeypatch):
+    """非法 base64 / 不像邮件的内容：不入库归档，上报照常成功。"""
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    # 非法 base64
+    rid1 = _ingest(None, eml_base64="@@@not-base64@@@", message_id="<garbage-1@x>")["data"]["id"]
+    # 合法 base64 但无邮件头块（随机垃圾）
+    rid2 = _ingest(None, eml_base64=b64_mod.b64encode(b"hello world").decode(),
+                   message_id="<garbage-2@x>")["data"]["id"]
+    assert _list_report(rid1)["hasEml"] is False
+    assert _list_report(rid2)["hasEml"] is False
+    assert not (tmp_path / "report_eml").exists()
+
+
+def test_preview_eml_404_when_report_missing(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "static_dir", str(tmp_path))
+    assert client.get("/api/v1/mail-reports/999999/preview", headers=_auth()).status_code == 404
+    assert client.get("/api/v1/mail-reports/999999/eml", headers=_auth()).status_code == 404

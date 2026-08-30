@@ -5,16 +5,20 @@
 演练命中（drill）自动分类即时发基础分；真实钓鱼研判后 TODO(二期) 联动 SIEM。
 插件 API Key AES-GCM 加密入库（敏感配置红线），接口只回显掩码。
 """
+import base64
 import io
 import json
+import re
 import secrets
 import zipfile
 from datetime import datetime, timedelta
+from email import message_from_bytes, policy
 from pathlib import Path
 
 from sqlalchemy import func, or_, select
 
 from app.core.audit import record_audit
+from app.core.config import settings
 from app.core.deps import apply_data_scope
 from app.core.errors import BizError, ErrorCode
 from app.core.security import decrypt_secret, encrypt_secret
@@ -217,6 +221,7 @@ def list_reports(db, account, *, classification=None, page=1, page_size=20,
             "channel": r.channel or "",
             "headers": r.headers or "",
             "messageId": r.message_id or "",
+            "hasEml": bool(r.eml_path),
         })
     return {"list": items, "total": total, "page": page, "pageSize": page_size}
 
@@ -526,6 +531,101 @@ def build_webmail_zip() -> bytes:
 
 # ---------- 插件上报 ----------
 
+_EML_MAX_BYTES = 8 * 1024 * 1024       # EML 解码后上限（base64 约 10.7MB）
+_EML_HEADERS_CAP = 64 * 1024           # 邮件头回填上限
+_EML_BODY_CAP = 20 * 1024              # 预览正文截断
+
+
+def _get_scoped_report(db, account, report_id: int) -> MailReport | None:
+    """按数据权限取单条举报（与列表/研判同口径：按举报人部门/本人）。"""
+    return db.scalar(apply_data_scope(
+        db, select(MailReport)
+        .outerjoin(EmpUser, EmpUser.id == MailReport.reporter_user_id)
+        .where(MailReport.id == report_id),
+        account,
+        dept_col=EmpUser.dept_id, self_id=MailReport.reporter_user_id,
+    ))
+
+
+def _save_eml(db, report: MailReport, eml_b64: str | None) -> str | None:
+    """EML base64 落盘（static/report_eml/{id}.eml）并从归档解析邮件头回填 headers。
+
+    非法 base64 / 超限 / 不像邮件的内容静默跳过——不阻断上报（Web 邮箱与老客户端走元数据模式）。
+    """
+    if not eml_b64:
+        return None
+    try:
+        raw = base64.b64decode(eml_b64, validate=True)
+    except Exception:
+        return None
+    # 轻校验：必须有邮件头块（冒号分隔），拦截随机 base64 垃圾
+    if not raw or len(raw) > _EML_MAX_BYTES or b"\n" not in raw[:4096] or b":" not in raw.split(b"\n")[0]:
+        return None
+    try:
+        msg = message_from_bytes(raw)
+    except Exception:
+        return None
+    rel = f"report_eml/{report.id}.eml"
+    abs_path = Path(settings.static_dir) / rel
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
+    abs_path.write_bytes(raw)
+    # 邮件头回填：旧客户端拿不到 internetHeaders 时由 EML 补齐（客户端显式上报的优先）
+    headers = "\n".join(f"{k}: {v}" for k, v in msg.items())[:_EML_HEADERS_CAP]
+    if headers and not report.headers:
+        report.headers = headers
+    return rel
+
+
+def report_preview(db, account, report_id: int) -> dict:
+    """举报邮件预览：从 EML 归档解析（正文截断 + 附件清单）；无归档回空结构。"""
+    report = _get_scoped_report(db, account, report_id)
+    if report is None:
+        raise BizError(ErrorCode.NOT_FOUND)
+    base = {
+        "hasEml": bool(report.eml_path), "emlSize": 0,
+        "from": report.from_addr or "", "subject": report.subject or "",
+        "to": "", "date": "", "body": "", "attachments": [],
+    }
+    if not report.eml_path:
+        return base
+    path = Path(settings.static_dir) / report.eml_path
+    if not path.is_file():
+        return base
+    raw = path.read_bytes()
+    base["emlSize"] = len(raw)
+    try:
+        msg = message_from_bytes(raw, policy=policy.default)
+    except Exception:
+        return base
+    base.update({
+        "from": str(msg.get("From") or report.from_addr or ""),
+        "subject": str(msg.get("Subject") or report.subject or ""),
+        "to": str(msg.get("To") or ""),
+        "date": str(msg.get("Date") or ""),
+    })
+    body = msg.get_body(preferencelist=("plain", "html"))
+    if body is not None:
+        text = str(body.get_content() or "")
+        if body.get_content_type() == "text/html":
+            text = re.sub(r"<[^>]+>", " ", text)
+            text = re.sub(r"\s+", " ", text)
+        base["body"] = text.strip()[:_EML_BODY_CAP]
+    for part in msg.iter_attachments():
+        name = part.get_filename() or "未命名附件"
+        size = len(part.get_payload(decode=True) or b"")
+        base["attachments"].append({"name": name, "size": size})
+    return base
+
+
+def report_eml_path(db, account, report_id: int) -> Path | None:
+    """EML 原件路径（数据权限 + 文件存在双校验），无归档回 None。"""
+    report = _get_scoped_report(db, account, report_id)
+    if report is None or not report.eml_path:
+        return None
+    path = Path(settings.static_dir) / report.eml_path
+    return path if path.is_file() else None
+
+
 def ingest_from_plugin(db, payload: dict) -> int:
     """插件上报入口（API Key 鉴权在路由层）：落库 → 自动分类 → 演练命中即时发基础分。"""
     from_addr = payload.get("from_addr")
@@ -576,6 +676,8 @@ def ingest_from_plugin(db, payload: dict) -> int:
     )
     db.add(report)
     db.flush()
+    # EML 全文归档（新 Outlook getAsFileAsync 提供）：落盘 + 邮件头回填，失败静默降级
+    report.eml_path = _save_eml(db, report, payload.get("eml_base64"))
     points = 0
     if classification == "drill" and reporter_user_id:
         points = _rule_map(db).get("drill", 0)

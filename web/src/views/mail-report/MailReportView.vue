@@ -395,20 +395,34 @@
 
         <!-- 邮件预览 -->
         <div class="card" style="margin-top: 14px; border-top-color: var(--accent-red)">
-          <div class="card-title">邮件预览</div>
+          <div class="card-title">
+            邮件预览
+            <el-button v-if="emlPreview.hasEml" size="small" link type="primary" @click="downloadEml(currentReport!.id)">
+              下载 EML 原件（{{ formatBytes(emlPreview.emlSize) }}）
+            </el-button>
+          </div>
           <div class="mail-meta">
-            <div class="mail-meta-row"><span class="mail-meta-label">发件人</span><span class="mail-meta-value danger">{{ currentReport.sender || '（未上报）' }}</span></div>
-            <div class="mail-meta-row"><span class="mail-meta-label">主题</span><span class="mail-meta-value"><b>{{ currentReport.subject }}</b></span></div>
+            <div class="mail-meta-row"><span class="mail-meta-label">发件人</span><span class="mail-meta-value danger">{{ emlPreview.from || currentReport.sender || '（未上报）' }}</span></div>
+            <div class="mail-meta-row"><span class="mail-meta-label">主题</span><span class="mail-meta-value"><b>{{ emlPreview.subject || currentReport.subject }}</b></span></div>
+            <div class="mail-meta-row"><span class="mail-meta-label">收件人</span><span class="mail-meta-value">{{ emlPreview.to || '（未上报）' }}</span></div>
+            <div class="mail-meta-row"><span class="mail-meta-label">时间</span><span class="mail-meta-value">{{ emlPreview.date || '（未上报）' }}</span></div>
             <div class="mail-meta-row"><span class="mail-meta-label">Message-ID</span><span class="mail-meta-value">{{ currentReport.messageId || '（未上报）' }}</span></div>
           </div>
           <el-divider style="margin: 10px 0" />
-          <el-empty description="邮件正文未归档（插件 EML 全文上传二期支持）" :image-size="50" />
+          <pre v-if="emlPreview.body" class="body-preview">{{ emlPreview.body }}</pre>
+          <el-empty v-else :description="emlPreview.hasEml ? '该邮件无正文文本' : '邮件正文未归档（Web 邮箱/旧版客户端仅上报元数据）'" :image-size="50" />
         </div>
 
         <!-- 附件列表 -->
         <div class="card" style="margin-top: 12px">
           <div class="card-title">附件列表</div>
-          <el-empty description="EML 附件未上传（二期支持全文归档）" :image-size="40" />
+          <el-table v-if="emlPreview.attachments.length" :data="emlPreview.attachments" size="small" style="margin-top: -4px">
+            <el-table-column label="附件名" prop="name" min-width="220" show-overflow-tooltip />
+            <el-table-column label="大小" width="100" align="right">
+              <template #default="{ row }">{{ formatBytes(row.size) }}</template>
+            </el-table-column>
+          </el-table>
+          <el-empty v-else :description="emlPreview.hasEml ? '该邮件无附件' : 'EML 附件未上传（仅元数据上报）'" :image-size="40" />
         </div>
 
         <!-- 邮件头详情 -->
@@ -419,7 +433,7 @@
                 <span class="header-key">{{ h.key }}</span>
                 <span class="header-val">{{ h.value }}</span>
               </div>
-              <el-empty v-if="!detailHeaders.length" description="邮件头未上报" :image-size="40" />
+              <el-empty v-if="!detailHeaders.length" description="邮件头未上报（Web 邮箱/旧版客户端仅上报元数据）" :image-size="40" />
             </el-collapse-item>
           </el-collapse>
         </div>
@@ -662,11 +676,47 @@ function parseHeaders(raw: string) {
 }
 const detailHeaders = computed(() => parseHeaders(currentReport.value?.headers || ''))
 
+// EML 归档预览：hasEml → 拉取 /preview 解析结果；否则保持空态占位
+const emlPreview = reactive({
+  hasEml: false,
+  emlSize: 0,
+  from: '',
+  subject: '',
+  to: '',
+  date: '',
+  body: '',
+  attachments: [] as { name: string; size: number }[],
+})
+
+function resetEmlPreview(hasEml: boolean) {
+  Object.assign(emlPreview, { hasEml, emlSize: 0, from: '', subject: '', to: '', date: '', body: '', attachments: [] })
+}
+
+async function loadEmlPreview(rid: number) {
+  try {
+    Object.assign(emlPreview, await reportApi.preview(rid))
+  } catch {
+    resetEmlPreview(false) // 加载失败回落元数据占位（拦截器已提示）
+  }
+}
+
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
+  return `${(n / 1024 / 1024).toFixed(1)} MB`
+}
+
+function downloadEml(rid: number) {
+  downloadFile(`/api/v1/mail-reports/${rid}/eml`)
+}
+
 const openDetailDialog = (row: any) => {
   currentReport.value = row
   detailAction.value = row.manual || 'drill'
   detailRemark.value = ''
   detailDialogVisible.value = true
+  if (row.hasEml) loadEmlPreview(row.id)
+  else resetEmlPreview(false)
 }
 
 const detailActionMap: Record<string, string> = { drill: 'drill', real: 'real_phishing', false: 'false_positive' }
@@ -983,6 +1033,19 @@ onMounted(() => ensureTabLoaded(activeTab.value))
   width: 80px;
   color: var(--color-text-tertiary);
   flex-shrink: 0;
+}
+.body-preview {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--color-text-primary);
+  background: var(--color-fill-light, #f7f8fa);
+  padding: 10px 12px;
+  border-radius: 6px;
 }
 .mail-meta-value {
   color: var(--color-text-primary);

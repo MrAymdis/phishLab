@@ -308,6 +308,9 @@ export const reportApi = {
   list: (q: Record<string, unknown>) => get('/api/v1/mail-reports', q),
   classify: (id: number, classification: string, remark?: string) =>
     post(`/api/v1/mail-reports/${id}/classify`, { classification, remark }),
+  /** 举报邮件预览（从 EML 归档解析正文/附件） */
+  preview: (id: number) =>
+    get<{ hasEml: boolean; emlSize: number; from: string; subject: string; to: string; date: string; body: string; attachments: { name: string; size: number }[] }>(`/api/v1/mail-reports/${id}/preview`),
   /** 举报中心统计卡 + 分类计数 */
   stats: () => get<{ total: number; monthCount: number; realCount: number; falseCount: number; drillCount: number; pendingCount: number; misreportRate: number }>('/api/v1/mail-reports/stats'),
   /** 积分排行榜（本月 + 累计 TOP20） */

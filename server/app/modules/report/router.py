@@ -155,6 +155,21 @@ def plugin_report(payload: PluginReport, x_api_key: str | None = Header(default=
     return resp.ok({"id": service.ingest_from_plugin(db, payload.model_dump())})
 
 
+# ---------- 举报邮件归档（EML 预览/下载，数据权限与列表同口径） ----------
+
+@mail_reports.get("/{rid}/preview", summary="举报邮件预览（从 EML 归档解析）")
+def preview(rid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.report_preview(db, account, rid))
+
+
+@mail_reports.get("/{rid}/eml", summary="下载举报邮件 EML 原件")
+def download_eml(rid: int, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    path = service.report_eml_path(db, account, rid)
+    if path is None:
+        raise BizError(ErrorCode.NOT_FOUND, "该举报无 EML 归档（Web 邮箱/旧版客户端仅上报元数据）")
+    return FileResponse(str(path), media_type="message/rfc822", filename=f"report-{rid}.eml")
+
+
 # ---------- 插件资产托管（公开：taskpane/图标/安装包须无鉴权可达） ----------
 
 @plugin.get("/plugin/outlook/manifest.xml", summary="Outlook Web Add-in manifest（动态注入 base URL）")

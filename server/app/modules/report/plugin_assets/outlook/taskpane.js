@@ -109,10 +109,26 @@
       var profile = Office.context.mailbox.userProfile;
       if (profile && profile.emailAddress) payload.reporter_email = profile.emailAddress;
     } catch (e) { /* 老客户端无 profile，域名白名单校验时以其他字段兜底 */ }
-    // 邮件头需 ReadWriteMailbox 权限：尝试获取，失败静默跳过（headers 仅辅助溯源）
+    // 邮件头需 ReadWriteMailbox 权限：尝试获取，失败静默跳过（EML 归档会服务端回填）
     if (item.getAllInternetHeadersAsync) {
       item.getAllInternetHeadersAsync(function (r) {
         if (r.status === Office.AsyncResultStatus.Succeeded) payload.headers = r.value;
+        attachEml(payload);
+      });
+    } else {
+      attachEml(payload);
+    }
+  }
+
+  function attachEml(payload) {
+    // getAsFileAsync：Mailbox 1.14+（新版 Microsoft 365）；老客户端无此方法/失败 → 元数据上报
+    var item = Office.context.mailbox.item;
+    if (item.getAsFileAsync) {
+      item.getAsFileAsync(function (r) {
+        if (r.status === Office.AsyncResultStatus.Succeeded && r.value &&
+            r.value.length < 11 * 1024 * 1024) {
+          payload.eml_base64 = r.value; // 服务端解码上限 8MB（base64 约 10.7MB），留余量
+        }
         postReport(payload);
       });
     } else {
