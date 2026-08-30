@@ -26,6 +26,24 @@ _APP_ID = f"app_test{_BASE}"
 client = TestClient(app)
 
 
+@pytest.fixture(autouse=True)
+def _flagship():
+    """开放平台为旗舰版专属功能（license 门控 fail-closed）：每个用例挂旗舰授权。"""
+    from app.modules.license.fingerprint import get_machine_code
+    from app.modules.license.models import LicenseInfo
+
+    db = SessionLocal()
+    db.add(LicenseInfo(license_key="PL-FLAG-TEST", edition="flagship", status="active",
+                       user_quota=1, mail_quota=1, sms_quota=1, campaign_quota=1,
+                       machine_code=get_machine_code(),
+                       expire_at=datetime.datetime.now() + datetime.timedelta(days=30)))
+    db.commit()
+    yield
+    db.query(LicenseInfo).delete()
+    db.commit()
+    db.close()
+
+
 def _token(app_id: str = _APP_ID, scopes: list[str] | None = None,
            exp_minutes: int = 120) -> str:
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -42,6 +60,14 @@ def _hdr(scopes: list[str] | None = None) -> dict:
 
 @pytest.fixture()
 def seed():
+    # 清掉本测试应用的限流计数：Redis 计数器按 app:分钟 累积，不清理的话
+    # 重复跑（同一分钟内）会跨轮触发 429，导致用例抖动
+    try:
+        r = service._redis()
+        for k in r.scan_iter(match=f"openapi:rl:{_APP_ID}:*"):
+            r.delete(k)
+    except Exception:
+        pass
     db = SessionLocal()
     db.add(EmpDept(id=_BASE + 1, parent_id=0, path=f"/{_BASE + 1}", name="开放平台部"))
     db.add(EmpUser(id=_BASE + 1, name="开放员工", email=f"open{_BASE}@corp.com",
