@@ -4,7 +4,7 @@
       <template #actions>
         <el-button :icon="Upload" @click="onImportCsv">导入CSV</el-button>
         <el-button :icon="Document" @click="downloadCsvTemplate">下载模板</el-button>
-        <el-button :icon="Download" @click="onExportCsv">批量导出</el-button>
+        <el-button :icon="Download" :loading="exportingUsers" @click="onExportCsv">批量导出</el-button>
         <el-button type="primary" :icon="Plus" @click="openEmpDialog()">添加员工</el-button>
       </template>
     </PageHeader>
@@ -1036,9 +1036,23 @@ function downloadCsvTemplate() {
   a.click()
   URL.revokeObjectURL(url)
 }
-function onExportCsv() {
-  // TODO: 后端未提供批量导出路由
-  ElMessage.info('员工批量导出接口尚未提供，将在后续版本开放')
+const exportingUsers = ref(false)
+
+/** 批量导出：与列表同口径（当前选中部门 + 数据权限），后端审计留痕 */
+async function onExportCsv() {
+  exportingUsers.value = true
+  try {
+    const q: Record<string, unknown> = {}
+    if (selectedDept.value?.id && selectedDept.value.label !== '总公司') {
+      q.dept_id = selectedDept.value.id
+    }
+    await orgApi.exportUsers(q)
+    ElMessage.success('员工档案已导出')
+  } catch {
+    /* 失败提示由 http 拦截器统一弹出 */
+  } finally {
+    exportingUsers.value = false
+  }
 }
 async function onSyncAd() {
   try {

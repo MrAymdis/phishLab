@@ -20,10 +20,25 @@
       <div class="chatbi-body">
         <el-input v-model="chatbiQuery" size="default" placeholder="例如：本月各部门中招率对比" clearable style="flex: 1" @keyup.enter="askChatBI">
           <template #append>
-            <el-button type="primary" :icon="Promotion" @click="askChatBI">发送</el-button>
+            <el-button type="primary" :icon="Promotion" :loading="chatbiLoading" @click="askChatBI">发送</el-button>
           </template>
         </el-input>
       </div>
+      <el-dialog v-model="chatbiVisible" :title="chatbiResult?.title || '问数结果'" width="720px" append-to-body>
+        <template v-if="chatbiResult">
+          <el-alert type="info" :closable="false" show-icon style="margin-bottom: 8px"
+            :title="`「${chatbiResult.question}」 共 ${chatbiResult.total} 行（只读查询，SQL 已留审计）`" />
+          <el-table :data="chatbiRows" size="small" max-height="360" border>
+            <el-table-column v-for="c in chatbiResult.columns" :key="c" :prop="c" :label="c" min-width="110" />
+            <template #empty>无数据</template>
+          </el-table>
+          <el-collapse style="margin-top: 8px">
+            <el-collapse-item title="查看执行 SQL" name="sql">
+              <pre style="white-space: pre-wrap; word-break: break-all; font-size: 12px; color: #666">{{ chatbiResult.sql }}</pre>
+            </el-collapse-item>
+          </el-collapse>
+        </template>
+      </el-dialog>
       <div class="chatbi-suggest">
         <el-tag
           v-for="s in chatbiSuggestions"
@@ -184,12 +199,15 @@ import { MagicStick, Promotion } from '@element-plus/icons-vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import StatCard from '@/components/base/StatCard.vue'
 import BaseChart from '@/components/base/BaseChart.vue'
-import { analyticsApi } from '@/api'
+import { aiApi, analyticsApi, type ChatbiResult } from '@/api'
 
 const range = ref<'7d' | 'month' | 'quarter'>('month')
 
 // ============ ChatBI 智能问数 ============
 const chatbiQuery = ref('')
+const chatbiLoading = ref(false)
+const chatbiVisible = ref(false)
+const chatbiResult = shallowRef<ChatbiResult | null>(null)
 const chatbiSuggestions = [
   '本月各部门中招率对比',
   '近7天举报趋势',
@@ -197,10 +215,30 @@ const chatbiSuggestions = [
   '培训通过率最低的部门',
 ]
 
-function askChatBI() {
-  if (!chatbiQuery.value.trim()) return
-  // TODO(三期)：调用 POST /api/v1/ai/chatbi，SQL 需经只读账号+白名单校验
-  ElMessage.info(`ChatBI 正在生成查询：${chatbiQuery.value}（AI 功能三期上线）`)
+/** 行数据转对象数组（动态列渲染 el-table） */
+const chatbiRows = computed(() => {
+  const r = chatbiResult.value
+  if (!r) return []
+  return r.rows.map((row) => {
+    const obj: Record<string, unknown> = {}
+    r.columns.forEach((c, i) => { obj[c] = row[i] })
+    return obj
+  })
+})
+
+async function askChatBI() {
+  const q = chatbiQuery.value.trim()
+  if (!q || chatbiLoading.value) return
+  chatbiLoading.value = true
+  try {
+    // 只读账号 + 表白名单 + 数据权限注入 + 审计（红线 5，后端已强制）
+    chatbiResult.value = await aiApi.chatbi(q)
+    chatbiVisible.value = true
+  } catch {
+    /* 错误已由 http 层提示 */
+  } finally {
+    chatbiLoading.value = false
+  }
 }
 
 // ============ 数据区（全部来自 GET /api/v1/overview/metrics，无 mock） ============

@@ -49,6 +49,10 @@ _ALERT_ADVICE = {
     "repeat_n": "同一员工多次中招，建议重点跟进",
 }
 
+# 高危中招预警卡片只展示行为类告警；投递/通道类（wecom_bounce/wecom_no_userid/
+# wecom_channel_error）属运营错误，走投递失败列表，不混入中招预警
+_RISK_ALERT_TYPES = tuple(_ALERT_ADVICE)
+
 # 列表页统计卡片"进行中"覆盖的中间态
 _IN_PROGRESS = ("sending", "running", "paused")
 
@@ -191,6 +195,40 @@ def _alert_skipped_wecom(db, campaign_id: int, skipped: list[EmpUser]) -> None:
         campaign_id=campaign_id, type="wecom_no_userid", level=2,
         message=f"{len(skipped)} 名目标员工未配置企业微信 userid 已跳过：{names}",
     ))
+
+
+def list_latest_alerts(db, account, limit: int = 10) -> dict:
+    """顶栏通知：跨演练最近行为类预警 + 未处置计数（数据权限与演练列表同口径）。"""
+    scope = apply_data_scope(
+        db, select(Campaign.id), account, dept_col=None, self_owner_col=Campaign.creator_id,
+    )
+    rows = db.execute(
+        select(CampaignAlert, Campaign.name)
+        .join(Campaign, Campaign.id == CampaignAlert.campaign_id)
+        .where(CampaignAlert.campaign_id.in_(scope),
+               CampaignAlert.type.in_(_RISK_ALERT_TYPES))
+        .order_by(CampaignAlert.id.desc())
+        .limit(max(1, min(limit, 50)))
+    ).all()
+    unhandled = db.scalar(
+        select(func.count()).select_from(CampaignAlert)
+        .where(CampaignAlert.campaign_id.in_(scope),
+               CampaignAlert.type.in_(_RISK_ALERT_TYPES),
+               CampaignAlert.handled == 0)
+    ) or 0
+    return {
+        "list": [{
+            "id": a.id,
+            "type": a.type,
+            "level": a.level,
+            "message": a.message,
+            "campaign_id": a.campaign_id,
+            "campaign_name": name or "",
+            "handled": a.handled,
+            "created_at": a.created_at.strftime(_DT_FMT) if a.created_at else "",
+        } for a, name in rows],
+        "unhandled": int(unhandled),
+    }
 
 
 def list_campaigns(db, account, *, status=None, type=None, kw=None,
@@ -798,7 +836,8 @@ def dashboard(db, account, campaign_id: int) -> dict:
 
     alert_rows = db.scalars(
         select(CampaignAlert)
-        .where(CampaignAlert.campaign_id == campaign_id)
+        .where(CampaignAlert.campaign_id == campaign_id,
+               CampaignAlert.type.in_(_RISK_ALERT_TYPES))
         .order_by(CampaignAlert.id.desc())
         .limit(5)
     ).all()

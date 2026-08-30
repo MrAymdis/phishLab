@@ -14,7 +14,19 @@ campaigns = APIRouter(
     tags=["演练管理"],
     dependencies=[Depends(get_current_account), Depends(require_perm("menu:/campaign"))],
 )
-routers = [campaigns]
+# 顶栏通知：登录即用（不绑菜单权限），数据权限在 service 层按演练创建人过滤
+alerts = APIRouter(
+    prefix="/api/v1/alerts",
+    tags=["演练管理-预警"],
+    dependencies=[Depends(get_current_account)],
+)
+routers = [campaigns, alerts]
+
+
+@alerts.get("/latest", summary="顶栏通知：跨演练最近预警 + 未处置计数（数据权限过滤）")
+def latest_alerts(limit: int = Query(10, ge=1, le=50),
+                  account=Depends(get_current_account), db: Session = Depends(get_db)):
+    return resp.ok(service.list_latest_alerts(db, account, limit=limit))
 
 
 @campaigns.get("", summary="演练列表（统计卡片 + 筛选）")

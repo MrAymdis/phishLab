@@ -59,7 +59,19 @@ export interface CampaignQuery {
   page?: number
   pageSize?: number
 }
+export interface AlertItem {
+  id: number
+  type: string
+  level: number
+  message: string
+  campaign_id: number
+  campaign_name: string
+  handled: number
+  created_at: string
+}
+
 export const campaignApi = {
+  latestAlerts: () => get<{ list: AlertItem[]; unhandled: number }>('/api/v1/alerts/latest'),
   list: (q: CampaignQuery) => get('/api/v1/campaigns', q as never),
   detail: (id: number) => get(`/api/v1/campaigns/${id}`),
   create: (payload: Record<string, unknown>) => post<{ id: number }>('/api/v1/campaigns', payload),
@@ -111,6 +123,7 @@ export const orgApi = {
       '/api/v1/emp-users/import', fd,
     )
   },
+  exportUsers: (q: Record<string, unknown>) => download('/api/v1/emp-users/export', q),
   riskProfile: (uid: number) => get(`/api/v1/emp-users/${uid}/risk-profile`),
   wecomCandidates: (kw?: string) =>
     get<Array<{ id: number; name: string; wecom_userid: string; email: string; emp_no: string }>>(
@@ -356,7 +369,9 @@ export interface AiProviderTestResult {
 export const aiApi = {
   chatbi: (question: string) =>
     post<ChatbiResult>('/api/v1/ai/chatbi', { question }),
-  sessions: () => get('/api/v1/ai/sessions'),
+  sessions: () => get<{ id: number; title: string; time: string }[]>('/api/v1/ai/sessions'),
+  sessionMessages: (sid: number) =>
+    get<{ id: number; role: string; content: string; time: string }[]>(`/api/v1/ai/sessions/${sid}/messages`),
   providers: () => get<AiProviderItem[]>('/api/v1/ai/providers'),
   createProvider: (payload: Record<string, unknown>) =>
     post<{ id: number; api_key_masked: string }>('/api/v1/ai/providers', payload),
@@ -373,15 +388,70 @@ export const aiApi = {
     post<ReadableStream>('/api/v1/ai/chat/stream', body),
   generateTemplate: (params: Record<string, unknown>) =>
     post<{ draft_id: number }>('/api/v1/ai/templates/generate', params),
+  generateLanding: (params: Record<string, unknown>) =>
+    post<{ draft_id: number }>('/api/v1/ai/landings/generate', params),
+  generateWecom: (params: Record<string, unknown>) =>
+    post<{ draft_id: number }>('/api/v1/ai/wecoms/generate', params),
+  generateAttachment: (params: Record<string, unknown>) =>
+    post<{ draft_id: number }>('/api/v1/ai/attachments/generate', params),
   analyzeReport: (kind: string, target: Record<string, unknown>) =>
     post<{ draft_id: number }>('/api/v1/ai/analysis/generate', { kind, target }),
 }
 
 // ---- OpenAPI ----
 export const openapiApi = {
-  apps: () => get('/api/v1/open-apps'),
+  apps: () => get<OpenAppItem[]>('/api/v1/open-apps'),
   createApp: (payload: Record<string, unknown>) =>
     post<{ id: number; app_id: string; app_secret: string }>('/api/v1/open-apps', payload),
+  updateApp: (id: number, payload: Record<string, unknown>) =>
+    put<{ id: number }>(`/api/v1/open-apps/${id}`, payload),
+  regenSecret: (id: number) =>
+    post<{ app_secret: string }>(`/api/v1/open-apps/${id}/secret`),
+  toggleApp: (id: number, status: 'active' | 'disabled') =>
+    post(`/api/v1/open-apps/${id}/status`, { status }),
+  deleteApp: (id: number) => del(`/api/v1/open-apps/${id}`),
+  stats: () => get<OpenApiStats>('/api/v1/open-apps/stats'),
+  logs: (q: {
+    app_id?: string; method?: string; status?: string; kw?: string
+    start?: string; end?: string; page?: number; pageSize?: number
+  }) => get<{ list: OpenApiLogItem[]; total: number; page: number; pageSize: number }>(
+    '/api/v1/open-apps/logs', q as never,
+  ),
+}
+
+export interface OpenAppItem {
+  id: number
+  name: string
+  description: string
+  app_id: string
+  app_secret: string
+  scopes: string[]
+  ip_whitelist: string[]
+  callback_url: string | null
+  rate_limit: number
+  call_count: number
+  status: 'active' | 'disabled'
+  created_at: string
+}
+
+export interface OpenApiStats {
+  total_calls: number
+  active_apps: number
+  success_rate: number
+  avg_latency: number
+  trend: { date: string; calls: number; success_rate: number }[]
+}
+
+export interface OpenApiLogItem {
+  id: number
+  time: string
+  app_name: string
+  method: string
+  path: string
+  status_code: number
+  response_ms: number | null
+  ip: string
+  error: string
 }
 
 // ---- 系统设置 / 授权 ----
@@ -396,7 +466,8 @@ export const systemApi = {
     return post<{ logo: string }>('/api/v1/settings/logo', fd)
   },
   license: () => get('/api/v1/license'),
-  activateLicense: (code: string) => post('/api/v1/license/activate', { license_key: code }),
+  machineCode: () => get<{ machine_code: string }>('/api/v1/license/machine-code'),
+  activateLicense: (licenseText: string) => post('/api/v1/license/activate', { license_text: licenseText }),
   importLicense: (file: File) => {
     const fd = new FormData()
     fd.append('file', file)

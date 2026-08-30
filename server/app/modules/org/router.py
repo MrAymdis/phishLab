@@ -1,8 +1,13 @@
+from io import BytesIO
+from urllib.parse import quote
+
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy.orm import Session
 
 from app.core import response as resp
+from app.core.audit import record_audit
 from app.core.deps import get_current_account, require_perm
 from app.core.pagination import page_params
 from app.db.session import get_db
@@ -79,11 +84,33 @@ def list_users(
     return resp.ok(service.list_users(db, account, dept_id=dept_id, tag=tag, risk_level=risk_level, kw=kw, page=page, page_size=page_size))
 
 
+class EmpExportRequest(BaseModel):
+    dept_id: int | None = None
+    tag: str | None = None
+    risk_level: int | None = None
+    kw: str | None = None
+
+
 @emp_users.post("/import", summary="CSV 批量导入员工（工号,姓名,邮箱[,部门,岗位,手机号,初始风险]）",
                 dependencies=[Depends(require_perm("org:manage"))])
 async def import_csv(file: UploadFile = File(...), account=Depends(get_current_account), db: Session = Depends(get_db)):
     content = await file.read()
     return resp.ok(service.import_users_csv(db, account, content))
+
+
+@emp_users.post("/export", summary="员工档案批量导出（xlsx，与列表同数据权限/筛选口径）")
+def export_users(payload: EmpExportRequest, account=Depends(get_current_account), db: Session = Depends(get_db)):
+    content, filename = service.export_users(
+        db, account, dept_id=payload.dept_id, tag=payload.tag,
+        risk_level=payload.risk_level, kw=payload.kw)
+    record_audit(db, account=account, module="org", action="export_users",
+                 detail={"dept_id": payload.dept_id, "tag": payload.tag,
+                         "risk_level": payload.risk_level, "kw": payload.kw})
+    return StreamingResponse(
+        BytesIO(content),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
 
 
 @emp_users.post("", summary="添加员工", dependencies=[Depends(require_perm("org:manage"))])

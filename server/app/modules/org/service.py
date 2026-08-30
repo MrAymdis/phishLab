@@ -278,9 +278,8 @@ def list_wecom_candidates(db: Session, account, kw: str | None = None) -> list[d
         for u in rows
     ]
 
-def list_users(db: Session, account, *, dept_id=None, tag=None, risk_level=None,
-               kw=None, page=1, page_size=20) -> dict:
-    """员工档案列表：手机掩码，数据权限过滤（含子部门/标签/风险/关键字）。"""
+def _emp_filter_stmt(db: Session, account, dept_id=None, tag=None, risk_level=None, kw=None):
+    """员工筛选公共查询（数据权限 + 子部门/标签/风险/关键字），列表与导出共用。"""
     stmt = apply_data_scope(
         db, select(EmpUser).where(EmpUser.status == 1), account, dept_col=EmpUser.dept_id,
     )
@@ -308,13 +307,55 @@ def list_users(db: Session, account, *, dept_id=None, tag=None, risk_level=None,
         stmt = stmt.where(or_(
             EmpUser.name.like(like), EmpUser.emp_no.like(like), EmpUser.email.like(like),
         ))
+    return stmt
 
+
+def list_users(db: Session, account, *, dept_id=None, tag=None, risk_level=None,
+               kw=None, page=1, page_size=20) -> dict:
+    """员工档案列表：手机掩码，数据权限过滤（含子部门/标签/风险/关键字）。"""
+    stmt = _emp_filter_stmt(db, account, dept_id=dept_id, tag=tag,
+                            risk_level=risk_level, kw=kw)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     users = db.scalars(
         stmt.order_by(EmpUser.id).offset((page - 1) * page_size).limit(page_size)
     ).all()
     rows = _user_rows(db, users, _load_dept_map(db))
     return {"list": rows, "total": total, "page": page, "pageSize": page_size}
+
+
+def export_users(db: Session, account, *, dept_id=None, tag=None, risk_level=None,
+                 kw=None) -> tuple[bytes, str]:
+    """员工档案批量导出 xlsx：与列表同口径（数据权限 + 筛选 + 手机掩码），审计在路由层。"""
+    from datetime import datetime
+    from io import BytesIO
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    stmt = _emp_filter_stmt(db, account, dept_id=dept_id, tag=tag,
+                            risk_level=risk_level, kw=kw)
+    users = db.scalars(stmt.order_by(EmpUser.id)).all()
+    rows = _user_rows(db, users, _load_dept_map(db))
+
+    risk_cn = {"low": "低", "mid": "中", "high": "高"}
+    train_cn = {"none": "未培训", "progress": "进行中", "completed": "已完成"}
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "员工档案"
+    ws.append(["工号", "姓名", "邮箱", "部门", "岗位", "手机号", "企业微信UserID",
+               "风险等级", "风险分", "标签", "培训状态"])
+    for c in ws[1]:
+        c.font = Font(bold=True)
+    for r in rows:
+        ws.append([
+            r["no"], r["name"], r["email"], r["dept"], r["pos"], r["phone"],
+            r["wecomUserid"], risk_cn.get(r["risk"], r["risk"]), r["riskScore"],
+            ";".join(r["tags"]), train_cn.get(r["training"], r["training"]),
+        ])
+    ws.freeze_panes = "A2"
+    buf = BytesIO()
+    wb.save(buf)
+    return buf.getvalue(), f"员工档案_{datetime.now().strftime('%Y%m%d')}.xlsx"
 
 
 def _bind_tags(db: Session, user_id: int, tag_ids: list[int]) -> None:

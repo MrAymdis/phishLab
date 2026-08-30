@@ -25,7 +25,7 @@
         <div class="header-right">
           <el-popover placement="bottom-end" :width="300" trigger="click">
             <template #reference>
-              <el-badge :value="notifications.length" :max="99" class="notify-badge">
+              <el-badge :value="unreadCount" :max="99" :hidden="unreadCount === 0" class="notify-badge">
                 <el-icon :size="18"><Bell /></el-icon>
               </el-badge>
             </template>
@@ -36,9 +36,10 @@
                   <el-tag size="small" :type="n.type" effect="plain">{{ n.tag }}</el-tag>
                   {{ n.title }}
                 </div>
-                <div class="notify-item-time">{{ n.time }}</div>
+                <div class="notify-item-time">{{ n.campaign }} · {{ n.time }}</div>
               </div>
-              <div class="notify-footer">查看全部通知</div>
+              <el-empty v-if="!notifications.length" description="暂无预警" :image-size="48" />
+              <div class="notify-footer" @click="router.push('/campaign')">查看全部通知</div>
             </div>
           </el-popover>
           <el-dropdown @command="onCommand">
@@ -105,12 +106,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { reactive } from 'vue'
 import { Bell, ChatDotRound } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
-import { authApi } from '@/api'
+import { authApi, campaignApi } from '@/api'
 import { useUserStore } from '@/stores/user'
 import { usePermissionStore } from '@/stores/permission'
 import { useCopilotStore } from '@/stores/copilot'
@@ -127,6 +128,12 @@ const { brand, loadBrand, logoSrc } = useBrand()
 onMounted(() => {
   if (user.isLoggedIn) permission.loadMenus()
   void loadBrand()
+  void loadNotifications()
+  notifyTimer = window.setInterval(() => void loadNotifications(), 60_000)
+})
+
+onUnmounted(() => {
+  if (notifyTimer !== undefined) window.clearInterval(notifyTimer)
 })
 
 // 浏览器标题跟随平台名称（品牌加载完成后覆盖硬编码后缀）
@@ -138,12 +145,54 @@ watch(
   { immediate: true },
 )
 
-/** 顶栏通知（mock，后续接 websocket/轮询） */
-const notifications = ref([
-  { id: 1, tag: '中招预警', type: 'danger' as const, title: 'Q3演练新增 3 名高危中招人员', time: '5 分钟前' },
-  { id: 2, tag: '举报', type: 'warning' as const, title: '收到 1 封真实钓鱼举报，待研判处置', time: '32 分钟前' },
-  { id: 3, tag: '系统', type: 'info' as const, title: 'SMTP 通道「备用服务器」连通性异常', time: '2 小时前' },
-])
+/** 顶栏通知：GET /api/v1/alerts/latest 轮询（60s），数据权限与演练列表同口径 */
+interface NotifyItem {
+  id: number
+  tag: string
+  type: 'danger' | 'warning' | 'info'
+  title: string
+  time: string
+  campaign: string
+}
+
+const ALERT_META: Record<string, { tag: string; type: NotifyItem['type'] }> = {
+  pwd_submit: { tag: '中招预警', type: 'danger' },
+  attach_run: { tag: '附件运行', type: 'danger' },
+  exec_user: { tag: '执行风险', type: 'danger' },
+  dept_threshold: { tag: '部门预警', type: 'warning' },
+  fast_submit: { tag: '异常提交', type: 'warning' },
+  repeat_n: { tag: '重复中招', type: 'warning' },
+}
+
+const notifications = ref<NotifyItem[]>([])
+const unreadCount = ref(0)
+let notifyTimer: number | undefined
+
+function relTime(ts: string): string {
+  const t = new Date(ts.replace(' ', 'T')).getTime()
+  const min = Math.max(0, Math.floor((Date.now() - t) / 60000))
+  if (min < 1) return '刚刚'
+  if (min < 60) return `${min} 分钟前`
+  if (min < 60 * 24) return `${Math.floor(min / 60)} 小时前`
+  return `${Math.floor(min / 60 / 24)} 天前`
+}
+
+async function loadNotifications() {
+  try {
+    const d = await campaignApi.latestAlerts()
+    notifications.value = (d.list || []).map((a) => ({
+      id: a.id,
+      tag: ALERT_META[a.type]?.tag ?? '预警',
+      type: ALERT_META[a.type]?.type ?? 'info',
+      title: a.message,
+      time: relTime(a.created_at),
+      campaign: a.campaign_name,
+    }))
+    unreadCount.value = d.unhandled || 0
+  } catch {
+    /* 通知拉取失败静默（登录态异常由拦截器统一处理） */
+  }
+}
 
 // ---- 个人中心 ----
 const profileDialog = ref(false)
