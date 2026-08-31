@@ -6,7 +6,7 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>b9f6d3a1-2c4e-4f58-8a7b-0e1d2c3b4a5f</Id>
-  <Version>1.1.0.0</Version>
+  <Version>1.1.1.0</Version>
   <ProviderName>PhishLab</ProviderName>
   <DefaultLocale>zh-CN</DefaultLocale>
   <DisplayName DefaultValue="钓鱼邮件举报"/>
@@ -62,7 +62,7 @@
                       <bt:Image size="80" resid="icon80"/>
                     </Icon>
                     <Action xsi:type="ShowTaskpane">
-                      <TaskpaneId>phishlabReportPane</TaskpaneId>
+                      <!-- 1.1 架构：Action 只允许 SourceLocation（TaskpaneId 是 1.0 写法，会校验失败） -->
                       <SourceLocation resid="taskpaneUrl"/>
                     </Action>
                   </Control>

@@ -175,6 +175,7 @@ def test_outlook_manifest_renders_base_url():
     assert "http://phish.example.com:5173/report/v1/plugin/outlook/icon-80.png" in xml
     assert "{BASE}" not in xml  # 占位符全部注入
     assert "MessageReadCommandSurface" in xml
+    assert "<TaskpaneId>" not in xml  # 1.1 架构下 Action 只允许 SourceLocation，出现即 Outlook 校验失败
     # 非法 base（非 http/https，防 javascript: 注入）→ 拒绝
     r = client.get("/report/v1/plugin/outlook/manifest.xml?base=javascript:alert(1)")
     assert r.status_code == 200 and r.json()["code"] == 10001
