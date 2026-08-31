@@ -486,8 +486,20 @@ import { downloadFile } from '@/api/http'
 
 const activeTab = ref('plugin')
 // 插件资产公开托管；base 传浏览器可见 origin（反代改写 Host 时 request.base_url 不可达）
-const downloadOutlookManifest = () =>
+// Outlook 硬性要求 manifest 内所有 URL 为 https://（http 连 localhost 都不豁免）——http 访问直接拦截引导，避免下载必被拒的清单
+const downloadOutlookManifest = () => {
+  if (location.protocol !== 'https:') {
+    ElMessageBox.alert(
+      `Outlook 要求加载项清单内所有地址必须为 https://，当前管理端以 http 访问，生成的清单会被拒绝安装。` +
+        `请改用 https://${location.hostname}${location.port ? ':' + location.port : ''}${location.pathname} 访问管理端后重新下载` +
+        `（自签证书浏览器会提示不安全，继续访问即可）。`,
+      '需要 HTTPS 访问',
+      { type: 'warning', confirmButtonText: '知道了' },
+    )
+    return
+  }
   downloadFile(`/report/v1/plugin/outlook/manifest.xml?base=${encodeURIComponent(location.origin)}`)
+}
 const downloadWebmailZip = () =>
   downloadFile('/report/v1/plugin/webmail.zip')
 const downloadPluginConfig = () =>

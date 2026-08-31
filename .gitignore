@@ -3,3 +3,6 @@ release/
 
 # 授权签发材料：vendor 私钥与已签发 .lic 严禁入仓（入仓即泄密）
 deploy/license/
+
+# TLS 私钥（含平台/落地页自签证书）严禁入仓；证书按环境生成，见 docs/举报插件部署说明.md
+server/certs/

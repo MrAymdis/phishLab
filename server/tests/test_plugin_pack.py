@@ -166,17 +166,24 @@ def test_ingest_duplicate_message_id_conflict():
 # ---------- 插件资产托管 ----------
 
 def test_outlook_manifest_renders_base_url():
-    r = client.get("/report/v1/plugin/outlook/manifest.xml?base=http://phish.example.com:5173")
+    r = client.get("/report/v1/plugin/outlook/manifest.xml?base=https://phish.example.com:5173")
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/xml")
     # 下载文件名必须是 .xml：Outlook「添加自定义加载项」只认 .xml（曾经无此头 → 落 .bin 被拒）
     assert r.headers["content-disposition"].endswith('phishlab-outlook-manifest.xml"')
     xml = r.text
-    assert "http://phish.example.com:5173/report/v1/plugin/outlook/taskpane.html" in xml
-    assert "http://phish.example.com:5173/report/v1/plugin/outlook/icon-80.png" in xml
+    assert "https://phish.example.com:5173/report/v1/plugin/outlook/taskpane.html" in xml
+    assert "https://phish.example.com:5173/report/v1/plugin/outlook/icon-80.png" in xml
     assert "{BASE}" not in xml  # 占位符全部注入
     assert "MessageReadCommandSurface" in xml
     assert "<TaskpaneId>" not in xml  # 1.1 架构下 Action 只允许 SourceLocation，出现即 Outlook 校验失败
-    # 非法 base（非 http/https，防 javascript: 注入）→ 拒绝
+    # 尾部斜杠去重（request.base_url 默认带 /，双斜杠会让资源 404）
+    r = client.get("/report/v1/plugin/outlook/manifest.xml?base=https://phish.example.com/")
+    assert "https://phish.example.com/report/v1/" in r.text
+    # Outlook 强制 manifest 内 URL 必须 https（http 连 localhost 都不豁免）→ http base 直接拒绝
+    r = client.get("/report/v1/plugin/outlook/manifest.xml?base=http://192.168.208.139:5173")
+    assert r.status_code == 200 and r.json()["code"] == 10001
+    assert "https" in r.json()["message"]
+    # 非法 base（非 http(s)，防 javascript: 注入）→ 拒绝
     r = client.get("/report/v1/plugin/outlook/manifest.xml?base=javascript:alert(1)")
     assert r.status_code == 200 and r.json()["code"] == 10001
 

@@ -175,10 +175,16 @@ def download_eml(rid: int, account=Depends(get_current_account), db: Session = D
 
 @plugin.get("/plugin/outlook/manifest.xml", summary="Outlook Web Add-in manifest（动态注入 base URL）")
 def outlook_manifest(request: Request, base: str | None = Query(default=None)):
-    """base 由前端传 location.origin：反代改写 Host 时 request.base_url 对客户不可达。"""
-    base_url = (base or str(request.base_url)).strip()
-    if not base_url.startswith(("http://", "https://")):
-        raise BizError(ErrorCode.PARAM_INVALID, "base 参数必须是 http(s) 绝对地址")
+    """base 由前端传 location.origin：反代改写 Host 时 request.base_url 对客户不可达。
+
+    Outlook 硬性要求 manifest 内所有 URL 为 https://（自签证书可用，http 连 localhost 都不豁免），
+    因此拒绝 http base 直接失败，避免生成一份必然装不上的 manifest。
+    """
+    base_url = (base or str(request.base_url)).strip().rstrip("/")
+    if not base_url.startswith("https://"):
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       "Outlook 加载项要求 manifest 内所有 URL 必须为 https:// 地址"
+                       "（http 连 localhost 都不豁免），请通过 https 访问管理端重新下载")
     # 必须带 Content-Disposition：前端下载助手据此落名，Outlook 添加自定义加载项只认 .xml
     return Response(service.build_outlook_manifest(base_url), media_type="application/xml",
                     headers={"Content-Disposition": 'attachment; filename="phishlab-outlook-manifest.xml"'})
