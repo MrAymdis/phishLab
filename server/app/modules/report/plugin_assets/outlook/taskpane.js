@@ -1,16 +1,23 @@
-/* PhishLab 举报任务窗格：配置存 roamingSettings（随账号漫游）+ localStorage 兜底，举报走 XHR POST /report/v1/mail。
-   Outlook 2016 独立版 webview 为 IE11：全程 ES5 + XHR，无 Promise/箭头函数。
-   所有失败路径都显示到页面上——按钮「一直灰色」必须能看出原因。 */
+/* PhishLab 举报任务窗格：配置存 roamingSettings（随账号漫游）+ localStorage/Cookie 兜底，
+   举报走 XHR POST /report/v1/mail。Outlook 2016 独立版 webview 为 IE11：全程 ES5 + XHR。
+   设计原则：
+   - 会话级配置（memCfg）立即生效——所有持久化通道都失败时，本次窗口内仍可举报；
+   - 所有失败路径显示到页面上（含存储自检），按钮「点不了」必须能看出原因；
+   - 不用 window.confirm（部分 webview 被策略屏蔽会静默返回 false），按钮二次点击确认。 */
 (function () {
   'use strict';
   var API_SUFFIX = '/report/v1/mail';
   var LS_SERVER = 'phishlabServerUrl';
   var LS_KEY = 'phishlabApiKey';
+  var COOKIE_NAME = 'phishlabCfg';
+
+  var memCfg = null; // 会话内配置：存储全不可用时本次会话仍可举报
 
   var el = {
     server: document.getElementById('serverLabel'),
     report: document.getElementById('btnReport'),
     hint: document.getElementById('btnHint'),
+    diag: document.getElementById('diag'),
     result: document.getElementById('result'),
     cfgJson: document.getElementById('cfgJson'),
     saveCfg: document.getElementById('btnSaveCfg'),
@@ -20,6 +27,8 @@
     el.result.className = 'result ' + (ok ? 'ok' : 'err');
     el.result.textContent = msg;
   }
+
+  // ---------- 持久化通道（逐一 try-catch，互不影响） ----------
 
   function getRoaming() {
     try {
@@ -36,10 +45,63 @@
     } catch (e) { return { serverUrl: '', apiKey: '' }; }
   }
 
-  function loadConfig() {
-    var r = getRoaming(), l = getLocal();
-    return { serverUrl: r.serverUrl || l.serverUrl, apiKey: r.apiKey || l.apiKey };
+  function getCookie() {
+    try {
+      var m = new RegExp('(?:^|; )' + COOKIE_NAME + '=([^;]*)').exec(document.cookie);
+      if (!m) return { serverUrl: '', apiKey: '' };
+      var c = JSON.parse(decodeURIComponent(m[1]));
+      return { serverUrl: c.serverUrl || '', apiKey: c.apiKey || '' };
+    } catch (e) { return { serverUrl: '', apiKey: '' }; }
   }
+
+  function loadConfig() {
+    if (memCfg && memCfg.serverUrl && memCfg.apiKey) return memCfg;
+    var r = getRoaming();
+    if (r.serverUrl && r.apiKey) return r;
+    var l = getLocal();
+    if (l.serverUrl && l.apiKey) return l;
+    var c = getCookie();
+    if (c.serverUrl && c.apiKey) return c;
+    return { serverUrl: '', apiKey: '' };
+  }
+
+  function writeLocal(serverUrl, apiKey) {
+    try {
+      window.localStorage.setItem(LS_SERVER, serverUrl);
+      window.localStorage.setItem(LS_KEY, apiKey);
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function writeCookie(serverUrl, apiKey) {
+    try {
+      document.cookie = COOKIE_NAME + '=' +
+        encodeURIComponent(JSON.stringify({ serverUrl: serverUrl, apiKey: apiKey })) +
+        ';max-age=15552000;path=/';
+      return true;
+    } catch (e) { return false; }
+  }
+
+  function storageDiag() {
+    var localOk = false;
+    try {
+      window.localStorage.setItem('phishlabDiag', '1');
+      window.localStorage.removeItem('phishlabDiag');
+      localOk = true;
+    } catch (e) { /* 被禁 */ }
+    var cookieOk = false;
+    try {
+      document.cookie = 'phishlabDiag=1;path=/';
+      cookieOk = new RegExp('(?:^|; )phishlabDiag=1').test(document.cookie);
+    } catch (e) { /* 被禁 */ }
+    var roamingOk = false;
+    try { roamingOk = !!Office.context.roamingSettings; } catch (e) { /* 被禁 */ }
+    return '本地存储:' + (localOk ? '√' : '×') +
+           ' Cookie:' + (cookieOk ? '√' : '×') +
+           ' 漫游:' + (roamingOk ? '√' : '×');
+  }
+
+  // ---------- 状态与配置 ----------
 
   function refreshStatus() {
     try {
@@ -47,12 +109,13 @@
       if (cfg.serverUrl && cfg.apiKey) {
         el.server.textContent = cfg.serverUrl;
         el.report.disabled = false;
-        if (el.hint) el.hint.textContent = '点击按钮将当前邮件提交至平台研判';
+        if (el.hint) el.hint.textContent = '点击按钮两次确认后提交';
       } else {
         el.server.textContent = '未配置';
         el.report.disabled = true;
         if (el.hint) el.hint.textContent = '请在下方粘贴管理员下发的引导配置 JSON，点「保存配置」后按钮即可使用';
       }
+      if (el.diag) el.diag.textContent = '存储自检：' + storageDiag();
     } catch (e) {
       showResult(false, '状态读取异常：' + (e && e.message ? e.message : e));
     }
@@ -72,28 +135,34 @@
     }
     var serverUrl = String(cfg.serverUrl).replace(/\/+$/, '');
     var apiKey = String(cfg.apiKey);
-    // 先落 localStorage（同步生效，按钮立即解锁）；roamingSettings 随账号漫游为增强项，失败不阻断
-    try {
-      window.localStorage.setItem(LS_SERVER, serverUrl);
-      window.localStorage.setItem(LS_KEY, apiKey);
-    } catch (e) { /* localStorage 不可用时仅靠 roamingSettings */ }
+    memCfg = { serverUrl: serverUrl, apiKey: apiKey }; // 会话级：立即生效，不依赖任何存储
+    var note = [];
+    note.push(writeLocal(serverUrl, apiKey) ? '本地已存' : '本地存储不可用');
+    writeCookie(serverUrl, apiKey); // 尽力而为，不报错
     try {
       var s = Office.context.roamingSettings;
-      s.set(LS_SERVER, serverUrl);
-      s.set(LS_KEY, apiKey);
-      s.saveAsync(function (res) {
-        if (res.status !== Office.AsyncResultStatus.Succeeded) {
-          showResult(false, '云端配置同步失败（本次仍可用）：' + ((res.error && res.error.message) || '未知错误'));
-        }
-      });
-    } catch (e) { /* roamingSettings 不可用：仅本地生效 */ }
+      if (s) {
+        s.set(LS_SERVER, serverUrl);
+        s.set(LS_KEY, apiKey);
+        s.saveAsync(function (res) {
+          if (res.status !== Office.AsyncResultStatus.Succeeded) {
+            showResult(false, '云端漫游保存失败（本次会话仍可用）：' +
+              ((res.error && res.error.message) || '未知错误'));
+          }
+        });
+        note.push('漫游同步已提交');
+      } else {
+        note.push('漫游不可用');
+      }
+    } catch (e) { note.push('漫游不可用'); }
     refreshStatus();
-    showResult(true, '配置已保存，服务器：' + serverUrl);
+    showResult(true, '配置已保存，服务器：' + serverUrl + '（' + note.join('；') + '）');
   }
+
+  // ---------- 举报 ----------
 
   function postReport(payload) {
     var cfg = loadConfig();
-    if (!window.confirm('确认将当前邮件提交至 PhishLab 平台研判？')) return;
     el.report.disabled = true;
     el.report.textContent = '提交中…';
     var xhr = new XMLHttpRequest();
@@ -171,8 +240,31 @@
     }
   }
 
+  // 不用 window.confirm（部分 webview 被策略屏蔽会静默返回 false）：按钮二次点击确认，5 秒超时复位
+  var confirmArmed = false;
+  var confirmTimer = null;
+
+  function handleReportClick() {
+    if (!confirmArmed) {
+      confirmArmed = true;
+      el.report.textContent = '再点一次确认提交';
+      showResult(true, '确认举报：请在 5 秒内再次点击按钮提交');
+      confirmTimer = setTimeout(function () {
+        confirmArmed = false;
+        el.report.textContent = '举报当前邮件';
+      }, 5000);
+      return;
+    }
+    confirmArmed = false;
+    clearTimeout(confirmTimer);
+    el.report.textContent = '举报当前邮件';
+    reportCurrentMail();
+  }
+
+  // ---------- 初始化 ----------
+
   function bindUI() {
-    el.report.onclick = reportCurrentMail;
+    el.report.onclick = handleReportClick;
     el.saveCfg.onclick = saveConfig;
     refreshStatus();
   }
