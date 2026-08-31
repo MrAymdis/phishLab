@@ -10,7 +10,7 @@ function renderStatus(cfg) {
     statusEl.textContent = '已配置：' + cfg.serverUrl + '（允许域名：' + (cfg.allowedDomains || []).join('、') + '）';
   } else {
     statusEl.className = 'status empty';
-    statusEl.textContent = '未配置：请导入管理员下发的引导配置 JSON';
+    statusEl.textContent = '未配置：IT 内置配置版安装包会随扩展启动自动生效（可重启浏览器后重试）；或在此粘贴管理员下发的引导配置 JSON';
   }
 }
 
