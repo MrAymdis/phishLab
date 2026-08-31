@@ -1,12 +1,16 @@
-/* PhishLab 举报任务窗格：配置存 roamingSettings（随账号漫游），举报走 XHR POST /report/v1/mail。
-   Outlook 2016 独立版 webview 为 IE11：全程 ES5 + XHR，无 Promise/箭头函数。 */
+/* PhishLab 举报任务窗格：配置存 roamingSettings（随账号漫游）+ localStorage 兜底，举报走 XHR POST /report/v1/mail。
+   Outlook 2016 独立版 webview 为 IE11：全程 ES5 + XHR，无 Promise/箭头函数。
+   所有失败路径都显示到页面上——按钮「一直灰色」必须能看出原因。 */
 (function () {
   'use strict';
   var API_SUFFIX = '/report/v1/mail';
+  var LS_SERVER = 'phishlabServerUrl';
+  var LS_KEY = 'phishlabApiKey';
 
   var el = {
     server: document.getElementById('serverLabel'),
     report: document.getElementById('btnReport'),
+    hint: document.getElementById('btnHint'),
     result: document.getElementById('result'),
     cfgJson: document.getElementById('cfgJson'),
     saveCfg: document.getElementById('btnSaveCfg'),
@@ -17,22 +21,40 @@
     el.result.textContent = msg;
   }
 
+  function getRoaming() {
+    try {
+      var s = Office.context.roamingSettings;
+      return s ? { serverUrl: s.get(LS_SERVER) || '', apiKey: s.get(LS_KEY) || '' }
+               : { serverUrl: '', apiKey: '' };
+    } catch (e) { return { serverUrl: '', apiKey: '' }; }
+  }
+
+  function getLocal() {
+    try {
+      return { serverUrl: window.localStorage.getItem(LS_SERVER) || '',
+               apiKey: window.localStorage.getItem(LS_KEY) || '' };
+    } catch (e) { return { serverUrl: '', apiKey: '' }; }
+  }
+
   function loadConfig() {
-    var s = Office.context.roamingSettings;
-    return {
-      serverUrl: s.get('phishlabServerUrl') || '',
-      apiKey: s.get('phishlabApiKey') || '',
-    };
+    var r = getRoaming(), l = getLocal();
+    return { serverUrl: r.serverUrl || l.serverUrl, apiKey: r.apiKey || l.apiKey };
   }
 
   function refreshStatus() {
-    var cfg = loadConfig();
-    if (cfg.serverUrl && cfg.apiKey) {
-      el.server.textContent = cfg.serverUrl;
-      el.report.disabled = false;
-    } else {
-      el.server.textContent = '未配置';
-      el.report.disabled = true;
+    try {
+      var cfg = loadConfig();
+      if (cfg.serverUrl && cfg.apiKey) {
+        el.server.textContent = cfg.serverUrl;
+        el.report.disabled = false;
+        if (el.hint) el.hint.textContent = '点击按钮将当前邮件提交至平台研判';
+      } else {
+        el.server.textContent = '未配置';
+        el.report.disabled = true;
+        if (el.hint) el.hint.textContent = '请在下方粘贴管理员下发的引导配置 JSON，点「保存配置」后按钮即可使用';
+      }
+    } catch (e) {
+      showResult(false, '状态读取异常：' + (e && e.message ? e.message : e));
     }
   }
 
@@ -48,17 +70,25 @@
       showResult(false, '配置缺少 serverUrl / apiKey 字段');
       return;
     }
-    var s = Office.context.roamingSettings;
-    s.set('phishlabServerUrl', String(cfg.serverUrl).replace(/\/+$/, ''));
-    s.set('phishlabApiKey', String(cfg.apiKey));
-    s.saveAsync(function (res) {
-      if (res.status === Office.AsyncResultStatus.Succeeded) {
-        showResult(true, '配置已保存');
-        refreshStatus();
-      } else {
-        showResult(false, '配置保存失败：' + ((res.error && res.error.message) || '未知错误'));
-      }
-    });
+    var serverUrl = String(cfg.serverUrl).replace(/\/+$/, '');
+    var apiKey = String(cfg.apiKey);
+    // 先落 localStorage（同步生效，按钮立即解锁）；roamingSettings 随账号漫游为增强项，失败不阻断
+    try {
+      window.localStorage.setItem(LS_SERVER, serverUrl);
+      window.localStorage.setItem(LS_KEY, apiKey);
+    } catch (e) { /* localStorage 不可用时仅靠 roamingSettings */ }
+    try {
+      var s = Office.context.roamingSettings;
+      s.set(LS_SERVER, serverUrl);
+      s.set(LS_KEY, apiKey);
+      s.saveAsync(function (res) {
+        if (res.status !== Office.AsyncResultStatus.Succeeded) {
+          showResult(false, '云端配置同步失败（本次仍可用）：' + ((res.error && res.error.message) || '未知错误'));
+        }
+      });
+    } catch (e) { /* roamingSettings 不可用：仅本地生效 */ }
+    refreshStatus();
+    showResult(true, '配置已保存，服务器：' + serverUrl);
   }
 
   function postReport(payload) {
@@ -97,7 +127,12 @@
   }
 
   function reportCurrentMail() {
-    var item = Office.context.mailbox.item;
+    var item;
+    try { item = Office.context.mailbox.item; } catch (e) { item = null; }
+    if (!item) {
+      showResult(false, '未获取到当前邮件：请先选中一封邮件，再打开「举报可疑邮件」');
+      return;
+    }
     var payload = {
       channel: 'outlook_plugin',
       reporter_email: null,
@@ -136,10 +171,26 @@
     }
   }
 
-  Office.onReady(function (info) {
-    if (info.host !== Office.HostType.Outlook) return;
-    refreshStatus();
+  function bindUI() {
     el.report.onclick = reportCurrentMail;
     el.saveCfg.onclick = saveConfig;
+    refreshStatus();
+  }
+
+  var officeReady = false;
+  // Office.js 初始化可能因网络（appsforoffice.microsoft.com 不可达）长时间不完成：8 秒兜底提示
+  setTimeout(function () {
+    if (!officeReady) {
+      showResult(false, 'Office 初始化超时：请确认本机可访问 appsforoffice.microsoft.com 后重开任务窗格');
+    }
+  }, 8000);
+
+  Office.onReady(function (info) {
+    officeReady = true;
+    if (info.host !== Office.HostType.Outlook) {
+      showResult(false, '该加载项仅支持 Outlook 客户端');
+      return;
+    }
+    bindUI();
   });
 })();
