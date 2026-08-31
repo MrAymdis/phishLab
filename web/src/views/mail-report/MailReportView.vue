@@ -24,19 +24,19 @@
                 <el-button type="primary" :icon="Download" @click="downloadOutlookManifest">下载</el-button>
               </div>
               <el-descriptions :column="2" size="small" border style="margin-top: 12px">
-                <el-descriptions-item label="版本号">v1.0.0</el-descriptions-item>
-                <el-descriptions-item label="更新日期">2026-08-30</el-descriptions-item>
+                <el-descriptions-item label="版本号">v1.2.0</el-descriptions-item>
+                <el-descriptions-item label="更新日期">2026-08-31</el-descriptions-item>
                 <el-descriptions-item label="形态">Office Web Add-in</el-descriptions-item>
                 <el-descriptions-item label="部署方式">加载项 / 集中部署</el-descriptions-item>
               </el-descriptions>
               <div class="plugin-section">
                 <div class="section-title">安装指引</div>
                 <ol class="step-list">
-                  <li>下载 <code>manifest.xml</code> 与「引导配置 JSON」（下方 API 配置区）</li>
-                  <li>Outlook：文件 → 管理加载项 → 我的加载项 → <b>添加自定义加载项</b>，选择 manifest.xml；企业可走 Microsoft 365 管理中心集中部署</li>
+                  <li>下载 <code>manifest.xml</code>（<b>已内置平台地址与通道密钥</b>）</li>
+                  <li>Outlook：文件 → 管理加载项 → 我的加载项 → <b>添加自定义加载项</b>，选择 manifest.xml；企业走 Microsoft 365 管理中心集中部署，<b>员工安装即用、零配置</b></li>
                   <li>打开任意邮件，功能区出现「安全举报」按钮</li>
-                  <li>点击「举报可疑邮件」打开任务窗格，首次使用导入引导配置 JSON</li>
-                  <li>之后一键提交至平台举报中心</li>
+                  <li>点「举报可疑邮件」打开任务窗格（自动读取内置配置），按钮点两次确认提交</li>
+                  <li>重生成 API Key 后需重新下载 manifest 并重发（集中部署重新上传）</li>
                 </ol>
               </div>
               <div class="plugin-section">
@@ -60,17 +60,17 @@
                 <el-button type="primary" :icon="Picture" @click="downloadWebmailZip">下载</el-button>
               </div>
               <el-descriptions :column="2" size="small" border style="margin-top: 12px">
-                <el-descriptions-item label="版本号">v1.0.0</el-descriptions-item>
-                <el-descriptions-item label="更新日期">2026-08-30</el-descriptions-item>
+                <el-descriptions-item label="版本号">v1.1.0</el-descriptions-item>
+                <el-descriptions-item label="更新日期">2026-08-31</el-descriptions-item>
                 <el-descriptions-item label="形态">浏览器扩展（MV3）</el-descriptions-item>
                 <el-descriptions-item label="支持浏览器">Chrome / Edge / Firefox</el-descriptions-item>
               </el-descriptions>
               <div class="plugin-section">
                 <div class="section-title">安装指引</div>
                 <ol class="step-list">
-                  <li>下载 <code>phishlab-webmail-plugin.zip</code> 并解压</li>
+                  <li>下载 <code>phishlab-webmail-plugin.zip</code>（<b>已内置平台地址与通道密钥</b>）并解压</li>
                   <li>Chrome/Edge：<code>chrome://extensions</code> 开启开发者模式 → 加载已解压的扩展程序（Firefox：about:debugging 临时载入）</li>
-                  <li>点击工具栏 PhishLab 图标 → 导入「引导配置 JSON」</li>
+                  <li>无需任何配置：扩展启动自动读取内置引导配置；若包内未内置，点工具栏图标导入「引导配置 JSON」</li>
                   <li>登录 Web 邮箱打开邮件，点击页面悬浮「举报」按钮一键提交</li>
                 </ol>
               </div>
@@ -498,10 +498,11 @@ const downloadOutlookManifest = () => {
     )
     return
   }
-  downloadFile(`/report/v1/plugin/outlook/manifest.xml?base=${encodeURIComponent(location.origin)}`)
+  downloadFile(`/api/v1/mail-reports/plugin-config/outlook-manifest?base=${encodeURIComponent(location.origin)}`)
 }
+// 内置引导配置版（员工零配置）：鉴权端点，包内预置 phishlab-guide.json；公开 zip 供手工导入流程备用
 const downloadWebmailZip = () =>
-  downloadFile('/report/v1/plugin/webmail.zip')
+  downloadFile(`/api/v1/mail-reports/plugin-config/webmail-package?base=${encodeURIComponent(location.origin)}`)
 const downloadPluginConfig = () =>
   downloadFile(`/api/v1/mail-reports/plugin-config/export?base=${encodeURIComponent(location.origin)}`)
 

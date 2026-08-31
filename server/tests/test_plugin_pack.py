@@ -165,32 +165,77 @@ def test_ingest_duplicate_message_id_conflict():
 
 # ---------- 插件资产托管 ----------
 
-def test_outlook_manifest_renders_base_url():
-    r = client.get("/report/v1/plugin/outlook/manifest.xml?base=https://phish.example.com:5173")
+def test_outlook_manifest_embeds_guide_and_requires_auth():
+    """manifest 经鉴权端点导出：内置通道 Key（SourceLocation 查询参数），员工零配置；敏感出库审计。"""
+    _regen_key()
+    r = client.get("/api/v1/mail-reports/plugin-config/outlook-manifest?base=https://phish.example.com:5173",
+                   headers=_auth())
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/xml")
     # 下载文件名必须是 .xml：Outlook「添加自定义加载项」只认 .xml（曾经无此头 → 落 .bin 被拒）
     assert r.headers["content-disposition"].endswith('phishlab-outlook-manifest.xml"')
     xml = r.text
-    assert "https://phish.example.com:5173/report/v1/plugin/outlook/taskpane.html" in xml
+    assert "https://phish.example.com:5173/report/v1/plugin/outlook/taskpane.html?plrKey=plr_" in xml
     assert "https://phish.example.com:5173/report/v1/plugin/outlook/icon-80.png" in xml
-    assert "{BASE}" not in xml  # 占位符全部注入
+    assert "{BASE}" not in xml and "{PLR_KEY}" not in xml  # 占位符全部注入
     assert "MessageReadCommandSurface" in xml
     assert "<TaskpaneId>" not in xml  # 1.1 架构下 Action 只允许 SourceLocation，出现即 Outlook 校验失败
-    assert "<Version>1.1.2.0</Version>" in xml
+    assert "<Version>1.2.0.0</Version>" in xml
     # Supertip Description 必须引用 LongString（曾放 ShortStrings → 校验报「LongStrings 中找不到资源 ID」）
     ss = xml.split("<bt:ShortStrings>")[1].split("</bt:ShortStrings>")[0]
     ls = xml.split("<bt:LongStrings>")[1].split("</bt:LongStrings>")[0]
     assert 'id="reportBtnTip"' in ls and 'id="reportBtnTip"' not in ss
     # 尾部斜杠去重（request.base_url 默认带 /，双斜杠会让资源 404）
-    r = client.get("/report/v1/plugin/outlook/manifest.xml?base=https://phish.example.com/")
+    r = client.get("/api/v1/mail-reports/plugin-config/outlook-manifest?base=https://phish.example.com/",
+                   headers=_auth())
     assert "https://phish.example.com/report/v1/" in r.text
     # Outlook 强制 manifest 内 URL 必须 https（http 连 localhost 都不豁免）→ http base 直接拒绝
-    r = client.get("/report/v1/plugin/outlook/manifest.xml?base=http://192.168.208.139:5173")
-    assert r.status_code == 200 and r.json()["code"] == 10001
-    assert "https" in r.json()["message"]
-    # 非法 base（非 http(s)，防 javascript: 注入）→ 拒绝
-    r = client.get("/report/v1/plugin/outlook/manifest.xml?base=javascript:alert(1)")
-    assert r.status_code == 200 and r.json()["code"] == 10001
+    r = client.get("/api/v1/mail-reports/plugin-config/outlook-manifest?base=http://192.168.208.139:5173",
+                   headers=_auth())
+    assert r.json()["code"] == 10001 and "https" in r.json()["message"]
+    # 非法 base（防 javascript: 注入）→ 拒绝
+    r = client.get("/api/v1/mail-reports/plugin-config/outlook-manifest?base=javascript:alert(1)",
+                   headers=_auth())
+    assert r.json()["code"] == 10001
+    # 敏感出库审计（红线 2 取证口径）
+    db = SessionLocal()
+    row = db.query(AuditLog).filter(AuditLog.action == "export_outlook_manifest").first()
+    db.close()
+    assert row is not None and row.module == "report"
+
+
+def test_outlook_manifest_requires_key_and_auth():
+    # 无 Key → 10404（内置 Key 的 manifest 必须先有 Key）
+    r = client.get("/api/v1/mail-reports/plugin-config/outlook-manifest?base=https://phish.example.com",
+                   headers=_auth())
+    assert r.status_code == 404 and r.json()["code"] == 10404
+    # 未登录 → 401
+    assert client.get(
+        "/api/v1/mail-reports/plugin-config/outlook-manifest?base=https://phish.example.com").status_code == 401
+    # 旧公开 manifest 端点已移除（内置 Key 后必须鉴权）→ 404
+    assert client.get("/report/v1/plugin/outlook/manifest.xml?base=https://phish.example.com").status_code == 404
+
+
+def test_webmail_package_embeds_guide():
+    """内置配置版扩展包：phishlab-guide.json 含明文 Key（审计），员工解压即用。"""
+    import io
+    import json
+    import zipfile
+
+    _regen_key()
+    r = client.get("/api/v1/mail-reports/plugin-config/webmail-package?base=https://phish.example.com",
+                   headers=_auth())
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    assert "phishlab-webmail-plugin.zip" in r.headers["content-disposition"]
+    zf = zipfile.ZipFile(io.BytesIO(r.content))
+    names = set(zf.namelist())
+    assert "phishlab-guide.json" in names and "manifest.json" in names
+    guide = json.loads(zf.read("phishlab-guide.json"))
+    assert guide["apiKey"].startswith("plr_") and guide["serverUrl"] == "https://phish.example.com"
+    # 敏感出库审计
+    db = SessionLocal()
+    row = db.query(AuditLog).filter(AuditLog.action == "export_webmail_package").first()
+    db.close()
+    assert row is not None and row.module == "report"
 
 
 def test_plugin_static_serves_icons_and_blocks_traversal():
@@ -213,8 +258,8 @@ def test_webmail_zip_packs_assets():
     names = set(zf.namelist())
     assert {"manifest.json", "background.js", "content.js", "popup.html",
             "icons/icon-32.png"} <= names
-    # 配置 JSON（含 API Key）绝不进安装包——由导出接口单独交付
-    assert not any("config" in n or "api" in n for n in names)
+    # 公开包绝不含任何引导配置（含 API Key）——内置配置版走鉴权端点 webmail-package
+    assert not any("config" in n or "api" in n or "guide" in n for n in names)
 
 
 def test_export_config_base_param_override():

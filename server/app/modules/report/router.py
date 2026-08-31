@@ -148,6 +148,38 @@ def export_plugin_config(request: Request, base: str | None = Query(default=None
     })
 
 
+@mail_reports.get("/plugin-config/outlook-manifest",
+                  summary="导出 Outlook manifest（内置引导配置，员工安装即用零配置）",
+                  dependencies=[Depends(require_perm("report:classify"))])
+def export_outlook_manifest(request: Request, base: str | None = Query(default=None),
+                            account=Depends(get_current_account), db: Session = Depends(get_db)):
+    """manifest 内置平台地址与通道 Key：管理员下载后集中部署/分发，员工无需逐个导入配置。
+
+    Outlook 强制 manifest 内所有 URL 为 https://——http base 直接拒绝。
+    """
+    base_url = (base or str(request.base_url)).strip().rstrip("/")
+    if not base_url.startswith("https://"):
+        raise BizError(ErrorCode.PARAM_INVALID,
+                       "Outlook 加载项要求 manifest 内所有 URL 必须为 https:// 地址"
+                       "（http 连 localhost 都不豁免），请通过 https 访问管理端重新下载")
+    return Response(service.export_outlook_manifest(db, account, base_url), media_type="application/xml",
+                    headers={"Content-Disposition": 'attachment; filename="phishlab-outlook-manifest.xml"'})
+
+
+@mail_reports.get("/plugin-config/webmail-package",
+                  summary="导出内置引导配置的 Web 邮箱扩展包（员工零配置）",
+                  dependencies=[Depends(require_perm("report:classify"))])
+def export_webmail_package(request: Request, base: str | None = Query(default=None),
+                           account=Depends(get_current_account), db: Session = Depends(get_db)):
+    """包内 phishlab-guide.json 预置 serverUrl/Key：员工解压加载即用。
+    公开 /report/v1/plugin/webmail.zip 保持无密钥，供手工导入配置流程使用。"""
+    base_url = (base or str(request.base_url)).strip()
+    if not base_url.startswith(("http://", "https://")):
+        raise BizError(ErrorCode.PARAM_INVALID, "base 参数必须是 http(s) 绝对地址")
+    return Response(service.export_webmail_package(db, account, base_url), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="phishlab-webmail-plugin.zip"'})
+
+
 @plugin.post("/mail", summary="举报插件上报（Outlook/Webmail，X-Api-Key 鉴权）")
 def plugin_report(payload: PluginReport, x_api_key: str | None = Header(default=None, alias="X-Api-Key"),
                   db: Session = Depends(get_db)):
@@ -173,24 +205,7 @@ def download_eml(rid: int, account=Depends(get_current_account), db: Session = D
 
 # ---------- 插件资产托管（公开：taskpane/图标/安装包须无鉴权可达） ----------
 
-@plugin.get("/plugin/outlook/manifest.xml", summary="Outlook Web Add-in manifest（动态注入 base URL）")
-def outlook_manifest(request: Request, base: str | None = Query(default=None)):
-    """base 由前端传 location.origin：反代改写 Host 时 request.base_url 对客户不可达。
-
-    Outlook 硬性要求 manifest 内所有 URL 为 https://（自签证书可用，http 连 localhost 都不豁免），
-    因此拒绝 http base 直接失败，避免生成一份必然装不上的 manifest。
-    """
-    base_url = (base or str(request.base_url)).strip().rstrip("/")
-    if not base_url.startswith("https://"):
-        raise BizError(ErrorCode.PARAM_INVALID,
-                       "Outlook 加载项要求 manifest 内所有 URL 必须为 https:// 地址"
-                       "（http 连 localhost 都不豁免），请通过 https 访问管理端重新下载")
-    # 必须带 Content-Disposition：前端下载助手据此落名，Outlook 添加自定义加载项只认 .xml
-    return Response(service.build_outlook_manifest(base_url), media_type="application/xml",
-                    headers={"Content-Disposition": 'attachment; filename="phishlab-outlook-manifest.xml"'})
-
-
-@plugin.get("/plugin/webmail.zip", summary="Web 邮箱举报扩展安装包（zip 运行时打包）")
+@plugin.get("/plugin/webmail.zip", summary="Web 邮箱举报扩展安装包（公开无密钥版；内置配置版走鉴权端点 webmail-package）")
 def webmail_zip():
     return Response(service.build_webmail_zip(), media_type="application/zip",
                     headers={"Content-Disposition": 'attachment; filename="phishlab-webmail-plugin.zip"'})

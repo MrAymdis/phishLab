@@ -3,6 +3,24 @@
 const CONFIG_KEY = 'phishlab_config';
 const API_SUFFIX = '/report/v1/mail';
 
+/* 内置引导配置（IT 分发包内 phishlab-guide.json）：安装/启动时自动落库，员工零配置；
+   用户手工导入的配置优先，不覆盖。公开包（无 guide 文件）静默跳过走原流程。 */
+chrome.runtime.onInstalled.addListener(() => { seedConfig(); });
+chrome.runtime.onStartup.addListener(() => { seedConfig(); });
+
+async function seedConfig() {
+  try {
+    const stored = await chrome.storage.local.get(CONFIG_KEY);
+    if (stored[CONFIG_KEY] && stored[CONFIG_KEY].apiKey) return;
+    const r = await fetch(chrome.runtime.getURL('phishlab-guide.json'));
+    if (!r.ok) return;
+    const guide = await r.json();
+    if (guide && guide.serverUrl && guide.apiKey) {
+      await chrome.storage.local.set({ [CONFIG_KEY]: guide });
+    }
+  } catch (e) { /* 静默：无内置配置或读取失败都走原流程 */ }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg && msg.type === 'phishlabReport') {
     doReport(msg.payload).then(sendResponse);

@@ -469,6 +469,34 @@ def export_plugin_config(db, account, base_url: str) -> dict:
     return cfg
 
 
+def export_outlook_manifest(db, account, base_url: str) -> str:
+    """导出内置引导配置的 Outlook manifest：明文 Key 随 SourceLocation 下发，
+    敏感出库走审计（红线 2 取证口径），与配置 JSON 同口径。Key 未生成即拒绝。"""
+    enc = get_setting(db, _SETTING_API_KEY, None)
+    if not enc:
+        raise BizError(ErrorCode.NOT_FOUND, "插件 API Key 尚未生成，请先在「举报 API 配置」中重生成后再下载")
+    key = decrypt_secret(enc.encode("latin1"))
+    record_audit(db, account=account, module="report", action="export_outlook_manifest",
+                 target_type="report_plugin", detail={"base": base_url.rstrip("/")})
+    return build_outlook_manifest(base_url, key)
+
+
+def export_webmail_package(db, account, base_url: str) -> bytes:
+    """导出内置引导配置的 webmail 扩展包（明文 Key 随包下发，走审计）。"""
+    enc = get_setting(db, _SETTING_API_KEY, None)
+    if not enc:
+        raise BizError(ErrorCode.NOT_FOUND, "插件 API Key 尚未生成，请先在「举报 API 配置」中重生成后再下载")
+    guide = {
+        "serverUrl": (base_url or "").rstrip("/"),
+        "apiKey": decrypt_secret(enc.encode("latin1")),
+        "allowedDomains": _plugin_domains(db),
+        "version": "1.0",
+    }
+    record_audit(db, account=account, module="report", action="export_webmail_package",
+                 target_type="report_plugin", detail={"domains": guide["allowedDomains"]})
+    return build_webmail_zip(guide)
+
+
 def regenerate_plugin_key(db, account) -> dict:
     """重生成插件 API Key：AES-GCM 加密入库（红线），回显掩码。"""
     key = "plr_" + secrets.token_urlsafe(32)
@@ -511,21 +539,28 @@ def test_plugin_webhook(db, webhook: str | None = None) -> dict:
 PLUGIN_ASSETS_DIR = Path(__file__).resolve().parent / "plugin_assets"
 
 
-def build_outlook_manifest(base_url: str) -> str:
-    """Outlook Web Add-in manifest 动态生成：SourceLocation/图标必须客户可达，注入 base URL。"""
+def build_outlook_manifest(base_url: str, plugin_key: str | None = None) -> str:
+    """Outlook Web Add-in manifest 动态生成：SourceLocation/图标注入客户可达 https base；
+    引导配置（通道 Key）内置进 SourceLocation 查询参数——员工安装即用，无需逐个导入 JSON。"""
     base = base_url.rstrip("/")
     tpl = (PLUGIN_ASSETS_DIR / "outlook" / "manifest.template.xml").read_text(encoding="utf-8")
-    return tpl.replace("{BASE}", base + "/")
+    return tpl.replace("{BASE}", base + "/").replace("{PLR_KEY}", plugin_key or "")
 
 
-def build_webmail_zip() -> bytes:
-    """webmail/ 目录运行时打包 zip：MV3 扩展安装包（API Key 由配置 JSON 导入，不进包）。"""
+def build_webmail_zip(guide: dict | None = None) -> bytes:
+    """webmail/ 目录运行时打包 zip：MV3 扩展安装包。
+
+    guide 非空时把引导配置写成包内 phishlab-guide.json（IT 分发内置配置版，员工零配置）；
+    公开下载（无 guide）保持不含任何密钥。
+    """
     buf = io.BytesIO()
     root = PLUGIN_ASSETS_DIR / "webmail"
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for f in sorted(root.rglob("*")):
             if f.is_file():
                 zf.write(f, f.relative_to(root).as_posix())
+        if guide:
+            zf.writestr("phishlab-guide.json", json.dumps(guide, ensure_ascii=False))
     return buf.getvalue()
 
 

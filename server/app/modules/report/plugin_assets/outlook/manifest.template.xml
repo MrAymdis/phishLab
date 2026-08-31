@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- PhishLab 邮件举报 Web Add-in manifest 模板：{BASE} 由服务端按客户可达地址注入 -->
+<!-- PhishLab 邮件举报 Web Add-in manifest 模板：{BASE} 注入客户可达 https 地址；
+     {PLR_KEY} 注入通道 Key（内置引导配置，员工安装即用零配置；仅经鉴权端点下发） -->
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
            xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>b9f6d3a1-2c4e-4f58-8a7b-0e1d2c3b4a5f</Id>
-  <Version>1.1.2.0</Version>
+  <Version>1.2.0.0</Version>
   <ProviderName>PhishLab</ProviderName>
   <DefaultLocale>zh-CN</DefaultLocale>
   <DisplayName DefaultValue="钓鱼邮件举报"/>
@@ -80,7 +81,7 @@
         </bt:Images>
         <bt:Urls>
           <bt:Url id="funcFile" DefaultValue="{BASE}report/v1/plugin/outlook/function-file.html"/>
-          <bt:Url id="taskpaneUrl" DefaultValue="{BASE}report/v1/plugin/outlook/taskpane.html"/>
+          <bt:Url id="taskpaneUrl" DefaultValue="{BASE}report/v1/plugin/outlook/taskpane.html?plrKey={PLR_KEY}"/>
         </bt:Urls>
         <bt:ShortStrings>
           <bt:String id="groupLabel" DefaultValue="安全举报"/>

@@ -261,9 +261,44 @@
     reportCurrentMail();
   }
 
+  // ---------- 内置引导配置（manifest SourceLocation 查询参数：plrKey 必带，plrServer 可选） ----------
+
+  function getQueryParams() {
+    var out = {};
+    try {
+      var q = window.location.search.replace(/^\?/, '');
+      var parts = q.split('&');
+      for (var i = 0; i < parts.length; i++) {
+        var kv = parts[i].split('=');
+        if (kv.length === 2) {
+          out[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1].replace(/\+/g, ' '));
+        }
+      }
+    } catch (e) { /* 解析失败按无参数处理 */ }
+    return out;
+  }
+
+  function autoConfigure() {
+    var q = getQueryParams();
+    if (!q.plrKey) return; // 未内置（旧版 manifest/手工流程）：走存储读取或手工导入
+    var serverUrl = q.plrServer || window.location.origin;
+    memCfg = { serverUrl: serverUrl, apiKey: String(q.plrKey) };
+    writeLocal(serverUrl, String(q.plrKey));
+    writeCookie(serverUrl, String(q.plrKey));
+    try {
+      var s = Office.context.roamingSettings;
+      if (s) {
+        s.set(LS_SERVER, serverUrl);
+        s.set(LS_KEY, String(q.plrKey));
+        s.saveAsync();
+      }
+    } catch (e) { /* 漫游不可用：本地已兜底 */ }
+  }
+
   // ---------- 初始化 ----------
 
   function bindUI() {
+    autoConfigure();
     el.report.onclick = handleReportClick;
     el.saveCfg.onclick = saveConfig;
     refreshStatus();
