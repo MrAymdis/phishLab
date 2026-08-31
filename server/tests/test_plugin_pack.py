@@ -168,6 +168,8 @@ def test_ingest_duplicate_message_id_conflict():
 def test_outlook_manifest_renders_base_url():
     r = client.get("/report/v1/plugin/outlook/manifest.xml?base=http://phish.example.com:5173")
     assert r.status_code == 200 and r.headers["content-type"].startswith("application/xml")
+    # 下载文件名必须是 .xml：Outlook「添加自定义加载项」只认 .xml（曾经无此头 → 落 .bin 被拒）
+    assert r.headers["content-disposition"].endswith('phishlab-outlook-manifest.xml"')
     xml = r.text
     assert "http://phish.example.com:5173/report/v1/plugin/outlook/taskpane.html" in xml
     assert "http://phish.example.com:5173/report/v1/plugin/outlook/icon-80.png" in xml

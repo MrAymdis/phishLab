@@ -104,7 +104,14 @@ async function _triggerBlobDownload(res: { data: unknown; headers: Record<string
   }
   const disp = res.headers['content-disposition'] || ''
   const m = /filename\*?=(?:UTF-8'')?"?([^";]+)/i.exec(disp)
-  const name = m ? decodeURIComponent(m[1]) : `export_${Date.now()}.bin`
+  // 无 Content-Disposition 时按 Content-Type 推断扩展名（如 Outlook manifest 应落 .xml 而非 .bin）
+  const extByType: Record<string, string> = {
+    'application/xml': '.xml',
+    'application/zip': '.zip',
+    'message/rfc822': '.eml',
+    'application/json': '.json',
+  }
+  const name = m ? decodeURIComponent(m[1]) : `phishlab_export${extByType[blob.type.split(';')[0]] || '.bin'}`
   const urlObj = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = urlObj

@@ -179,7 +179,9 @@ def outlook_manifest(request: Request, base: str | None = Query(default=None)):
     base_url = (base or str(request.base_url)).strip()
     if not base_url.startswith(("http://", "https://")):
         raise BizError(ErrorCode.PARAM_INVALID, "base 参数必须是 http(s) 绝对地址")
-    return Response(service.build_outlook_manifest(base_url), media_type="application/xml")
+    # 必须带 Content-Disposition：前端下载助手据此落名，Outlook 添加自定义加载项只认 .xml
+    return Response(service.build_outlook_manifest(base_url), media_type="application/xml",
+                    headers={"Content-Disposition": 'attachment; filename="phishlab-outlook-manifest.xml"'})
 
 
 @plugin.get("/plugin/webmail.zip", summary="Web 邮箱举报扩展安装包（zip 运行时打包）")
