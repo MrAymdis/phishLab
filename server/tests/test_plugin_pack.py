@@ -176,6 +176,11 @@ def test_outlook_manifest_renders_base_url():
     assert "{BASE}" not in xml  # 占位符全部注入
     assert "MessageReadCommandSurface" in xml
     assert "<TaskpaneId>" not in xml  # 1.1 架构下 Action 只允许 SourceLocation，出现即 Outlook 校验失败
+    assert "<Version>1.1.2.0</Version>" in xml
+    # Supertip Description 必须引用 LongString（曾放 ShortStrings → 校验报「LongStrings 中找不到资源 ID」）
+    ss = xml.split("<bt:ShortStrings>")[1].split("</bt:ShortStrings>")[0]
+    ls = xml.split("<bt:LongStrings>")[1].split("</bt:LongStrings>")[0]
+    assert 'id="reportBtnTip"' in ls and 'id="reportBtnTip"' not in ss
     # 尾部斜杠去重（request.base_url 默认带 /，双斜杠会让资源 404）
     r = client.get("/report/v1/plugin/outlook/manifest.xml?base=https://phish.example.com/")
     assert "https://phish.example.com/report/v1/" in r.text

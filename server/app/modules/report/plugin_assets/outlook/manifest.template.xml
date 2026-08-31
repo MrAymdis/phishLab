@@ -6,7 +6,7 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>b9f6d3a1-2c4e-4f58-8a7b-0e1d2c3b4a5f</Id>
-  <Version>1.1.1.0</Version>
+  <Version>1.1.2.0</Version>
   <ProviderName>PhishLab</ProviderName>
   <DefaultLocale>zh-CN</DefaultLocale>
   <DisplayName DefaultValue="钓鱼邮件举报"/>
@@ -85,8 +85,11 @@
         <bt:ShortStrings>
           <bt:String id="groupLabel" DefaultValue="安全举报"/>
           <bt:String id="reportBtnLabel" DefaultValue="举报可疑邮件"/>
-          <bt:String id="reportBtnTip" DefaultValue="将当前邮件提交至 PhishLab 安全平台研判"/>
         </bt:ShortStrings>
+        <!-- Supertip Description 必须引用 LongString（放 ShortStrings 会报「LongStrings 中找不到资源 ID」） -->
+        <bt:LongStrings>
+          <bt:String id="reportBtnTip" DefaultValue="将当前邮件提交至 PhishLab 安全平台研判"/>
+        </bt:LongStrings>
       </Resources>
     </VersionOverrides>
   </VersionOverrides>
